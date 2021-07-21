@@ -5,13 +5,13 @@ cd clip-guided-diffusion
 python -m venv cgd_venv
 source cgd_venv/bin/activate
 (cgd_venv) $ # Should be inside virtual environment now.
+(cgd_venv) $ which python # double check your python binary is from your virtual env
+/path/to/cgd_venv/bin/python
 (cgd_venv) $ pip install -r requirements.txt
 ```
 
 Usage:
 ```sh
-(cgd_venv) $ which python # double check your python binary is from your virtual env
-/path/to/cgd_venv/bin/python
 (cgd_venv) $ python clip_guided_diffusion.py \
 	--batch_size 1 \
 	--clip_guidance_scale 3000 \
