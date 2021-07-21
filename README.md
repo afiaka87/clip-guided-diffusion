@@ -1,11 +1,11 @@
 Installation
 ```sh
+git clone https://github.com/afiaka87/clip-guided-diffusion.git
+cd clip-guided-diffusion
 python -m venv cgd_venv
 source cgd_venv/bin/activate
 (cgd_venv) $ # Should be inside virtual environment now.
-(cgd_venv) $ git clone https://github.com/afiaka87/clip-guided-diffusion.git
 (cgd_venv) $ pip install -r requirements.txt
-
 ```
 
 Usage:
