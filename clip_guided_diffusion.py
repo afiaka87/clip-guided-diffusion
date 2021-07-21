@@ -64,7 +64,7 @@ def spherical_dist_loss(x, y):
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     p.add_argument('prompt', type=str, help='the prompt')
-    p.add_argument('--batch-size', '-bs', type=int, default=4, help='the batch size')
+    p.add_argument('--batch_size', '-bs', type=int, default=4, help='the batch size')
     p.add_argument('--clip_guidance_scale', '-cgs', type=int, default=2750, help='clip guidance scale.')
     p.add_argument('--seed', type=int, default=0, help='random number seed')
     args = p.parse_args()
