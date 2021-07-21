@@ -1,5 +1,5 @@
 # Imports
-
+import argparse
 import math
 import sys
 
@@ -59,56 +59,64 @@ def spherical_dist_loss(x, y):
     y = F.normalize(y, dim=-1)
     return (x - y).norm(dim=-1).div(2).arcsin().pow(2).mul(2)
 
-prompt = 'fearful symmetry by Odilon Redon'
-batch_size = 1
-clip_guidance_scale = 2750
-seed = 0
 
-if seed is not None:
-    torch.manual_seed(seed)
 
-text_embed = clip_model.encode_text(clip.tokenize(prompt).to(device)).float()
+def main():
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+    p.add_argument('prompt', type=str, help='the prompt')
+    p.add_argument('--batch-size', '-bs', type=int, default=4, help='the batch size')
+    p.add_argument('--clip_guidance_scale', '-cgs', type=int, default=2750, help='clip guidance scale.')
+    p.add_argument('--seed', type=int, default=0, help='random number seed')
+    args = p.parse_args()
+    prompt = args.prompt # 'fearful symmetry by Odilon Redon'
+    batch_size = args.batch_size  
+    clip_guidance_scale = args.clip_guidance_scale # 2750
+    seed = args.seed # 0
 
-sigmas = 0.25 * diffusion.sqrt_one_minus_alphas_cumprod / diffusion.sqrt_alphas_cumprod
-translate_by = 8 / clip_size
-if translate_by:
-    aug = augmentation.RandomAffine(0, (translate_by, translate_by),
-                                    padding_mode='border', p=1)
-else:
-    aug = nn.Identity()
+    if seed is not None:
+        torch.manual_seed(seed)
 
-cur_t = diffusion.num_timesteps - 1
+    text_embed = clip_model.encode_text(clip.tokenize(prompt).to(device)).float()
 
-def cond_fn(x, t, y=None):
-    with torch.enable_grad():
-        x_in = x.detach().requires_grad_()
-        n = x_in.shape[0]
-        sigma = min(24, sigmas[cur_t])
-        kernel_size = max(math.ceil((sigma * 6 + 1) / 2) * 2 - 1, 3)
-        x_blur = filters.gaussian_blur2d(x_in, (kernel_size, kernel_size), (sigma, sigma))
-        clip_in = F.interpolate(aug(x_blur.add(1).div(2)), (clip_size, clip_size),
-                                mode='bilinear', align_corners=False)
-        image_embed = clip_model.encode_image(normalize(clip_in)).float()
-        losses = spherical_dist_loss(image_embed, text_embed)
-        grad = -torch.autograd.grad(losses.sum(), x_in)[0]
-        return grad * clip_guidance_scale
+    sigmas = 0.25 * diffusion.sqrt_one_minus_alphas_cumprod / diffusion.sqrt_alphas_cumprod
+    translate_by = 8 / clip_size
+    if translate_by:
+        aug = augmentation.RandomAffine(0, (translate_by, translate_by), padding_mode='border', p=1)
+    else:
+        aug = nn.Identity()
 
-samples = diffusion.p_sample_loop_progressive(
-    model,
-    (batch_size, 3, model_config['image_size'], model_config['image_size']),
-    clip_denoised=True,
-    model_kwargs={},
-    cond_fn=cond_fn,
-    progress=True,
-)
+    cur_t = diffusion.num_timesteps - 1
 
-for i, sample in enumerate(samples):
-    cur_t -= 1
-    if i % 100 == 0 or cur_t == -1:
-        print()
-        for j, image in enumerate(sample['sample']):
-            filename = f'progress_{j:05}.png'
-            TF.to_pil_image(image.add(1).div(2).clamp(0, 1)).save(filename)
-            tqdm.write(f'Step {i}, output {j}:')
-            display.display(display.Image(filename))
+    def cond_fn(x, t, y=None):
+        with torch.enable_grad():
+            x_in = x.detach().requires_grad_()
+            n = x_in.shape[0]
+            sigma = min(24, sigmas[cur_t])
+            kernel_size = max(math.ceil((sigma * 6 + 1) / 2) * 2 - 1, 3)
+            x_blur = filters.gaussian_blur2d(x_in, (kernel_size, kernel_size), (sigma, sigma))
+            clip_in = F.interpolate(aug(x_blur.add(1).div(2)), (clip_size, clip_size), mode='bilinear', align_corners=False)
+            image_embed = clip_model.encode_image(normalize(clip_in)).float()
+            losses = spherical_dist_loss(image_embed, text_embed)
+            grad = -torch.autograd.grad(losses.sum(), x_in)[0]
+            return grad * clip_guidance_scale
+        
+    samples = diffusion.p_sample_loop_progressive(
+        model,
+        (batch_size, 3, model_config['image_size'], model_config['image_size']),
+        clip_denoised=True,
+        model_kwargs={},
+        cond_fn=cond_fn,
+        progress=True,
+    )
 
+    for i, sample in enumerate(samples):
+        cur_t -= 1
+        if i % 100 == 0 or cur_t == -1:
+            for j, image in enumerate(sample['sample']):
+                filename = f'progress_{j:05}.png'
+                TF.to_pil_image(image.add(1).div(2).clamp(0, 1)).save(filename)
+                tqdm.write(f'Step {i}, output {j}:')
+                display.display(display.Image(filename))
+
+if __name__ == '__main__':
+    main()
