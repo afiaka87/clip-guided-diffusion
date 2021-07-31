@@ -4,4 +4,4 @@ guided_diffusion/
 *.txt
 checkpoints/
 .vscode/
-.ipynb_checkpoints/
+.ipynb_checkpoints/cgd_venv/
