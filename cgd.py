@@ -7,23 +7,20 @@ from IPython import display
 from PIL import Image
 
 sys.path.append("./guided-diffusion")
+import clip
 import torch
+from guided_diffusion.script_util import (
+    create_model_and_diffusion,
+    model_and_diffusion_defaults,
+)
+from kornia import augmentation as K
 from torch import nn
 from torch.nn import functional as F
 from torchvision import transforms
 from torchvision.transforms import functional as TF
 from tqdm.notebook import tqdm
-from kornia import augmentation as K
-
-
-import clip
-from guided_diffusion.script_util import (
-    create_model_and_diffusion,
-    model_and_diffusion_defaults,
-)
 
 # Model settings
-
 
 def load_guided_diffusion(
     image_size=256,
@@ -63,7 +60,7 @@ def load_guided_diffusion(
         }
     )
     model, diffusion = create_model_and_diffusion(**model_config)
-    model.load_state_dict(torch.load("256x256_diffusion_uncond.pt", map_location="cpu"))
+    model.load_state_dict(torch.load("checkpoints/256x256_diffusion_uncond.pt", map_location="cpu"))
     model.requires_grad_(False).eval().to(device)
     for name, param in model.named_parameters():
         if "qkv" in name or "norm" in name or "proj" in name:
@@ -119,7 +116,6 @@ def tv_loss(input):
 
 """
 [Generate an image from a specified text prompt.]
-
 """
 
 
@@ -128,30 +124,21 @@ def main():
         description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     p.add_argument("prompt", type=str, help="the prompt")
+    p.add_argument("--cutn", type=int, default=8, help="Number of randomly cut patches to distort from diffusion.")
     p.add_argument("--prefix", default="outputs", type=str, help="output directory")
     p.add_argument("--batch_size", "-bs", type=int, default=1, help="the batch size")
-    p.add_argument(
-        "--clip_guidance_scale",
-        "-cgs",
-        type=int,
-        default=500,
-        help="clip guidance scale.",
-    )
+    p.add_argument("--clip_guidance_scale", "-cgs", type=int, default=500, help="clip guidance scale.",)
     p.add_argument("--tv_scale", "-tvs", type=int, default=100, help="tv scale")
-    p.add_argument("--cutn", type=int, default=8, help="tv scale")
     p.add_argument("--seed", type=int, default=0, help="random number seed")
-    p.add_argument(
-        "--save_frequency", "-sf", type=int, default=100, help="save frequency"
-    )
+    p.add_argument("--save_frequency", "-sf", type=int, default=100, help="save frequency")
     p.add_argument("--use_fp16", action="store_true", help="Use 16 bit precision.")
     p.add_argument("--device", type=str, help="device")
     p.add_argument("--image_size", type=int, default=256, help="image size")
     p.add_argument("--diffusion_steps", type=int, default=1000, help="diffusion steps")
-    p.add_argument(
-        "--timestep_respacing", type=int, default=250, help="timestep respacing"
-    )
-    p.add_argument("--tv_scale", type=int, default=100, help="tv scale")
-
+    p.add_argument("--timestep_respacing", type=str, default='250', help="timestep respacing")
+    p.add_argument('--cutout_power', '--cutpow', type=float, default=1.0, help='cutout size power')
+    p.add_argument('--clip_model', type=str, default='ViT-B/16', help='clip model name. Should be one of: [ViT-B/16, ViT-B/32, RN50, RN101, RN50x4, RN50x16]')
+# ViT-B/16, ViT-B/32, RN50, RN101, RN50x4, RN50x16'
     args = p.parse_args()
 
     # Initialize
@@ -162,11 +149,11 @@ def main():
     prefix = args.prefix
     save_frequency = args.save_frequency
     prefix_path = Path(prefix)
-    cutout_power = args.cutpow
+    cutout_power = args.cutout_power
     num_cutouts = args.cutn
     clip_model_name = args.clip_model
-    diffusion_steps = args.diffusions_steps
-    rescale_timesteps = args.rescale_timesteps
+    diffusion_steps = args.diffusion_steps
+    rescale_timesteps = True
     timestep_respacing = args.timestep_respacing
     use_fp16 = args.use_fp16
     image_size = args.image_size
@@ -265,17 +252,24 @@ def main():
         model_kwargs={},
     )
 
-    current_timestep = diffusion.num_timesteps - 1
-    for step, sample in enumerate(samples):
-        current_timestep -= 1
-        if step % save_frequency == 0 or current_timestep == -1:
-            for j, image in enumerate(sample["pred_xstart"]):
-                filename = os.path.join(
-                    prefix_path, f"batch_idx_{j:05}_iteration_{step}.png"
-                )
-                TF.to_pil_image(image.add(1).div(2).clamp(0, 1)).save(filename)
-                tqdm.write(f"Step {step}, output {j}:")
-                display.display(display.Image(filename))
+    try:
+        current_timestep = diffusion.num_timesteps - 1
+        for step, sample in enumerate(samples):
+            current_timestep -= 1
+            if step % save_frequency == 0 or current_timestep == -1:
+                for j, image in enumerate(sample["pred_xstart"]):
+                    filename = os.path.join(
+                        prefix_path, f"batch_idx_{j:05}_iteration_{step}.png"
+                    )
+                    TF.to_pil_image(image.add(1).div(2).clamp(0, 1)).save(filename)
+                    tqdm.write(f"Step {step}, output {j}:")
+                    display.display(display.Image(filename))
+    except RuntimeError as e:
+        if "CUDA out of memory" in str(e):
+            print(f"CUDA OOM error occurred. Lower the batch_size or num_cutouts and try again.")
+        else:
+            raise e
+
 
 
 if __name__ == "__main__":
