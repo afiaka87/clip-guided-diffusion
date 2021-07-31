@@ -5,3 +5,4 @@ guided_diffusion/
 checkpoints/
 .vscode/
 .ipynb_checkpoints
+cgd_venv/
