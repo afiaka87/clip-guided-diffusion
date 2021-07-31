@@ -1,3 +1,5 @@
 CLIP/
-output.png progress_00000.png progress_00001.png progress_00002.png progress_00003.png
+outputs/
 guided_diffusion/
+*.txt
+checkpoints/
