@@ -12,11 +12,21 @@ source cgd_venv/bin/activate
 
 Usage:
 ```sh
-(cgd_venv) $ python clip_guided_diffusion.py \
-	--batch_size 1 \
-	--clip_guidance_scale 3000 \
-	--seed 0 \
-	"a red apple on a wooden table"
+(cgd_venv) $ python cgd.py \
+    --num_cutouts=8 \
+    --prefix='outputs' \
+    --batch_size=1 \
+    --clip_guidance_scale=500 \
+    --tv_scale=100 \
+    --seed=0 \
+    --save_frequency=100 \
+    --use_fp16 \
+    --device=cuda \
+    --diffusion_steps=1000 \
+		--timestep_respacing=250 \
+    --cutout_power=1.0 \
+    --clip_model=ViT-B/16 \
+    $caption
 ```
 
 CLI Output:
