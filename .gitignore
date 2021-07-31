@@ -2,4 +2,5 @@ CLIP/
 outputs/
 guided_diffusion/
 *.txt
-checkpoints/
+checkpoints/.ipynb_checkpoints/
+.vscode/
