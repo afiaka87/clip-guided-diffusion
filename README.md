@@ -40,4 +40,4 @@ source cgd_venv/bin/activate
 Step 1, output 0:
 00%|██              █▋| 1/250 [??:??<00:00,  ?.??it/s]
 ```
-Results `batch_idx_{j}_iteration_{i}.png` in the directory specified with `--prefix`. Defaults to 
+Results `batch_idx_{j}_iteration_{i}.png` in the directory specified with `--prefix`. Defaults to `./outputs/`.
