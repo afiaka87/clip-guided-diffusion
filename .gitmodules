@@ -1,0 +1,3 @@
+[submodule "guided-diffusion"]
+	path = guided-diffusion
+	url = ./guided-diffusion/
