@@ -1,4 +1,15 @@
-Installation
+# CLIP Guided Diffusion
+
+From <a href='https://twitter.com/RiversHaveWings'>RiversHaveWings</a>
+
+<p align='center'>
+  <a href="https://github.com/afiaka87/clip-guided-diffusion/blob/main/colab_clip_guided_diff_hq.ipynb">
+         <img alt="Generate with Colab" src="https://colab.research.google.com/assets/colab-badge.svg">
+  </a>
+<p>
+---
+
+## Installation
 ```sh
 git clone https://github.com/afiaka87/clip-guided-diffusion.git
 cd clip-guided-diffusion
@@ -10,7 +21,7 @@ source cgd_venv/bin/activate
 (cgd_venv) $ pip install -r requirements.txt
 ```
 
-Usage:
+## Usage:
 ```sh
 (cgd_venv) $ python cgd.py \
     --num_cutouts=8 \
@@ -21,12 +32,12 @@ Usage:
     --device=[none|cpu|cuda] \
     --cutout_power=1. \
     --clip_model='ViT-B/32' \
-    $caption
+		'An avocado with the shape and form of an armchair. An armchair imitating an avocado. Avocado armchair.'
 ```
 
-CLI Output:
+## CLI Output:
 ```
 Step 1, output 0:
-00%|██              █▋| 1/500 [04:44<00:00,  1.77it/s]
+00%|██              █▋| 1/250 [??:??<00:00,  ?.??it/s]
 ```
-Results `batch_idx_{j}_iteration_{i}.png` in the current directory.
+Results `batch_idx_{j}_iteration_{i}.png` in the directory specified with `--prefix`. Defaults to 
