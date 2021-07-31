@@ -23,42 +23,30 @@ from tqdm.notebook import tqdm
 # Model settings
 
 def load_guided_diffusion(
-    image_size=256,
-    attention_resolutions="32, 16, 8",
-    class_cond=False,
-    diffusion_steps=1000,
-    rescale_timesteps=True,
-    timestep_respacing="250",
-    learn_sigma=True,
-    noise_schedule="linear",
-    num_channels=256,
-    num_head_channels=64,
-    num_res_blocks=2,
-    resblock_updown=True,
-    use_fp16=True,
-    use_scale_shift_norm=True,
+    diffusion_steps=None,
+    timestep_respacing=None,
     device=None,
+    class_cond=False,
+    rescale_timesteps=True,
 ):
     assert device is not None, "device must be set"
     model_config = model_and_diffusion_defaults()
-    model_config.update(
-        {
-            "attention_resolutions": attention_resolutions,
-            "class_cond": class_cond,
-            "diffusion_steps": diffusion_steps,
-            "rescale_timesteps": rescale_timesteps,
-            "timestep_respacing": timestep_respacing,
-            "image_size": image_size,
-            "learn_sigma": learn_sigma,
-            "noise_schedule": noise_schedule,
-            "num_channels": num_channels,
-            "num_head_channels": num_head_channels,
-            "num_res_blocks": num_res_blocks,
-            "resblock_updown": resblock_updown,
-            "use_fp16": use_fp16,
-            "use_scale_shift_norm": use_scale_shift_norm,
-        }
-    )
+    model_config.update({
+        "attention_resolutions": "32, 16, 8",
+        "class_cond": class_cond,
+        "diffusion_steps": diffusion_steps,
+        "rescale_timesteps": rescale_timesteps,
+        "timestep_respacing": timestep_respacing,
+        "image_size": 256,
+        "learn_sigma": True,
+        "noise_schedule": "linear",
+        "num_channels": 256,
+        "num_head_channels": 64,
+        "num_res_blocks": 2,
+        "resblock_updown": True,
+        "use_fp16": True,
+        "use_scale_shift_norm": True,
+    })
     model, diffusion = create_model_and_diffusion(**model_config)
     model.load_state_dict(torch.load("checkpoints/256x256_diffusion_uncond.pt", map_location="cpu"))
     model.requires_grad_(False).eval().to(device)
@@ -71,24 +59,24 @@ def load_guided_diffusion(
 
 
 class MakeCutouts(nn.Module):
-    def __init__(self, cut_size, cutn, cut_pow=1.0, augment_list=[]):
+    def __init__(self, cut_size, num_cutouts, cutout_size_power=1.0, augment_list=[]):
         super().__init__()
         self.cut_size = cut_size
-        self.cutn = cutn
-        self.cut_pow = cut_pow
+        self.cutn = num_cutouts
+        self.cut_pow = cutout_size_power
         self.augs = nn.Sequential(*augment_list)
 
     def forward(self, input):
-        sideY, sideX = input.shape[2:4]
-        max_size = min(sideX, sideY)
-        min_size = min(sideX, sideY, self.cut_size)
+        side_x, side_y = input.shape[2:4]
+        max_size = min(side_y, side_x)
+        min_size = min(side_y, side_x, self.cut_size)
         cutouts = []
         for _ in range(self.cutn):
             size = int(
                 torch.rand([]) ** self.cut_pow * (max_size - min_size) + min_size
             )
-            offsetx = torch.randint(0, sideX - size + 1, ())
-            offsety = torch.randint(0, sideY - size + 1, ())
+            offsetx = torch.randint(0, side_y - size + 1, ())
+            offsety = torch.randint(0, side_x - size + 1, ())
             cutout = input[:, :, offsety : offsety + size, offsetx : offsetx + size]
             cutout = F.interpolate(
                 cutout,
@@ -117,47 +105,47 @@ def tv_loss(input):
 """
 [Generate an image from a specified text prompt.]
 """
-
-
 def main():
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     p.add_argument("prompt", type=str, help="the prompt")
-    p.add_argument("--cutn", type=int, default=8, help="Number of randomly cut patches to distort from diffusion.")
-    p.add_argument("--prefix", default="outputs", type=str, help="output directory")
+    p.add_argument("--num_cutouts", "--cutn", type=int, default=8, help="Number of randomly cut patches to distort from diffusion.")
+    p.add_argument("--prefix", "--output_dir", default="outputs", type=str, help="output directory")
     p.add_argument("--batch_size", "-bs", type=int, default=1, help="the batch size")
     p.add_argument("--clip_guidance_scale", "-cgs", type=int, default=500, help="clip guidance scale.",)
     p.add_argument("--tv_scale", "-tvs", type=int, default=100, help="tv scale")
     p.add_argument("--seed", type=int, default=0, help="random number seed")
     p.add_argument("--save_frequency", "-sf", type=int, default=100, help="save frequency")
-    p.add_argument("--use_fp16", action="store_true", help="Use 16 bit precision.")
     p.add_argument("--device", type=str, help="device")
-    p.add_argument("--image_size", type=int, default=256, help="image size")
     p.add_argument("--diffusion_steps", type=int, default=1000, help="diffusion steps")
     p.add_argument("--timestep_respacing", type=str, default='250', help="timestep respacing")
     p.add_argument('--cutout_power', '--cutpow', type=float, default=1.0, help='cutout size power')
     p.add_argument('--clip_model', type=str, default='ViT-B/16', help='clip model name. Should be one of: [ViT-B/16, ViT-B/32, RN50, RN101, RN50x4, RN50x16]')
-# ViT-B/16, ViT-B/32, RN50, RN101, RN50x4, RN50x16'
+    # p.add_argument("--image_size", type=int, default=256, help="image size") TODO - image size only works @ 256; need to fix
     args = p.parse_args()
 
     # Initialize
-    prompt = args.prompt  # 'fearful symmetry by Odilon Redon'
+    prompt = args.prompt 
     batch_size = args.batch_size
-    clip_guidance_scale = args.clip_guidance_scale  # 2750
-    seed = args.seed  # 0
-    prefix = args.prefix
+    clip_guidance_scale = args.clip_guidance_scale
+    seed = args.seed
     save_frequency = args.save_frequency
-    prefix_path = Path(prefix)
     cutout_power = args.cutout_power
-    num_cutouts = args.cutn
-    clip_model_name = args.clip_model
+    num_cutouts = args.num_cutouts
+    image_size = 256 # TODO - support other image sizes
+
+    prefix = args.prefix
+    prefix_path = Path(prefix)
+    os.makedirs(prefix_path, exist_ok=True)
+
     diffusion_steps = args.diffusion_steps
-    rescale_timesteps = True
     timestep_respacing = args.timestep_respacing
-    use_fp16 = args.use_fp16
-    image_size = args.image_size
+    assert timestep_respacing in ['25', '50', '100', '250', '500', '1000', 'ddim25', 'ddim50', 'ddim100', 'ddim250', 'ddim500', 'ddim1000'], 'timestep_respacing should be one of [25, 50, 100, 250, 500, 1000, ddim25, ddim50, ddim100, ddim250, ddim500, ddim1000]'
+
     tv_scale = args.tv_scale
+    clip_model_name = args.clip_model
+    assert clip_model_name in ['ViT-B/16', 'ViT-B/32', 'RN50', 'RN101', 'RN50x4', 'RN50x16'], 'clip model name should be one of: [ViT-B/16, ViT-B/32, RN50, RN101, RN50x4, RN50x16]'
 
     if args.device is None:
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -170,14 +158,13 @@ def main():
     if seed is not None:
         torch.manual_seed(seed)
 
-    os.makedirs(prefix_path, exist_ok=True)
-
     # Load guided-diffusion model
     gd_model, diffusion = load_guided_diffusion(
         diffusion_steps=diffusion_steps,
-        rescale_timesteps=rescale_timesteps,
-        use_fp16=use_fp16,
+        timestep_respacing=timestep_respacing,
         device=device,
+        class_cond=False,
+        rescale_timesteps=True,
     )
     # Load CLIP model
     clip_model = (
@@ -198,22 +185,22 @@ def main():
     make_cutouts = MakeCutouts(
         clip_size,
         num_cutouts,
-        cut_pow=cutout_power,
+        cutout_size_power=cutout_power,
         augment_list=[
-            K.RandomHorizontalFlip(p=0.5),
-            K.RandomVerticalFlip(p=0.5),
-            K.RandomElasticTransform(p=1.0),
-            K.RandomGaussianNoise(mean=0.4, std=0.2, p=0.5),
-            K.RandomPerspective(distortion_scale=0.1, p=0.5),
-            K.RandomMotionBlur(3, 15, 0.5, p=0.5),
-            K.RandomThinPlateSpline(p=0.5),
-            K.RandomSharpness(p=0.5),
-            K.RandomGrayscale(p=0.5),
-            K.RandomChannelShuffle(p=0.5),
-            K.RandomAffine(degrees=15, p=0.5, padding_mode="border"),
+            # K.RandomHorizontalFlip(p=0.2),
+            # K.RandomVerticalFlip(p=0.5),
+            # K.RandomElasticTransform(p=1.0),
+            # K.RandomGaussianNoise(mean=0.4, std=0.2, p=0.5),
+            # K.RandomPerspective(distortion_scale=0.1, p=0.5),
+            # K.RandomMotionBlur(3, 15, 0.5, p=0.25),
+            # K.RandomThinPlateSpline(p=0.25),
+            # K.RandomSharpness(p=0.25),
+            # K.RandomChannelShuffle(p=0.25),
+            # K.RandomGrayscale(p=0.25),
+            # K.RandomAffine(degrees=15, p=0.5, padding_mode="border"),
             K.RandomErasing((0.1, 0.4), (0.3, 1 / 0.3), same_on_batch=True, p=0.5),
-            K.RandomSolarize(0.01, 0.01, p=1.0),
-        ],
+            # K.RandomSolarize(0.01, 0.01, p=0.25),
+        ]
     )
 
     # Customize guided-diffusion model with function that uses CLIP guidance.
@@ -252,6 +239,8 @@ def main():
         model_kwargs={},
     )
 
+    print(f"Attempting to generate the caption:")
+    print(prompt)
     try:
         current_timestep = diffusion.num_timesteps - 1
         for step, sample in enumerate(samples):
@@ -269,7 +258,6 @@ def main():
             print(f"CUDA OOM error occurred. Lower the batch_size or num_cutouts and try again.")
         else:
             raise e
-
 
 
 if __name__ == "__main__":

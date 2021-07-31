@@ -16,16 +16,11 @@ Usage:
     --num_cutouts=8 \
     --prefix='outputs' \
     --batch_size=1 \
-    --clip_guidance_scale=500 \
-    --tv_scale=100 \
-    --seed=0 \
-    --save_frequency=100 \
-    --use_fp16 \
-    --device=cuda \
-    --diffusion_steps=1000 \
 		--timestep_respacing=250 \
-    --cutout_power=1.0 \
-    --clip_model=ViT-B/16 \
+    --save_frequency=100 \
+    --device=[none|cpu|cuda] \
+    --cutout_power=1. \
+    --clip_model='ViT-B/32' \
     $caption
 ```
 
@@ -34,8 +29,4 @@ CLI Output:
 Step 1, output 0:
 00%|██              █▋| 1/500 [04:44<00:00,  1.77it/s]
 ```
-
-
-Results are saved as `progress_{batch_id}.png` in the current directory.
-
-
+Results `batch_idx_{j}_iteration_{i}.png` in the current directory.
