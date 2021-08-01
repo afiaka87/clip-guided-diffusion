@@ -2,6 +2,8 @@ import argparse
 import os
 import sys
 from pathlib import Path
+from torch_util import resize_image, spherical_dist_loss, tv_loss
+from util import load_guided_diffusion
 
 from IPython import display
 from PIL import Image
@@ -10,10 +12,6 @@ from guided_diffusion.nn import checkpoint
 sys.path.append("./guided-diffusion")
 import clip
 import torch
-from guided_diffusion.script_util import (
-    create_model_and_diffusion,
-    model_and_diffusion_defaults,
-)
 from kornia import augmentation as K
 from torch import clip_, nn
 from torch.nn import functional as F
@@ -21,65 +19,6 @@ from torchvision import transforms
 from torchvision.transforms import functional as TF
 from tqdm.notebook import tqdm
 
-def resize_image(image, out_size):
-    ratio = image.size[0] / image.size[1]
-    area = min(image.size[0] * image.size[1], out_size[0] * out_size[1])
-    size = round((area * ratio)**0.5), round((area / ratio)**0.5)
-    return image.resize(size, Image.LANCZOS)
-
-# Model settings
-# SAMPLE_FLAGS="--batch_size 4 --num_samples 100 --timestep_respacing 250"
-# MODEL_FLAGS="--attention_resolutions 32,16,8 --class_cond True --diffusion_steps 1000 --dropout 0.1 --image_size 64 --learn_sigma True --noise_schedule cosine --num_channels 192 --num_head_channels 64 --num_res_blocks 3 --resblock_updown True --use_new_attention_order True --use_fp16 True --use_scale_shift_norm True"
-# python classifier_sample.py $MODEL_FLAGS --classifier_scale 1.0 --classifier_path models/64x64_classifier.pt --model_path models/64x64_diffusion.pt $SAMPLE_FLAGS
-
-def load_guided_diffusion(
-    checkpoint_path,
-    image_size,
-    diffusion_steps=None,
-    timestep_respacing=None,
-    device=None,
-    class_cond=False,
-    rescale_timesteps=True,
-):
-    assert device is not None, "device must be set"
-
-    num_channels = 192 if class_cond else 256
-    noise_schedule = "cosine" if class_cond else "linear"
-    num_res_blocks = 3 if class_cond else 2
-    use_new_attention_order = True if class_cond else False
-
-    model_config = model_and_diffusion_defaults()
-    model_config.update({
-        "attention_resolutions": "32, 16, 8",
-        "class_cond": class_cond,
-        "diffusion_steps": diffusion_steps,
-        "rescale_timesteps": rescale_timesteps,
-        "timestep_respacing": timestep_respacing,
-        "image_size": image_size,
-        "learn_sigma": True,
-        "noise_schedule": 'linear', # noise_schedule,
-        "num_channels": num_channels,
-        "num_head_channels": 64,
-        "num_res_blocks": num_res_blocks,
-        "resblock_updown": True,
-        "use_new_attention_order": use_new_attention_order,
-        "use_fp16": False,
-        "use_scale_shift_norm": True,
-    })
-    model, diffusion = create_model_and_diffusion(**model_config)
-    model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"))
-    model.requires_grad_(False).eval().to(device)
-    for name, param in model.named_parameters():
-        if "qkv" in name or "norm" in name or "proj" in name:
-            param.requires_grad_()
-    if model_config["use_fp16"]:
-        model.convert_to_fp16()
-    return model, diffusion
-
-def parse_prompt(prompt):                                               # NR: Weights after colons
-    vals = prompt.rsplit(':', 2)
-    vals = vals + ['', '1', '-inf'][len(vals):]
-    return vals[0], float(vals[1]), float(vals[2])
 
 class MakeCutouts(nn.Module):
     def __init__(self, cut_size, num_cutouts, cutout_size_power=1.0, augment_list=[]):
@@ -109,36 +48,6 @@ class MakeCutouts(nn.Module):
             )
             cutouts.append(cutout)
         return self.augs(torch.cat(cutouts))
-
-
-def spherical_dist_loss(x, y):
-    x = F.normalize(x, dim=-1)
-    y = F.normalize(y, dim=-1)
-    return (x - y).norm(dim=-1).div(2).arcsin().pow(2).mul(2)
-
-
-def tv_loss(input):
-    """L2 total variation loss, as in Mahendran et al."""
-    input = F.pad(input, (0, 1, 0, 1), "replicate")
-    x_diff = input[..., :-1, 1:] - input[..., :-1, :-1]
-    y_diff = input[..., 1:, :-1] - input[..., :-1, :-1]
-    return (x_diff ** 2 + y_diff ** 2).mean([1, 2, 3])
-
-custom_augment_list = [
-    # K.RandomAffine(degrees=25, translate=0.1, p=0.7, padding_mode='reflection'),
-    # K.RandomElasticTransform(p=0.1, alpha=(10.0, 10.0)),
-    # K.RandomGaussianNoise(0.1, 0.08, p=0.5),
-    # K.RandomPerspective(distortion_scale=0.3, p=0.7),
-    # K.ColorJitter(hue=0.01, saturation=0.01, p=0.7),
-    # K.RandomChannelShuffle(p=0.25),
-    # K.RandomGrayscale(p=0.5),
-    # K.RandomMotionBlur(3, 15, 0.5, p=0.25),
-    # K.RandomSharpness(p=0.5),
-    # K.RandomHorizontalFlip(p=0.1),
-    # K.RandomThinPlateSpline(p=0.25),
-    # K.RandomAffine(degrees=7, p=0.4, padding_mode="border"),
-    # K.RandomSolarize(0.01, 0.01, p=0.25),
-]
 
 """
 [Generate an image from a specified text prompt.]
@@ -253,9 +162,8 @@ def main():
             fac = diffusion.sqrt_one_minus_alphas_cumprod[current_timestep]
             x_in = out["pred_xstart"] * fac + x * (1 - fac)
 
-            augmented_make_cutouts = MakeCutouts(clip_size, num_cutouts, cutout_size_power=cutout_power, augment_list=custom_augment_list)
             normal_make_cutouts = MakeCutouts(clip_size, num_cutouts, cutout_size_power=cutout_power)
-            clip_in = normalize(augmented_make_cutouts(x_in.add(1).div(2)))
+            clip_in = normalize(normal_make_cutouts(x_in.add(1).div(2)))
             cutout_embeds = clip_model.encode_image(clip_in).float().view([num_cutouts, n, -1])
 
             # spherical distance between diffusion cutouts and text

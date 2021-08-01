@@ -29,7 +29,7 @@ source cgd_venv/bin/activate
 ```sh
 (cgd_venv) $ python cgd.py \
     --num_cutouts=8 \
-    --prefix='outputs' \
+    --prefix='output_dir' \
     --batch_size=1 \
     --timestep_respacing=250 \
     --save_frequency=100 \
@@ -40,6 +40,27 @@ source cgd_venv/bin/activate
     --clip_model='ViT-B/32' \
     'THX sound spaceship'
 ```
+
+
+### Image Prompts
+```sh
+(cgd_venv) $ python cgd.py \
+    --img_prompts='images/THX_sound_Spaceship.png' \
+    --img_prompt_weight=50 \
+# ...
+
+
+```
+### 64x64 class conditioned checkpoint
+You can try using the 64x64 px checkpoint with a random imagenet class.
+```sh
+# (WIP) Sample class conditional checkpoints using a random imagnet class idx.
+(cgd_venv) $ python cgd.py 
+  --class_cond True \
+  --image_size 64 \
+# ...
+```
+
 
 ## CLI Output:
 ```
