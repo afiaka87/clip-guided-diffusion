@@ -5,6 +5,7 @@ from pathlib import Path
 
 from IPython import display
 from PIL import Image
+from guided_diffusion.nn import checkpoint
 
 sys.path.append("./guided-diffusion")
 import clip
@@ -27,8 +28,13 @@ def resize_image(image, out_size):
     return image.resize(size, Image.LANCZOS)
 
 # Model settings
+# SAMPLE_FLAGS="--batch_size 4 --num_samples 100 --timestep_respacing 250"
+# MODEL_FLAGS="--attention_resolutions 32,16,8 --class_cond True --diffusion_steps 1000 --dropout 0.1 --image_size 64 --learn_sigma True --noise_schedule cosine --num_channels 192 --num_head_channels 64 --num_res_blocks 3 --resblock_updown True --use_new_attention_order True --use_fp16 True --use_scale_shift_norm True"
+# python classifier_sample.py $MODEL_FLAGS --classifier_scale 1.0 --classifier_path models/64x64_classifier.pt --model_path models/64x64_diffusion.pt $SAMPLE_FLAGS
 
 def load_guided_diffusion(
+    checkpoint_path,
+    image_size,
     diffusion_steps=None,
     timestep_respacing=None,
     device=None,
@@ -36,6 +42,12 @@ def load_guided_diffusion(
     rescale_timesteps=True,
 ):
     assert device is not None, "device must be set"
+
+    num_channels = 192 if class_cond else 256
+    noise_schedule = "cosine" if class_cond else "linear"
+    num_res_blocks = 3 if class_cond else 2
+    use_new_attention_order = True if class_cond else False
+
     model_config = model_and_diffusion_defaults()
     model_config.update({
         "attention_resolutions": "32, 16, 8",
@@ -43,18 +55,19 @@ def load_guided_diffusion(
         "diffusion_steps": diffusion_steps,
         "rescale_timesteps": rescale_timesteps,
         "timestep_respacing": timestep_respacing,
-        "image_size": 256,
+        "image_size": image_size,
         "learn_sigma": True,
-        "noise_schedule": "linear",
-        "num_channels": 256,
+        "noise_schedule": 'linear', # noise_schedule,
+        "num_channels": num_channels,
         "num_head_channels": 64,
-        "num_res_blocks": 2,
+        "num_res_blocks": num_res_blocks,
         "resblock_updown": True,
-        "use_fp16": True,
+        "use_new_attention_order": use_new_attention_order,
+        "use_fp16": False,
         "use_scale_shift_norm": True,
     })
     model, diffusion = create_model_and_diffusion(**model_config)
-    model.load_state_dict(torch.load("checkpoints/256x256_diffusion_uncond.pt", map_location="cpu"))
+    model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"))
     model.requires_grad_(False).eval().to(device)
     for name, param in model.named_parameters():
         if "qkv" in name or "norm" in name or "proj" in name:
@@ -112,11 +125,11 @@ def tv_loss(input):
     return (x_diff ** 2 + y_diff ** 2).mean([1, 2, 3])
 
 custom_augment_list = [
-    K.RandomAffine(degrees=25, translate=0.1, p=0.7, padding_mode='reflection'),
-    K.RandomElasticTransform(p=0.1, alpha=(10.0, 10.0)),
-    K.RandomGaussianNoise(0.1, 0.08, p=0.5),
-    K.RandomPerspective(distortion_scale=0.3, p=0.7),
-    K.ColorJitter(hue=0.01, saturation=0.01, p=0.7),
+    # K.RandomAffine(degrees=25, translate=0.1, p=0.7, padding_mode='reflection'),
+    # K.RandomElasticTransform(p=0.1, alpha=(10.0, 10.0)),
+    # K.RandomGaussianNoise(0.1, 0.08, p=0.5),
+    # K.RandomPerspective(distortion_scale=0.3, p=0.7),
+    # K.ColorJitter(hue=0.01, saturation=0.01, p=0.7),
     # K.RandomChannelShuffle(p=0.25),
     # K.RandomGrayscale(p=0.5),
     # K.RandomMotionBlur(3, 15, 0.5, p=0.25),
@@ -149,7 +162,8 @@ def main():
     p.add_argument("--timestep_respacing", type=str, default='250', help="Timestep respacing")
     p.add_argument('--cutout_power', '--cutpow', type=float, default=1.0, help='Cutout size power')
     p.add_argument('--clip_model', type=str, default='ViT-B/16', help='clip model name. Should be one of: [ViT-B/16, ViT-B/32, RN50, RN101, RN50x4, RN50x16]')
-    # p.add_argument("--image_size", type=int, default=256, help="image size") TODO - image size only works @ 256; need to fix
+    p.add_argument('--class_cond', type=bool, default=True, help='Class condition')
+    p.add_argument("--image_size", type=int, default=64, help="image size") # TODO - image size only works @ 256; need to fix
     args = p.parse_args()
 
     # Initialize
@@ -163,15 +177,15 @@ def main():
 
     img_prompt_weight = args.img_prompt_weight
     
-    image_size = 256 # TODO - support other image sizes
-
+    image_size = args.image_size # TODO - support other image sizes
     batch_size = args.batch_size
     seed = args.seed
     save_frequency = args.save_frequency
     cutout_power = args.cutout_power
     num_cutouts = args.num_cutouts
-
+    class_cond = args.class_cond
     prefix = args.prefix
+
     prefix_path = Path(prefix)
     os.makedirs(prefix_path, exist_ok=True)
 
@@ -196,10 +210,12 @@ def main():
 
     # Load guided-diffusion model
     gd_model, diffusion = load_guided_diffusion(
+        checkpoint_path=f'checkpoints/64x64_diffusion.pt',
+        image_size=image_size,
         diffusion_steps=diffusion_steps,
         timestep_respacing=timestep_respacing,
         device=device,
-        class_cond=False,
+        class_cond=True,
         rescale_timesteps=True,
     )
     # Load CLIP model
@@ -277,14 +293,18 @@ def main():
     else:
         diffusion_sample_loop = diffusion.p_sample_loop_progressive
  
+    model_kwargs = {}
+    if class_cond:
+        classes = torch.randint(low=0, high=1000, size=(batch_size,), device=device)
+        model_kwargs["y"] = classes
+
     samples = diffusion_sample_loop(
         gd_model,
         (batch_size, 3, image_size, image_size),
         clip_denoised=False,
         cond_fn=cond_fn,
         progress=True,
-        # Pass in {'y': imagenet_class_labels_idx} to sample from a specific class
-        model_kwargs={},
+        model_kwargs=model_kwargs,
     )
 
     print(f"Attempting to generate the caption:")
