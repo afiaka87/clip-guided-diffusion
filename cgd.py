@@ -14,7 +14,7 @@ from guided_diffusion.script_util import (
     model_and_diffusion_defaults,
 )
 from kornia import augmentation as K
-from torch import nn
+from torch import clip_, nn
 from torch.nn import functional as F
 from torchvision import transforms
 from torchvision.transforms import functional as TF
@@ -112,12 +112,18 @@ def tv_loss(input):
     return (x_diff ** 2 + y_diff ** 2).mean([1, 2, 3])
 
 custom_augment_list = [
-    # K.RandomSharpness(p=1.75),
+    K.RandomAffine(degrees=25, translate=0.1, p=0.7, padding_mode='reflection'),
+    K.RandomElasticTransform(p=0.1, alpha=(10.0, 10.0)),
+    K.RandomGaussianNoise(0.1, 0.08, p=0.5),
+    K.RandomPerspective(distortion_scale=0.3, p=0.7),
+    K.ColorJitter(hue=0.01, saturation=0.01, p=0.7),
     # K.RandomChannelShuffle(p=0.25),
-    K.RandomGrayscale(p=0.5),
+    # K.RandomGrayscale(p=0.5),
     # K.RandomMotionBlur(3, 15, 0.5, p=0.25),
+    # K.RandomSharpness(p=0.5),
+    # K.RandomHorizontalFlip(p=0.1),
     # K.RandomThinPlateSpline(p=0.25),
-    # K.RandomAffine(degrees=7, p=0.25, padding_mode="border"),
+    # K.RandomAffine(degrees=7, p=0.4, padding_mode="border"),
     # K.RandomSolarize(0.01, 0.01, p=0.25),
 ]
 
@@ -236,12 +242,12 @@ def main():
             clip_in = normalize(augmented_make_cutouts(x_in.add(1).div(2)))
             cutout_embeds = clip_model.encode_image(clip_in).float().view([num_cutouts, n, -1])
 
-            # spherical distance between diffusion cutouts and text to loss
+            # spherical distance between diffusion cutouts and text
             text_prompt_spherical_loss = spherical_dist_loss(cutout_embeds, text_embed.unsqueeze(0)).mean(0).sum()
             text_prompt_spherical_loss = text_prompt_spherical_loss.mean() * text_prompt_weight
 
             img_prompt_spherical_loss = torch.zeros([num_cutouts, n], device=device)
-            # spherical distance between diffusion cutouts and image to loss
+            # spherical distance between diffusion cutouts and image (if any)
             if len(img_tensors) > 0:
                 for img in img_tensors:
                     img_prompt_cutouts = normalize( normal_make_cutouts(img.unsqueeze(0).to(device)))
@@ -250,12 +256,17 @@ def main():
                 img_prompt_spherical_loss /= len(img_tensors) 
                 img_prompt_spherical_loss = img_prompt_spherical_loss.mean() * img_prompt_weight
 
+            if len(img_tensors) > 0:
+                clip_based_loss = (text_prompt_spherical_loss + img_prompt_spherical_loss) / 2
+            else:
+                clip_based_loss = text_prompt_spherical_loss
             # denoising loss
             tv_denoise_loss = tv_loss(x_in).sum() * tv_weight
+            loss = clip_based_loss + tv_denoise_loss
 
-            loss = text_prompt_spherical_loss + img_prompt_spherical_loss.sum() + tv_denoise_loss
             print(f"Text loss: {text_prompt_spherical_loss}")
             print(f"Image loss: {img_prompt_spherical_loss.sum()}")
+            print(f"CLIP loss: {clip_based_loss}")
             print(f"Denoise loss: {tv_denoise_loss}")
             print("---")
             print(f"Total loss: {loss}")
