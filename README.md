@@ -6,7 +6,8 @@ From [RiversHaveWings](https://twitter.com/RiversHaveWings).
 </a>
 
 ![Windows XP Background](/images/Windows_XP_background_Mushroom.png?raw=true)
-Windows XP background mushrooms
+
+> Windows XP background mushrooms
 
 [More images](/images/README.md)
 
