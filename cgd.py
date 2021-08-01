@@ -2,7 +2,10 @@ import argparse
 import os
 import sys
 from pathlib import Path
-from torch_util import resize_image, spherical_dist_loss, tv_loss
+from torch.utils.data.dataloader import DataLoader
+
+from torch.utils.data.dataset import TensorDataset
+from torch_util import load_tokenized, resize_image, spherical_dist_loss, tv_loss
 from util import load_guided_diffusion
 
 from IPython import display
@@ -18,6 +21,18 @@ from torch.nn import functional as F
 from torchvision import transforms
 from torchvision.transforms import functional as TF
 from tqdm.notebook import tqdm
+
+
+def find_imagenet_class_with_cl(batch_size, num_workers, shuffle=False, path="data/imagenet.pkl", clip_model_name='ViT-B/16', device='cuda:0'):
+    tokens = load_tokenized(path)
+    dataset = TensorDataset(tokens)
+    # Load CLIP model
+    clip_perceptor = clip.load(clip_model_name, jit=False)[0].eval().requires_grad_(False).to(device)
+    # Embed text with CLIP model
+    imagenet_clip_loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle)
+    for batch_idx, (clip_token,) in enumerate(imagenet_clip_loader):
+        clip_token = clip_token.to(device)
+        clip_embedding = clip_perceptor(clip_token)
 
 
 class MakeCutouts(nn.Module):
@@ -68,7 +83,7 @@ def main():
     p.add_argument("--save_frequency", "-sf", type=int, default=100, help="Save frequency")
     p.add_argument("--device", type=str, help="device")
     p.add_argument("--diffusion_steps", type=int, default=1000, help="Diffusion steps")
-    p.add_argument("--timestep_respacing", type=str, default='250', help="Timestep respacing")
+    p.add_argument("--timestep_respacing", type=str, default='1000', help="Timestep respacing")
     p.add_argument('--cutout_power', '--cutpow', type=float, default=1.0, help='Cutout size power')
     p.add_argument('--clip_model', type=str, default='ViT-B/16', help='clip model name. Should be one of: [ViT-B/16, ViT-B/32, RN50, RN101, RN50x4, RN50x16]')
     p.add_argument('--class_cond', type=bool, default=True, help='Class condition')
