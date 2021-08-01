@@ -47,5 +47,5 @@ Step 1, output 0:
 00%|██              █▋| 1/250 [??:??<00:00,  ?.??it/s]
 ```
 Results `batch_idx_{j}_iteration_{i}.png` in the directory specified with `--prefix`. Defaults to `./outputs/`.
- - ![THX sound spaceship](/images/THX_sound_Spaceship.png?raw=true)
-THX sound spaceship
+![THX sound spaceship](/images/THX_sound_Spaceship.png?raw=true)
+> THX sound spaceship
