@@ -23,16 +23,17 @@ from torchvision.transforms import functional as TF
 from tqdm.notebook import tqdm
 
 
-def find_imagenet_class_with_cl(batch_size, num_workers, shuffle=False, path="data/imagenet.pkl", clip_model_name='ViT-B/16', device='cuda:0'):
-    tokens = load_tokenized(path)
-    dataset = TensorDataset(tokens)
-    # Load CLIP model
-    clip_perceptor = clip.load(clip_model_name, jit=False)[0].eval().requires_grad_(False).to(device)
-    # Embed text with CLIP model
-    imagenet_clip_loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle)
-    for batch_idx, (clip_token,) in enumerate(imagenet_clip_loader):
-        clip_token = clip_token.to(device)
-        clip_embedding = clip_perceptor(clip_token)
+# def find_imagenet_class_with_clip(batch_size, num_workers, shuffle=False, path="data/imagenet.pkl", clip_model_name='ViT-B/16', device='cuda:0'):
+#     tokens = load_tokenized(path)
+#     dataset = TensorDataset(tokens)
+#     # Load CLIP model
+#     clip_perceptor = clip.load(clip_model_name, jit=False)[0].eval().requires_grad_(False).to(device)
+#     # Embed text with CLIP model
+#     imagenet_clip_loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle)
+#     for batch_idx, (clip_token,) in enumerate(imagenet_clip_loader):
+#         clip_token = clip_token.to(device)
+#         embed = F.normalize(clip_token.float().unsqueeze(0).unsqueeze(0).neg())
+
 
 
 class MakeCutouts(nn.Module):
@@ -76,7 +77,7 @@ def main():
     p.add_argument("--num_cutouts", "--cutn", type=int, default=8, help="Number of randomly cut patches to distort from diffusion.")
     p.add_argument("--prefix", "--output_dir", default="outputs", type=str, help="output directory")
     p.add_argument("--batch_size", "-bs", type=int, default=1, help="the batch size")
-    p.add_argument("--text_prompt_weight", "-tpw", type=int, default=500, help="Scale for CLIP's text prompt based loss.")
+    p.add_argument("--text_prompt_weight", "-tpw", type=int, default=1000, help="Scale for CLIP's text prompt based loss.")
     p.add_argument("--img_prompt_weight", "-ipw", type=int, default=50, help="Scale for CLIP's image prompt based loss.")
     p.add_argument("--tv_weight", "-tvw", type=int, default=100, help="Scale for denoising loss")
     p.add_argument("--seed", type=int, default=0, help="Random number seed")
@@ -85,9 +86,9 @@ def main():
     p.add_argument("--diffusion_steps", type=int, default=1000, help="Diffusion steps")
     p.add_argument("--timestep_respacing", type=str, default='1000', help="Timestep respacing")
     p.add_argument('--cutout_power', '--cutpow', type=float, default=1.0, help='Cutout size power')
-    p.add_argument('--clip_model', type=str, default='ViT-B/16', help='clip model name. Should be one of: [ViT-B/16, ViT-B/32, RN50, RN101, RN50x4, RN50x16]')
+    p.add_argument('--clip_model', type=str, default='ViT-B/32', help='clip model name. Should be one of: [ViT-B/16, ViT-B/32, RN50, RN101, RN50x4, RN50x16]')
     p.add_argument('--class_cond', type=bool, default=True, help='Class condition')
-    p.add_argument("--image_size", type=int, default=64, help="image size") # TODO - image size only works @ 256; need to fix
+    p.add_argument("--image_size", type=int, default=256, help="image size") # TODO - image size only works @ 256; need to fix
     args = p.parse_args()
 
     # Initialize
@@ -134,13 +135,13 @@ def main():
 
     # Load guided-diffusion model
     gd_model, diffusion = load_guided_diffusion(
-        checkpoint_path=f'checkpoints/64x64_diffusion.pt',
+            checkpoint_path='./checkpoints/256x256_diffusion_uncond.pt',
         image_size=image_size,
         diffusion_steps=diffusion_steps,
         timestep_respacing=timestep_respacing,
         device=device,
-        class_cond=True,
-        rescale_timesteps=True,
+        class_cond=False,
+        rescale_timesteps=False,
     )
     # Load CLIP model
     clip_model = (
@@ -217,9 +218,9 @@ def main():
         diffusion_sample_loop = diffusion.p_sample_loop_progressive
  
     model_kwargs = {}
-    if class_cond:
-        classes = torch.randint(low=0, high=1000, size=(batch_size,), device=device)
-        model_kwargs["y"] = classes
+#    if class_cond:
+#        classes = torch.randint(low=0, high=1000, size=(batch_size,), device=device)
+#        model_kwargs["y"] = classes
 
     samples = diffusion_sample_loop(
         gd_model,
