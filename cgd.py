@@ -1,10 +1,12 @@
 import argparse
+import re
 import os
 import sys
 from pathlib import Path
 from torch.utils.data.dataloader import DataLoader
 
 from torch.utils.data.dataset import TensorDataset
+from torchvision.transforms.transforms import RandomResizedCrop
 from torch_util import load_tokenized, resize_image, spherical_dist_loss, tv_loss
 from util import load_guided_diffusion
 
@@ -33,7 +35,6 @@ from tqdm.notebook import tqdm
 #     for batch_idx, (clip_token,) in enumerate(imagenet_clip_loader):
 #         clip_token = clip_token.to(device)
 #         embed = F.normalize(clip_token.float().unsqueeze(0).unsqueeze(0).neg())
-
 
 
 class MakeCutouts(nn.Module):
@@ -77,8 +78,8 @@ def main():
     p.add_argument("--num_cutouts", "--cutn", type=int, default=8, help="Number of randomly cut patches to distort from diffusion.")
     p.add_argument("--prefix", "--output_dir", default="outputs", type=str, help="output directory")
     p.add_argument("--batch_size", "-bs", type=int, default=1, help="the batch size")
-    p.add_argument("--text_prompt_weight", "-tpw", type=int, default=1000, help="Scale for CLIP's text prompt based loss.")
-    p.add_argument("--img_prompt_weight", "-ipw", type=int, default=50, help="Scale for CLIP's image prompt based loss.")
+    p.add_argument("--txt_clip_guidance_scale", "-tcgs", type=int, default=1000, help="Scale for CLIP's text prompt based loss.")
+    p.add_argument("--img_clip_guidance_scale", "-icgs", type=int, default=50, help="Scale for CLIP's image prompt based loss.")
     p.add_argument("--tv_weight", "-tvw", type=int, default=100, help="Scale for denoising loss")
     p.add_argument("--seed", type=int, default=0, help="Random number seed")
     p.add_argument("--save_frequency", "-sf", type=int, default=100, help="Save frequency")
@@ -87,21 +88,15 @@ def main():
     p.add_argument("--timestep_respacing", type=str, default='1000', help="Timestep respacing")
     p.add_argument('--cutout_power', '--cutpow', type=float, default=1.0, help='Cutout size power')
     p.add_argument('--clip_model', type=str, default='ViT-B/32', help='clip model name. Should be one of: [ViT-B/16, ViT-B/32, RN50, RN101, RN50x4, RN50x16]')
-    p.add_argument('--class_cond', type=bool, default=True, help='Class condition')
+    p.add_argument('--class_cond', type=bool, default=False, help='Class condition')
     p.add_argument("--image_size", type=int, default=256, help="image size") # TODO - image size only works @ 256; need to fix
     args = p.parse_args()
 
     # Initialize
 
     prompt = args.prompt 
-    text_prompt_weight = args.text_prompt_weight
-
-    img_prompts = []
-    if len(args.img_prompts) > 0:
-        img_prompts = [i.strip() for i in args.img_prompts.split(',')]
-
-    img_prompt_weight = args.img_prompt_weight
-    
+    txt_clip_guidance_scale = args.txt_clip_guidance_scale
+    img_clip_guidance_scale = args.img_clip_guidance_scale
     image_size = args.image_size # TODO - support other image sizes
     batch_size = args.batch_size
     seed = args.seed
@@ -109,18 +104,25 @@ def main():
     cutout_power = args.cutout_power
     num_cutouts = args.num_cutouts
     class_cond = args.class_cond
-    prefix = args.prefix
-
-    prefix_path = Path(prefix)
-    os.makedirs(prefix_path, exist_ok=True)
-
     diffusion_steps = args.diffusion_steps
     timestep_respacing = args.timestep_respacing
-    assert timestep_respacing in ['25', '50', '100', '250', '500', '1000', 'ddim25', 'ddim50', 'ddim100', 'ddim250', 'ddim500', 'ddim1000'], 'timestep_respacing should be one of [25, 50, 100, 250, 500, 1000, ddim25, ddim50, ddim100, ddim250, ddim500, ddim1000]'
-
     tv_weight = args.tv_weight
     clip_model_name = args.clip_model
-    assert clip_model_name in ['ViT-B/16', 'ViT-B/32', 'RN50', 'RN101', 'RN50x4', 'RN50x16'], 'clip model name should be one of: [ViT-B/16, ViT-B/32, RN50, RN101, RN50x4, RN50x16]'
+    assert clip_model_name in [
+        'ViT-B/16', 'ViT-B/32', 'RN50', 'RN101', 'RN50x4', 'RN50x16'
+    ], 'clip model name should be one of: [ViT-B/16, ViT-B/32, RN50, RN101, RN50x4, RN50x16]'
+    assert timestep_respacing in [
+        '25', '50', '100', '250', '500', '1000', 'ddim25', 'ddim50', 'ddim100', 'ddim250', 'ddim500', 'ddim1000'
+    ], 'timestep_respacing should be one of [25, 50, 100, 250, 500, 1000, ddim25, ddim50, ddim100, ddim250, ddim500, ddim1000]'
+    # Setup
+    img_prompts = []
+    if len(args.img_prompts) > 0:
+        img_prompts = [i.strip() for i in args.img_prompts.split(',')]
+    prefix = args.prefix
+    
+    prompt_as_subdir = re.sub(r'[^\w\s]', '', prompt).replace(' ', '_')[:32] # Remove non-alphabet characters
+    prefix_path = Path(f'{prefix}/{prompt_as_subdir}')
+    os.makedirs(prefix_path, exist_ok=True)
 
     if args.device is None:
         device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -129,18 +131,17 @@ def main():
         print(f"Using user-specified device {args.device}.")
         device = torch.device(args.device)
 
-    # Setup
     if seed is not None:
         torch.manual_seed(seed)
 
     # Load guided-diffusion model
     gd_model, diffusion = load_guided_diffusion(
-            checkpoint_path='./checkpoints/256x256_diffusion_uncond.pt',
+        checkpoint_path='./checkpoints/256x256_diffusion_uncond.pt',
         image_size=image_size,
         diffusion_steps=diffusion_steps,
         timestep_respacing=timestep_respacing,
         device=device,
-        class_cond=False,
+        class_cond=class_cond,
         rescale_timesteps=False,
     )
     # Load CLIP model
@@ -178,13 +179,21 @@ def main():
             fac = diffusion.sqrt_one_minus_alphas_cumprod[current_timestep]
             x_in = out["pred_xstart"] * fac + x * (1 - fac)
 
-            normal_make_cutouts = MakeCutouts(clip_size, num_cutouts, cutout_size_power=cutout_power)
-            clip_in = normalize(normal_make_cutouts(x_in.add(1).div(2)))
+            normal_augment_list=[RandomResizedCrop(size=clip_size, scale=(0.6, 1.0), ratio=(0.5, 2.0), interpolation=2)]
+            normal_make_cutouts = MakeCutouts(clip_size, num_cutouts, cutout_size_power=cutout_power,augment_list=normal_augment_list)
+            noise_std=(0.26862954 + 0.26130258 + 0.27577711) / 3
+            augmented_make_cutouts = MakeCutouts(
+                clip_size,
+                num_cutouts,
+                cutout_size_power=cutout_power,
+                augment_list=[K.RandomGaussianNoise(std=noise_std, mean=0.0)],
+            )
+            clip_in = normalize(augmented_make_cutouts(x_in.add(1).div(2)))
             cutout_embeds = clip_model.encode_image(clip_in).float().view([num_cutouts, n, -1])
 
             # spherical distance between diffusion cutouts and text
             text_prompt_spherical_loss = spherical_dist_loss(cutout_embeds, text_embed.unsqueeze(0)).mean(0).sum()
-            text_prompt_spherical_loss = text_prompt_spherical_loss.mean() * text_prompt_weight
+            text_prompt_spherical_loss = text_prompt_spherical_loss.mean() * txt_clip_guidance_scale
 
             img_prompt_spherical_loss = torch.zeros([num_cutouts, n], device=device)
             # spherical distance between diffusion cutouts and image (if any)
@@ -194,22 +203,12 @@ def main():
                     img_clip_embed = clip_model.encode_image(img_prompt_cutouts).float().view([num_cutouts, n, -1])
                     img_prompt_spherical_loss += spherical_dist_loss(cutout_embeds, img_clip_embed.unsqueeze(0)).mean(0).sum()
                 img_prompt_spherical_loss /= len(img_tensors) 
-                img_prompt_spherical_loss = img_prompt_spherical_loss.mean() * img_prompt_weight
+                img_prompt_spherical_loss = img_prompt_spherical_loss.mean() * img_clip_guidance_scale
 
-            if len(img_tensors) > 0:
-                clip_based_loss = (text_prompt_spherical_loss + img_prompt_spherical_loss) / 2
-            else:
-                clip_based_loss = text_prompt_spherical_loss
+            clip_based_loss = text_prompt_spherical_loss.sum() + img_prompt_spherical_loss.sum()
             # denoising loss
             tv_denoise_loss = tv_loss(x_in).sum() * tv_weight
             loss = clip_based_loss + tv_denoise_loss
-
-            print(f"Text loss: {text_prompt_spherical_loss}")
-            print(f"Image loss: {img_prompt_spherical_loss.sum()}")
-            print(f"CLIP loss: {clip_based_loss}")
-            print(f"Denoise loss: {tv_denoise_loss}")
-            print("---")
-            print(f"Total loss: {loss}")
             return -torch.autograd.grad(loss, x)[0]
 
     if timestep_respacing.startswith("ddim"):
@@ -231,8 +230,15 @@ def main():
         model_kwargs=model_kwargs,
     )
 
-    print(f"Attempting to generate the caption:")
-    print(prompt)
+    print(f"Attempting to generate the caption: '{prompt}'")
+    print(f"Using the following images as guides:")
+    for img_path in img_prompts:
+        print(f"\t{img_path}")
+    print(f"Using {num_cutouts} cutouts.")
+    print(f"Using {timestep_respacing} iterations.")
+    print(f"Using {txt_clip_guidance_scale} for text clip guidance scale.")
+    print(f"Using {img_clip_guidance_scale} for image clip guidance scale")
+    print(f"Using {tv_weight} for denoising loss.")
     try:
         current_timestep = diffusion.num_timesteps - 1
         for step, sample in enumerate(samples):
@@ -240,11 +246,11 @@ def main():
             if step % save_frequency == 0 or current_timestep == -1:
                 for j, image in enumerate(sample["pred_xstart"]):
                     filename = os.path.join(
-                        prefix_path, f"batch_idx_{j:04}_iteration_{step:04}.png"
+                        prefix_path, f"{j:04}_iteration_{step:04}.png"
                     )
                     TF.to_pil_image(image.add(1).div(2).clamp(0, 1)).save(filename)
                     tqdm.write(f"Step {step}, output {j}:")
-                    display.display(display.Image(filename))
+                    # display.display(display.Image(filename))
     except RuntimeError as e:
         if "CUDA out of memory" in str(e):
             print(f"CUDA OOM error occurred. Lower the batch_size or num_cutouts and try again.")
