@@ -41,9 +41,9 @@ source cgd_venv/bin/activate
     --timestep_respacing=250 \
     --save_frequency=100 \
     --device=[none|cpu|cuda] \
-    --text_prompt_weight=1000 \
-    --img_prompt_weight=50 \
-    --tv_weight=100 \
+    --txt_clip_guidance_scale=1000 \
+    --img_clip_guidance_scale=50 \
+    --tv_scale=100 \
     --clip_model='ViT-B/32' \
     'THX sound spaceship'
 ```
