@@ -58,7 +58,7 @@ source cgd_venv/bin/activate
 
 
 ```
-### 64x64 class conditioned checkpoint
+### (WIP) - 64x64 class conditioned checkpoint
 You can try using the 64x64 px checkpoint with a random imagenet class.
 ```sh
 # (WIP) Sample class conditional checkpoints using a random imagenet class idx.
