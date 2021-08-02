@@ -15,6 +15,7 @@ From [RiversHaveWings](https://twitter.com/RiversHaveWings).
   Original Notebook (Recommended)
 </a>
 
+This code is currently under active development and is subject to frequent changes. Please file an issue if you have any constructive feedback, questions, or issues with the code or colab notebook.
 
 [More images](/images/README.md)
 
