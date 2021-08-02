@@ -1,13 +1,20 @@
 # CLIP Guided Diffusion
 From [RiversHaveWings](https://twitter.com/RiversHaveWings).
-
-<a href="https://github.com/afiaka87/clip-guided-diffusion/blob/main/colab_clip_guided_diff_hq.ipynb">
-  <img alt="Generate with Colab" src="https://colab.research.google.com/assets/colab-badge.svg">
-</a>
-
 ![Windows XP Background](/images/Windows_XP_background_Mushroom.png?raw=true)
 
 > Windows XP background mushrooms
+
+<p>
+<a href="https://github.com/afiaka87/clip-guided-diffusion/blob/main/colab_clip_guided_diff_hq.ipynb">
+  <img alt="Generate with Colab" src="https://colab.research.google.com/assets/colab-badge.svg">
+  Colab Forms Notebook - WIP
+</a>
+</br>
+<a href="/notebooks/original-hq-notebook.ipynb">
+  <img alt="Original notebook" src="https://colab.research.google.com/assets/colab-badge.svg">
+  Original Notebook (Recommended)
+</a>
+
 
 [More images](/images/README.md)
 
