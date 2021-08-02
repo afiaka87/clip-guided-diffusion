@@ -56,7 +56,7 @@ def load_guided_diffusion(
             "num_res_blocks": 3 if class_cond else 2,
             "resblock_updown": True,
             "use_new_attention_order": True if class_cond else False,
-            "use_fp16": False,
+            "use_fp16": True,
             "use_scale_shift_norm": True,
         }
     )
