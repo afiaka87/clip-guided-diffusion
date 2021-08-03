@@ -1,4 +1,5 @@
 import argparse
+import io
 import requests
 import json
 import os
@@ -75,3 +76,13 @@ def parse_prompt(prompt):  # NR: Weights after colons
     vals = prompt.rsplit(":", 2)
     vals = vals + ["", "1", "-inf"][len(vals) :]
     return vals[0], float(vals[1]), float(vals[2])
+
+def fetch(url_or_path):
+    if str(url_or_path).startswith('http://') or str(url_or_path).startswith('https://'):
+        r = requests.get(url_or_path)
+        r.raise_for_status()
+        fd = io.BytesIO()
+        fd.write(r.content)
+        fd.seek(0)
+        return fd
+    return open(url_or_path, 'rb')

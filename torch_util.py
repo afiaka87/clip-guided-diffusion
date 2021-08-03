@@ -64,8 +64,3 @@ def load_tokenized(path):
         tokens = clip.tokenize(texts, truncate=True)
     return tokens
 
-
-def load_tensor_dataset(batch_size, num_workers, shuffle=False, path="data/imagenet.pkl"):
-    tokens = load_tokenized(path)
-    dataset = TensorDataset(tokens)
-    return DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle)

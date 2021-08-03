@@ -1,18 +1,19 @@
 import argparse
-import re
 import os
+import re
 import sys
 from pathlib import Path
-from torch.utils.data.dataloader import DataLoader
 
-from torch.utils.data.dataset import TensorDataset
-from torchvision.transforms.transforms import RandomResizedCrop
-from torch_util import load_tokenized, resize_image, spherical_dist_loss, tv_loss
-from util import load_guided_diffusion
-
+from guided_diffusion.nn import checkpoint
 from IPython import display
 from PIL import Image
-from guided_diffusion.nn import checkpoint
+from torch.utils.data.dataloader import DataLoader
+from torch.utils.data.dataset import TensorDataset
+from torchvision.transforms.transforms import RandomResizedCrop
+
+from torch_util import (load_tokenized, resize_image, spherical_dist_loss,
+                        tv_loss)
+from util import fetch, load_guided_diffusion
 
 sys.path.append("./guided-diffusion")
 import clip
@@ -22,19 +23,7 @@ from torch import clip_, nn
 from torch.nn import functional as F
 from torchvision import transforms
 from torchvision.transforms import functional as TF
-from tqdm.notebook import tqdm
-
-
-# def find_imagenet_class_with_clip(batch_size, num_workers, shuffle=False, path="data/imagenet.pkl", clip_model_name='ViT-B/16', device='cuda:0'):
-#     tokens = load_tokenized(path)
-#     dataset = TensorDataset(tokens)
-#     # Load CLIP model
-#     clip_perceptor = clip.load(clip_model_name, jit=False)[0].eval().requires_grad_(False).to(device)
-#     # Embed text with CLIP model
-#     imagenet_clip_loader = DataLoader(dataset, batch_size=batch_size, num_workers=num_workers, shuffle=shuffle)
-#     for batch_idx, (clip_token,) in enumerate(imagenet_clip_loader):
-#         clip_token = clip_token.to(device)
-#         embed = F.normalize(clip_token.float().unsqueeze(0).unsqueeze(0).neg())
+from tqdm import tqdm
 
 
 class MakeCutouts(nn.Module):
@@ -74,20 +63,20 @@ def main():
         description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     p.add_argument("prompt", type=str, help="the prompt")
-    p.add_argument("--img_prompts", type=str, help="Generation will be similar to specified comma-separated image paths", default=[], dest='img_prompts')
-    p.add_argument("--num_cutouts", "--cutn", type=int, default=8, help="Number of randomly cut patches to distort from diffusion.")
+    p.add_argument("--init_image", type=str, help="Blend an image with diffusion for n steps")
+    p.add_argument('--skip_timesteps', type=int, default=0, help='Number of timesteps to blend image for. CLIP guidance occurs after this.')
+    p.add_argument("--num_cutouts", "-cutn", type=int, default=8, help="Number of randomly cut patches to distort from diffusion.")
     p.add_argument("--prefix", "--output_dir", default="outputs", type=str, help="output directory")
     p.add_argument("--batch_size", "-bs", type=int, default=1, help="the batch size")
-    p.add_argument("--txt_clip_guidance_scale", "-tcgs", type=int, default=1000, help="Scale for CLIP's text prompt based loss.")
-    p.add_argument("--img_clip_guidance_scale", "-icgs", type=int, default=50, help="Scale for CLIP's image prompt based loss.")
+    p.add_argument("--clip_guidance_scale", "-cgs", type=int, default=1000, help="Scale for CLIP's text prompt based loss.")
     p.add_argument("--tv_weight", "-tvw", type=int, default=100, help="Scale for denoising loss")
     p.add_argument("--seed", type=int, default=0, help="Random number seed")
     p.add_argument("--save_frequency", "-sf", type=int, default=100, help="Save frequency")
     p.add_argument("--device", type=str, help="device")
     p.add_argument("--diffusion_steps", type=int, default=1000, help="Diffusion steps")
     p.add_argument("--timestep_respacing", type=str, default='1000', help="Timestep respacing")
-    p.add_argument('--cutout_power', '--cutpow', type=float, default=1.0, help='Cutout size power')
-    p.add_argument('--clip_model', type=str, default='ViT-B/32', help='clip model name. Should be one of: [ViT-B/16, ViT-B/32, RN50, RN101, RN50x4, RN50x16]')
+    p.add_argument('--cutout_power', '-cutpow', type=float, default=1.0, help='Cutout size power')
+    p.add_argument('--clip_model', type=str, default='ViT-B/16', help='clip model name. Should be one of: [ViT-B/16, ViT-B/32, RN50, RN101, RN50x4, RN50x16]')
     p.add_argument('--class_cond', type=bool, default=False, help='Class condition')
     p.add_argument("--image_size", type=int, default=256, help="image size") # TODO - image size only works @ 256; need to fix
     args = p.parse_args()
@@ -95,8 +84,9 @@ def main():
     # Initialize
 
     prompt = args.prompt 
-    txt_clip_guidance_scale = args.txt_clip_guidance_scale
-    img_clip_guidance_scale = args.img_clip_guidance_scale
+    clip_guidance_scale = args.clip_guidance_scale
+    init_image = args.init_image
+    skip_timesteps = args.skip_timesteps
     image_size = args.image_size # TODO - support other image sizes
     batch_size = args.batch_size
     seed = args.seed
@@ -108,18 +98,17 @@ def main():
     timestep_respacing = args.timestep_respacing
     tv_weight = args.tv_weight
     clip_model_name = args.clip_model
+    prefix = args.prefix
+
     assert clip_model_name in [
         'ViT-B/16', 'ViT-B/32', 'RN50', 'RN101', 'RN50x4', 'RN50x16'
     ], 'clip model name should be one of: [ViT-B/16, ViT-B/32, RN50, RN101, RN50x4, RN50x16]'
     assert timestep_respacing in [
         '25', '50', '100', '250', '500', '1000', 'ddim25', 'ddim50', 'ddim100', 'ddim250', 'ddim500', 'ddim1000'
     ], 'timestep_respacing should be one of [25, 50, 100, 250, 500, 1000, ddim25, ddim50, ddim100, ddim250, ddim500, ddim1000]'
-    # Setup
-    img_prompts = []
-    if len(args.img_prompts) > 0:
-        img_prompts = [i.strip() for i in args.img_prompts.split(',')]
-    prefix = args.prefix
     
+    # Setup
+
     prompt_as_subdir = re.sub(r'[^\w\s]', '', prompt).replace(' ', '_')[:32] # Remove non-alphabet characters
     prefix_path = Path(f'{prefix}/{prompt_as_subdir}')
     os.makedirs(prefix_path, exist_ok=True)
@@ -154,18 +143,15 @@ def main():
         mean=[0.48145466, 0.4578275, 0.40821073],
         std=[0.26862954, 0.26130258, 0.27577711],
     )
+    make_cutouts = MakeCutouts(clip_size, num_cutouts, cutout_size_power=cutout_power, augment_list=[])
     # Embed text with CLIP model
     text_embed = clip_model.encode_text(clip.tokenize(prompt).to(device)).float()
 
-    # Convert images to tensors
-    img_tensors = []
-    for img_prompt in img_prompts:
-        img_path = Path(img_prompt)
-        assert img_path.exists(), f"Image {img_prompt} does not exist."
-        img = resize_image(Image.open(img_path).convert("RGB"), (image_size, image_size))
-        img_tensors.append(TF.to_tensor(img))
-
-    print(f'Found {len(img_tensors)} images to use as guides for generation.')
+    init = None
+    if init_image is not None:
+        init = Image.open(fetch(init_image)).convert('RGB')
+        init = init.resize((image_size, image_size), Image.LANCZOS)
+        init = TF.to_tensor(init).to(device).unsqueeze(0).mul(2).sub(1)
 
     # Customize guided-diffusion model with function that uses CLIP guidance.
     def cond_fn(x, t, y=None):
@@ -178,37 +164,12 @@ def main():
             )
             fac = diffusion.sqrt_one_minus_alphas_cumprod[current_timestep]
             x_in = out["pred_xstart"] * fac + x * (1 - fac)
-
-            normal_augment_list=[RandomResizedCrop(size=clip_size, scale=(0.6, 1.0), ratio=(0.5, 2.0), interpolation=2)]
-            normal_make_cutouts = MakeCutouts(clip_size, num_cutouts, cutout_size_power=cutout_power,augment_list=normal_augment_list)
-            noise_std=(0.26862954 + 0.26130258 + 0.27577711) / 3
-            augmented_make_cutouts = MakeCutouts(
-                clip_size,
-                num_cutouts,
-                cutout_size_power=cutout_power,
-                augment_list=[K.RandomGaussianNoise(std=noise_std, mean=0.0)],
-            )
-            clip_in = normalize(augmented_make_cutouts(x_in.add(1).div(2)))
+            clip_in = normalize(make_cutouts(x_in.add(1).div(2)))
             cutout_embeds = clip_model.encode_image(clip_in).float().view([num_cutouts, n, -1])
-
-            # spherical distance between diffusion cutouts and text
-            text_prompt_spherical_loss = spherical_dist_loss(cutout_embeds, text_embed.unsqueeze(0)).mean(0).sum()
-            text_prompt_spherical_loss = text_prompt_spherical_loss.mean() * txt_clip_guidance_scale
-
-            img_prompt_spherical_loss = torch.zeros([num_cutouts, n], device=device)
-            # spherical distance between diffusion cutouts and image (if any)
-            if len(img_tensors) > 0:
-                for img in img_tensors:
-                    img_prompt_cutouts = normalize( normal_make_cutouts(img.unsqueeze(0).to(device)))
-                    img_clip_embed = clip_model.encode_image(img_prompt_cutouts).float().view([num_cutouts, n, -1])
-                    img_prompt_spherical_loss += spherical_dist_loss(cutout_embeds, img_clip_embed.unsqueeze(0)).mean(0).sum()
-                img_prompt_spherical_loss /= len(img_tensors) 
-                img_prompt_spherical_loss = img_prompt_spherical_loss.mean() * img_clip_guidance_scale
-
-            clip_based_loss = text_prompt_spherical_loss.sum() + img_prompt_spherical_loss.sum()
-            # denoising loss
-            tv_denoise_loss = tv_loss(x_in).sum() * tv_weight
-            loss = clip_based_loss + tv_denoise_loss
+            dists = spherical_dist_loss(cutout_embeds, text_embed.unsqueeze(0))
+            losses = dists.mean(0)
+            tv_losses = tv_loss(x_in)
+            loss = losses.sum() * clip_guidance_scale + tv_losses.sum() * tv_weight
             return -torch.autograd.grad(loss, x)[0]
 
     if timestep_respacing.startswith("ddim"):
@@ -225,19 +186,18 @@ def main():
         gd_model,
         (batch_size, 3, image_size, image_size),
         clip_denoised=False,
+        model_kwargs=model_kwargs,
         cond_fn=cond_fn,
         progress=True,
-        model_kwargs=model_kwargs,
+        skip_timesteps=skip_timesteps,
+        init_image=init,
     )
 
     print(f"Attempting to generate the caption: '{prompt}'")
-    print(f"Using the following images as guides:")
-    for img_path in img_prompts:
-        print(f"\t{img_path}")
+    print(f"Using initial image: {init_image}")
     print(f"Using {num_cutouts} cutouts.")
     print(f"Using {timestep_respacing} iterations.")
-    print(f"Using {txt_clip_guidance_scale} for text clip guidance scale.")
-    print(f"Using {img_clip_guidance_scale} for image clip guidance scale")
+    print(f"Using {clip_guidance_scale} for text clip guidance scale.")
     print(f"Using {tv_weight} for denoising loss.")
     try:
         current_timestep = diffusion.num_timesteps - 1
