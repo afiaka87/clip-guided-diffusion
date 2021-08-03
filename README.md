@@ -1,7 +1,7 @@
 # CLIP Guided Diffusion
 From [RiversHaveWings](https://twitter.com/RiversHaveWings).
 
-<a href="/notebooks/original-hq-notebook.ipynb">
+<a href="https://colab.research.google.com/drive/12a_Wrfi2_gwwAuN3VvMTwVMz9TfqctNj?usp=sharing">
   <img alt="Original notebook" src="https://colab.research.google.com/assets/colab-badge.svg">
   Original Notebook
 </a>
