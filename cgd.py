@@ -109,7 +109,7 @@ def main():
     
     # Setup
 
-    prompt_as_subdir = re.sub(r'[^\w\s]', '', prompt).replace(' ', '_')[:32] # Remove non-alphabet characters
+    prompt_as_subdir = re.sub(r'[^\w\s]', '', prompt).replace(' ', '_')[:100] # Remove non-alphabet characters
     prefix_path = Path(f'{prefix}/{prompt_as_subdir}')
     os.makedirs(prefix_path, exist_ok=True)
 
