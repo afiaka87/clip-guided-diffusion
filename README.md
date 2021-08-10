@@ -6,6 +6,11 @@ From [RiversHaveWings](https://twitter.com/RiversHaveWings).
   Original Notebook
 </a>
 </br>
+<a href="https://colab.research.google.com/drive/1V66mUeJbXrTuQITvJunvnWVn96FEbSI3">
+  <img alt="Original 512x512 notebook" src="https://colab.research.google.com/assets/colab-badge.svg">
+  Original 512x512 HQ Notebook (Recommended)
+</a>
+</br>
 <a href="https://github.com/afiaka87/clip-guided-diffusion/blob/main/cgd_clip_selected_class.ipynb">
   <img alt="Modified 512 px Notebook" src="https://colab.research.google.com/assets/colab-badge.svg">
   Modified 512 px Notebook
