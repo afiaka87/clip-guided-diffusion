@@ -5,6 +5,12 @@ From [RiversHaveWings](https://twitter.com/RiversHaveWings).
   <img alt="Original notebook" src="https://colab.research.google.com/assets/colab-badge.svg">
   Original Notebook
 </a>
+</br>
+<a href="https://github.com/afiaka87/clip-guided-diffusion/blob/main/cgd_clip_selected_class.ipynb">
+  <img alt="Modified 512 px Notebook" src="https://colab.research.google.com/assets/colab-badge.svg">
+  Modified 512 px Notebook
+</a>
+
 
 ---
 
