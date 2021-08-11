@@ -32,7 +32,19 @@ source cgd_venv/bin/activate
 (cgd_venv) $ pip install -r requirements.txt
 (cgd_venv) $ git clone https://github.com/crowsonkb/guided-diffusion.git
 (cgd_venv) $ python guided-diffusion/setup.py install
+
+
 ```
+
+## Download checkpoints
+```sh
+wget 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt' -O 'checkpoints/256x256_diffusion.pt'
+wget 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion.pt' -O 'checkpoints/256x256_diffusion.pt'
+wget 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/128x128_diffusion.pt' -O 'checkpoints/128x128_diffusion.pt'
+wget 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/64x64_diffusion.pt' -O 'checkpoints/64x64_diffusion.pt'
+wget 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/512x512_diffusion.pt' -O 'checkpoints/512x512_diffusion.pt'
+```
+
 
 ## Quick start:
 
