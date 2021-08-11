@@ -29,6 +29,11 @@ def get_classes_for_idx(idx):
     idx_to_class_mapping = get_idx_to_class_map()
     return idx_to_class_mapping[str(idx)]
 
+DIFFUSION_64_MODEL_FLAGS = { "attention_resolutions": '32,16,8', "class_cond": True, "diffusion_steps": 1000, "dropout": 0.1, "image_size": 64, "learn_sigma": True, "noise_schedule": 'cosine', "num_channels": 192, "num_head_channels": 64, "num_res_blocks": 3, "resblock_updown": True, "use_new_attention_order": True, "use_fp16": True, "use_scale_shift_norm": True }
+DIFFUSION_128_MODEL_FLAGS = { "attention_resolutions": '32,16,8', "class_cond": True, "diffusion_steps": 1000, "image_size": 128, "learn_sigma": True, "noise_schedule": 'linear', "num_channels": 256, "num_heads": 4, "num_res_blocks": 2, "resblock_updown": True, "use_fp16": True, "use_scale_shift_norm": True }
+DIFFUSION_256_MODEL_FLAGS = { "attention_resolutions": "32,16,8", "class_cond": True, "diffusion_steps": 1000, "image_size": 256, "learn_sigma": True, "noise_schedule": "linear", "num_channels": 256, "num_head_channels": 64, "num_res_blocks": 2, "resblock_updown": True, "use_fp16": True, "use_scale_shift_norm": True }
+DIFFUSION_256_UNCOND_MODEL_FLAGS = { "attention_resolutions": '32,16,8', "class_cond": False, "diffusion_steps": 1000, "image_size": 256, "learn_sigma": True, "noise_schedule": 'linear', "num_channels": 256, "num_head_channels": 64, "num_res_blocks": 2, "resblock_updown": True, "use_fp16": True, "use_scale_shift_norm": True }
+DIFFUSION_512_MODEL_FLAGS = { 'attention_resolutions': '32,16,8', 'class_cond': True, 'diffusion_steps': 1000, 'image_size': 512, 'learn_sigma': True, 'noise_schedule': 'linear', 'num_channels': 256, 'num_head_channels': 64, 'num_res_blocks': 2, 'resblock_updown': True, 'use_fp16': False, 'use_scale_shift_norm': True }
 
 def load_guided_diffusion(
     checkpoint_path,
@@ -36,31 +41,34 @@ def load_guided_diffusion(
     diffusion_steps=None,
     timestep_respacing=None,
     device=None,
-    class_cond=False,
-    rescale_timesteps=True,
+    class_cond=True,
 ):
+    '''
+    checkpoint_path: path to the checkpoint to load.
+    image_size: size of the images to be used.
+    class_cond: whether to condition on the class label
+    diffusion_steps: number of diffusion steps
+    timestep_respacing: whether to use timestep-respacing or not
+    '''
     assert device is not None, "device must be set"
-    # TODO Docs says to use cosine but loss goes to NaN
     model_config = model_and_diffusion_defaults()
-    model_config.update(
-        {
-            "attention_resolutions": "32, 16, 8",
-            "class_cond": class_cond,
-            "diffusion_steps": diffusion_steps,
-            "rescale_timesteps": rescale_timesteps,
-            "timestep_respacing": timestep_respacing,
-            "image_size": image_size,
-            "learn_sigma": True,
-            "noise_schedule": "linear", 
-            "num_channels": 192 if class_cond else 256,
-            "num_head_channels": 64,
-            "num_res_blocks": 3 if class_cond else 2,
-            "resblock_updown": True,
-            "use_new_attention_order": True if class_cond else False,
-            "use_fp16": True,
-            "use_scale_shift_norm": True,
-        }
-    )
+    if image_size == 64:
+        model_config.update(DIFFUSION_64_MODEL_FLAGS)
+    elif image_size == 128:
+        model_config.update(DIFFUSION_128_MODEL_FLAGS)
+    elif image_size == 256:
+        if class_cond:
+            model_config.update(DIFFUSION_256_MODEL_FLAGS)
+        else:
+            model_config.update(DIFFUSION_256_UNCOND_MODEL_FLAGS)
+    elif image_size == 512:
+        model_config.update(DIFFUSION_512_MODEL_FLAGS)
+    else:
+        raise ValueError("Invalid image size")
+
+    model_config['diffusion_steps'] = diffusion_steps
+    model_config['timestep_respacing'] = timestep_respacing
+
     model, diffusion = create_model_and_diffusion(**model_config)
     model.load_state_dict(torch.load(checkpoint_path, map_location="cpu"))
     model.requires_grad_(False).eval().to(device)
