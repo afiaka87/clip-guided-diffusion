@@ -38,7 +38,7 @@ source cgd_venv/bin/activate
 
 ## Download checkpoints
 ```sh
-wget 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt' -O 'checkpoints/256x256_diffusion.pt'
+wget 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt' -O 'checkpoints/256x256_diffusion_uncond.pt'
 wget 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion.pt' -O 'checkpoints/256x256_diffusion.pt'
 wget 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/128x128_diffusion.pt' -O 'checkpoints/128x128_diffusion.pt'
 wget 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/64x64_diffusion.pt' -O 'checkpoints/64x64_diffusion.pt'
