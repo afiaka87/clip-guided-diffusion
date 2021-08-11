@@ -3,4 +3,4 @@ torchvision
 kornia
 tqdm
 clip-anytorch
-
+requests
