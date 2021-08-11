@@ -1,8 +1,7 @@
 # CLIP Guided Diffusion
-
 From [RiversHaveWings](https://twitter.com/RiversHaveWings).
 
-<a href="https://github.com/afiaka87/clip-guided-diffusion/blob/main/cgd_clip_selected_class.ipynb">Colab Notebook</a>
+<a href="https://colab.research.google.com/github/afiaka87/clip-guided-diffusion/blob/main/cgd_clip_selected_class.ipynb">Colab Notebook</a>
 
 > This code is currently under active development and is subject to frequent changes. Please file an issue if you have any constructive feedback, questions, or issues with the code or colab notebook.
 
