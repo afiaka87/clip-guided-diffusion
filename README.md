@@ -30,6 +30,8 @@ cd clip-guided-diffusion
 python3 -m venv cgd_venv
 source cgd_venv/bin/activate
 (cgd_venv) $ pip install -r requirements.txt
+(cgd_venv) $ git clone https://github.com/crowsonkb/guided-diffusion.git
+(cgd_venv) $ python guided-diffusion/setup.py install
 ```
 
 ## Quick start:
