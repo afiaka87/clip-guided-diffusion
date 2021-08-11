@@ -2,20 +2,7 @@
 
 From [RiversHaveWings](https://twitter.com/RiversHaveWings).
 
-<a href="https://colab.research.google.com/drive/12a_Wrfi2_gwwAuN3VvMTwVMz9TfqctNj?usp=sharing">
-  <img alt="Original notebook" src="https://colab.research.google.com/assets/colab-badge.svg">
-  Original Notebook
-</a>
-</br>
-<a href="https://colab.research.google.com/drive/1V66mUeJbXrTuQITvJunvnWVn96FEbSI3">
-  <img alt="Original 512x512 notebook" src="https://colab.research.google.com/assets/colab-badge.svg">
-  Original 512x512 HQ Notebook (Recommended)
-</a>
-</br>
-<a href="https://github.com/afiaka87/clip-guided-diffusion/blob/main/cgd_clip_selected_class.ipynb">
-  <img alt="Modified 512 px Notebook" src="https://colab.research.google.com/assets/colab-badge.svg">
-  Modified 512 px Notebook
-</a>
+<a href="https://github.com/afiaka87/clip-guided-diffusion/blob/main/cgd_clip_selected_class.ipynb">Colab Notebook</a>
 
 > This code is currently under active development and is subject to frequent changes. Please file an issue if you have any constructive feedback, questions, or issues with the code or colab notebook.
 
