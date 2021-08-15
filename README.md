@@ -38,7 +38,7 @@ wget 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/512x512_diff
 ## Quick start:
 
 ```sh
-(cgd_venv) $ python cgd.py "32K HUHD Mushroom"
+(cgd_venv) $ python cgd.py --image_size 256 "32K HUHD Mushroom"
 Step 999, output 0:
 00%|███████████████| 1000/1000 [00:00<12:30,  1.02it/s]
 ```
@@ -60,10 +60,10 @@ You may need to tinker with `--skip_timesteps` to get the best results.
 ![](images/a_mushroom_in_the_style_of_vangogh.png?raw=true)
 
 ### Image size
-- Default is 256px
+- Default is 128px
 - Available image sizes are `64, 128, 256, 512 pixels (square)`
 - The 512x512 pixel checkpoint **requires a GPU with at least 12GB of VRAM.**
-- clip guidance scale and tv scale will require experimentation for image sizes less than 256px.
+- CLIP_GUIDANCE_SCALE and TV_SCALE will require experimentation.
 - the 64x64 diffusion checkpoint is challenging to work with and often results in an all-white or all-black image.
   - This is much less of an issue when using an existing image of some sort.
 ```sh

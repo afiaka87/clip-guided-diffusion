@@ -57,7 +57,6 @@ class MakeCutouts(nn.Module):
 # 
 # Compare `prompt` with 1000 imagenet label transcriptions for its classes.
 # `imagenet_classes` list taken from https://github.com/openai/CLIP/notebooks/
-
 def top_imagenet_class(target_text, clip_model=None, device=None, top:int=16):
     target_text = clip.tokenize(target_text).to(device)
     text_tokenized = clip.tokenize(IMAGENET_CLASSES).to(device)
@@ -80,7 +79,7 @@ def main():
         description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     p.add_argument("prompt", type=str, help="the prompt")
-    p.add_argument("--image_size", type=int, default=256, help="Diffusion image size. Must be one of [64, 128, 256, 512].")
+    p.add_argument("--image_size", type=int, default=128, help="Diffusion image size. Must be one of [64, 128, 256, 512].")
     p.add_argument("--init_image", type=str, help="Blend an image with diffusion for n steps")
     p.add_argument('--skip_timesteps', type=int, default=0, help='Number of timesteps to blend image for. CLIP guidance occurs after this.')
     p.add_argument("--num_cutouts", "-cutn", type=int, default=8, help="Number of randomly cut patches to distort from diffusion.")
@@ -92,8 +91,8 @@ def main():
     p.add_argument("--save_frequency", "-sf", type=int, default=25, help="Save frequency")
     p.add_argument("--device", type=str, help="device to run on .e.g. cuda:0 or cpu")
     p.add_argument("--diffusion_steps", type=int, default=1000, help="Diffusion steps")
-    p.add_argument("--timestep_respacing", type=str, default='1000', help="Timestep respacing")
-    p.add_argument('--cutout_power', '-cutpow', type=float, default=0.5, help='Cutout size power')
+    p.add_argument("--timestep_respacing", type=str, default='250', help="Timestep respacing")
+    p.add_argument('--cutout_power', '-cutpow', type=float, default=0.75, help='Cutout size power')
     p.add_argument('--clip_model', type=str, default='ViT-B/32', help='clip model name. Should be one of: [ViT-B/16, ViT-B/32, RN50, RN101, RN50x4, RN50x16]')
     p.add_argument('--class_cond', type=bool, default=True, help='Use class conditional. Required for image sizes other than 256')
     p.add_argument('--clip_class_search', action='store_true', help='Lookup imagenet class with CLIP rather than changing them throughout run. Use `--clip_class_search` on its own to enable. ')
@@ -155,12 +154,11 @@ def main():
 
     if seed is not None:
         torch.manual_seed(seed)
-    # Load guided-diffusion model
+    
+    # Load diffusion and CLIP models
     gd_model, diffusion = load_guided_diffusion(checkpoint_path=diffusion_path, image_size=image_size, diffusion_steps=diffusion_steps, timestep_respacing=timestep_respacing, device=device, class_cond=class_cond)
-    # Load CLIP model
     clip_model = clip.load(clip_model_name, jit=False)[0].eval().requires_grad_(False).to(device)
     clip_size = clip_model.visual.input_resolution
-    # Normalize applied to images before going into the CLIP model
     normalize = transforms.Normalize( mean=[0.48145466, 0.4578275, 0.40821073], std=[0.26862954, 0.26130258, 0.27577711])
 
     # Random or CLIP-selected imagenet class.
@@ -176,9 +174,11 @@ def main():
         print(f"This index roughly maps to the label:")
         print(IMAGENET_CLASSES[imagenet_class])
     make_cutouts = MakeCutouts(clip_size, num_cutouts, cutout_size_power=cutout_power, augment_list=[])
+
     # Embed text with CLIP model
     text_embed = clip_model.encode_text(clip.tokenize(prompt).to(device)).float()
 
+    # (Optional) Load image
     init = None
     if init_image is not None:
         init = Image.open(fetch(init_image)).convert('RGB')
@@ -223,8 +223,14 @@ def main():
 
     print(f"Attempting to generate the caption: '{prompt}'")
     print(f"Using initial image: {init_image}")
+    print(f"Using {image_size} image size")
+    print(f"Using {clip_model} as the CLIP model")
+    print(f"Using {clip_size} as the CLIP model's visual input resolution")
     print(f"Using {num_cutouts} cutouts.")
+    print(f"Using {diffusion_steps} diffusion steps.")
     print(f"Using {timestep_respacing} iterations.")
+    print(f"Skipping {skip_timesteps} timesteps.")
+    print(f"For init image {init_image}")
     print(f"Using {clip_guidance_scale} for text clip guidance scale.")
     print(f"Using {tv_scale} for denoising loss.")
     try:
@@ -233,12 +239,9 @@ def main():
             current_timestep -= 1
             if step % save_frequency == 0 or current_timestep == -1:
                 for j, image in enumerate(sample["pred_xstart"]):
-                    filename = os.path.join(
-                        prefix_path, f"{j:04}_iteration_{step:04}.png"
-                    )
+                    filename = os.path.join(prefix_path, f"{j:04}_iteration_{step:04}.png")
                     TF.to_pil_image(image.add(1).div(2).clamp(0, 1)).save(filename)
                     tqdm.write(f"Step {step}, output {j}:")
-                    # display.display(display.Image(filename))
     except RuntimeError as e:
         if "CUDA out of memory" in str(e):
             print(f"CUDA OOM error occurred. Lower the batch_size or num_cutouts and try again.")
