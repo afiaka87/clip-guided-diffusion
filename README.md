@@ -3,7 +3,7 @@ From [RiversHaveWings](https://twitter.com/RiversHaveWings).
 
 Generate vibrant and detailed images using only text.
 
-![](/photon.png)
+![](/images/photon.png)
 > "photon traveling at the speed of light"
 
 [Gallery](/images/README.md)
