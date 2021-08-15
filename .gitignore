@@ -6,3 +6,6 @@ checkpoints/
 .vscode/
 .ipynb_checkpoints
 cgd_venv/
+__pycache__/
+dist/
+output/
