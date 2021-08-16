@@ -89,13 +89,12 @@ You may need to tinker with `--skip_timesteps` to get the best results.
     --image_size 64 \
     --prompt "8K HUHD Mushroom"
 ```
-<img src="" width="256"></a>
-![](images/32K_HUHD_Mushroom_64.png?raw=true)
+<img src="images/32K_HUHD_Mushroom_64.png?raw=true" width="256"></img>
 
 ```sh
 (cgd_venv) $ python cgd.py --image_size 512 --prompt "8K HUHD Mushroom"
   ```
-![](images/32K_HUHD_Mushroom_512.png?raw=true)
+<img src="images/32K_HUHD_Mushroom_512.png?raw=true" width="360"></img>
 
 
 > This code is currently under active development and is subject to frequent changes. Please file an issue if you have any constructive feedback, questions, or issues with the code or colab notebook.
