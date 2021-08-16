@@ -11,6 +11,8 @@ Generate vibrant and detailed images using only text.
 
 <a href="https://colab.research.google.com/github/afiaka87/clip-guided-diffusion/blob/main/cgd_clip_selected_class.ipynb">Colab Notebook</a>
 
+See also <a href="https://github.com/nerdyrodent/VQGAN-CLIP">VQGAN-CLIP</a>
+
 _Note:_ `prompt` has been changed from a positional argument to the keyword argument `--prompt`.
 `--prompt_min` has been added to specify a prompt to penalize during generation.
 
