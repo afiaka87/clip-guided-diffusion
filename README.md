@@ -30,6 +30,7 @@ source cgd_venv/bin/activate
 ```
 
 ## Download checkpoints
+ - You only need to download the checkpoint for the size you want to generate.
 ```sh
 wget 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt' -O 'checkpoints/256x256_diffusion_uncond.pt'
 wget 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion.pt' -O 'checkpoints/256x256_diffusion.pt'
@@ -42,15 +43,16 @@ wget 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/512x512_diff
 ## Quick start:
 
 ```sh
-(cgd_venv) $ python cgd.py --image_size 256 "32K HUHD Mushroom"
+(cgd_venv) $ python cgd.py --image_size 256 --prompt "32K HUHD Mushroom"
 Step 999, output 0:
 00%|███████████████| 1000/1000 [00:00<12:30,  1.02it/s]
 ```
 ![](/images/32K_HUHD_Mushroom.png?raw=true)
 
 Generations will be saved in the folder from `--prefix` (default:'./outputs')
-
 with the format `{caption}/batch_idx_{j}_iteration_{i}.png`
+The most recent generation will also be stored in the file `current.png` if you would like to
+watch the generations in real time.
 
 ## Penalize a prompt
 ```sh
