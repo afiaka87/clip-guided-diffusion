@@ -56,12 +56,10 @@ watch the generations in real time.
 
 ## Penalize a prompt
 ```sh
-(cgd_venv) $ python cgd.py --image_size 256 \
-    -cutn 64 -cutpow 1.0 --timestep_respacing 1000 -cgs 800 -tvs 100 \
+(cgd_venv) $ python cgd.py \
     --prompt "32K HUHD Mushroom" \
     --prompt_min "green grass"
 ```
-<!-- images/Saturn_without_zoomed_out.png -->
 <img src="images/32K_HUHD_Mushroom_MIN_green_grass.png" width="256"></img>
 
 
