@@ -275,7 +275,7 @@ def main():
     )
 
     print(f"Attempting to generate the caption: '{prompt}'")
-    print(f"Penalizing the prompt : '{prompt_min}'")
+    print(f"Penalizing the prompt: '{prompt_min}'")
     print(f"Using initial image: {init_image}")
     print(f"Using {image_size} image size")
     print(f"Using {clip_model_name} as the CLIP model")
