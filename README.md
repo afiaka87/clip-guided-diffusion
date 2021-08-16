@@ -4,7 +4,7 @@ From [RiversHaveWings](https://twitter.com/RiversHaveWings).
 Generate vibrant and detailed images using only text.
 
 
-<img src="/images/photon.png" width="256"></a>
+<img src="/images/photon.png" width="256"></img>
 > "photon traveling at the speed of light"
 
 [Gallery](/images/README.md)
@@ -12,7 +12,7 @@ Generate vibrant and detailed images using only text.
 <a href="https://colab.research.google.com/github/afiaka87/clip-guided-diffusion/blob/main/cgd_clip_selected_class.ipynb">Colab Notebook</a>
 
 _Note:_ `prompt` has been changed from a positional argument to the keyword argument `--prompt`.
-You amy also use `--prompt_min` to specify a prompt to penalize during generation.
+`--prompt_min` has been added to specify a prompt to penalize during generation.
 
 ---
 
@@ -57,13 +57,12 @@ watch the generations in real time.
 ## Penalize a prompt
 ```sh
 (cgd_venv) $ python cgd.py --image_size 256 \
-  -cutn 64 --timestep_respacing 250 -cgs 800 -tvs 100 \
-  --prompt "an image of the planet Saturn with a black space background" \
-  --prompt_min "zoomed in"
-
-Attempting to generate the caption: 'an image of the planet Saturn with a black space background'
-Penalizing the prompt : 'zoomed in'
+    -cutn 64 -cutpow 1.0 --timestep_respacing 1000 -cgs 800 -tvs 100 \
+    --prompt "32K HUHD Mushroom" \
+    --prompt_min "green grass"
 ```
+<!-- images/Saturn_without_zoomed_out.png -->
+<img src="images/32K_HUHD_Mushroom_MIN_green_grass.png" width="256"></img>
 
 
 ### Blending an existing image
@@ -90,6 +89,7 @@ You may need to tinker with `--skip_timesteps` to get the best results.
     --image_size 64 \
     --prompt "8K HUHD Mushroom"
 ```
+<img src="" width="256"></a>
 ![](images/32K_HUHD_Mushroom_64.png?raw=true)
 
 ```sh

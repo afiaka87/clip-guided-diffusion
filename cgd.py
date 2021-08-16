@@ -100,9 +100,9 @@ def main():
                    type=str, help="output directory")
     p.add_argument("--batch_size", "-bs", type=int,
                    default=1, help="the batch size")
-    p.add_argument("--clip_guidance_scale", "-cgs", type=int, default=1500,
+    p.add_argument("--clip_guidance_scale", "-cgs", type=int, default=1000,
                    help="Scale for CLIP spherical distance loss. Default value varies depending on image size.")
-    p.add_argument("--tv_scale", "-tvs", type=int, default=150,
+    p.add_argument("--tv_scale", "-tvs", type=int, default=100,
                    help="Scale for denoising loss. Disabled by default for 64 and 128")
     p.add_argument("--seed", type=int, default=0, help="Random number seed")
     p.add_argument("--save_frequency", "-sf", type=int,
@@ -169,9 +169,12 @@ def main():
         64, 128, 256, 512], 'image size should be one of [64, 128, 256, 512]'
 
     # Setup
-    prompt_as_subdir = re.sub(r'[^\w\s]', '', prompt).replace(' ', '_')[
-        :100]  # Remove non-alphabet characters
+    prompt_as_subdir = prompt
+    if len(prompt_min) > 0:
+        prompt_as_subdir = f'{prompt_as_subdir}_MIN_{prompt_min}'
+    prompt_as_subdir = re.sub(r'[^\w\s]', '', f'{prompt_as_subdir}').replace(' ', '_')[:256]  # Remove non-alphabet characters
     prefix_path = Path(f'{prefix}/{prompt_as_subdir}')
+
     os.makedirs(prefix_path, exist_ok=True)
 
     if image_size == 64 and clip_guidance_scale > 500:
@@ -251,7 +254,9 @@ def main():
             min_dists = 0
             if len(prompt_min) > 0:
                 min_dists = spherical_dist_loss(cutout_embeds, text_min_embed.unsqueeze(0))
-            dists = max_dists - min_dists
+                dists = (0.75 * max_dists) - (0.25 * min_dists) # TODO make these kwargs
+            else:
+                dists = max_dists
             losses = dists.mean(0)
             tv_losses = tv_loss(x_in)
             loss = losses.sum() * clip_guidance_scale + tv_losses.sum() * tv_scale
