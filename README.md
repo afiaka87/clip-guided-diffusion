@@ -68,7 +68,9 @@ watch the generations in real time.
 This method will blend an image with the diffusion for a number of steps. 
 You may need to tinker with `--skip_timesteps` to get the best results.
 ```sh
-(cgd_venv) $ python cgd.py --init_image=images/32K_HUHD_Mushroom.png --skip_timesteps=500 \
+(cgd_venv) $ python cgd.py \
+    --init_image=images/32K_HUHD_Mushroom.png \
+    --skip_timesteps=500 \
     --prompt "A mushroom in the style of Vincent Van Gogh"
 ```
 ![](images/a_mushroom_in_the_style_of_vangogh.png?raw=true)
