@@ -16,7 +16,7 @@ _Note:_ `prompt` has been changed from a positional argument to the keyword argu
 
 ---
 
-## Installation
+### Installation
 ```sh
 git clone https://github.com/afiaka87/clip-guided-diffusion.git
 cd clip-guided-diffusion
@@ -25,22 +25,22 @@ source cgd_venv/bin/activate
 (cgd_venv) $ pip install -r requirements.txt
 (cgd_venv) $ git clone https://github.com/crowsonkb/guided-diffusion.git
 (cgd_venv) $ python guided-diffusion/setup.py install
-
-
 ```
 
-## Download checkpoints
- - You only need to download the checkpoint for the size you want to generate.
-```sh
-wget 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt' -O 'checkpoints/256x256_diffusion_uncond.pt'
-wget 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion.pt' -O 'checkpoints/256x256_diffusion.pt'
-wget 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/128x128_diffusion.pt' -O 'checkpoints/128x128_diffusion.pt'
-wget 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/64x64_diffusion.pt' -O 'checkpoints/64x64_diffusion.pt'
-wget 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/512x512_diffusion.pt' -O 'checkpoints/512x512_diffusion.pt'
-```
+### Download checkpoints
 
+You only need to download the checkpoint for the size you want to generate.
+Checkpoints belong in the `./checkpoints` directory.
 
-## Quick start:
+- 64: https://openaipublic.blob.core.windows.net/diffusion/jul-2021/64x64_diffusion.pt
+- 128: https://openaipublic.blob.core.windows.net/diffusion/jul-2021/128x128_diffusion.pt
+- 256: https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion.pt
+- 512: https://openaipublic.blob.core.windows.net/diffusion/jul-2021/512x512_diffusion.pt
+
+There is only one unconditional checkpoint. This one doesn't require a randomized class like the others do. Use `--class_cond False` to use.
+- 256 (unconditional):  https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt
+
+### Quick start:
 
 ```sh
 (cgd_venv) $ python cgd.py --image_size 256 --prompt "32K HUHD Mushroom"
@@ -54,7 +54,7 @@ with the format `{caption}/batch_idx_{j}_iteration_{i}.png`
 The most recent generation will also be stored in the file `current.png` if you would like to
 watch the generations in real time.
 
-## Penalize a prompt
+### Penalize a prompt
 ```sh
 (cgd_venv) $ python cgd.py \
     --prompt "32K HUHD Mushroom" \
