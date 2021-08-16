@@ -3,15 +3,17 @@ From [RiversHaveWings](https://twitter.com/RiversHaveWings).
 
 Generate vibrant and detailed images using only text.
 
+[colab-notebook]: <"https://colab.research.google.com/github/afiaka87/clip-guided-diffusion/blob/main/cgd_clip_selected_class.ipynb">
+[colab-badge]: <https://colab.research.google.com/assets/colab-badge.svg>
 
-<img src="/images/photon.png" width="256"></img>
-> "photon traveling at the speed of light"
+[![Open In Colab][colab-badge]][colab-notebook]
 
-[Gallery](/images/README.md)
+<img src="images/THX_sound_Spaceship.png" width="128px"></img><img src="images/Windows_XP_background_Mushroom.png" width="128px"></img><img src="images/a_red_ball_resting_on_top_of_a_mirror.png" width="128px"></img>
+<img src="images/dog_looking_at_the_camera.png" width="128px"></img><img src="images/goose_on_the_run.png" width="128px"></img><img src="/images/photon.png" width="128px"></img>
 
-<a href="https://colab.research.google.com/github/afiaka87/clip-guided-diffusion/blob/main/cgd_clip_selected_class.ipynb">Colab Notebook</a>
+See captions and more generations in the [Gallery](/images/README.md)
 
-See also <a href="https://github.com/nerdyrodent/VQGAN-CLIP">VQGAN-CLIP</a>
+See also - <a href="https://github.com/nerdyrodent/VQGAN-CLIP">VQGAN-CLIP</a>
 
 _Note:_ `prompt` has been changed from a positional argument to the keyword argument `--prompt`.
 `--prompt_min` has been added to specify a prompt to penalize during generation.
@@ -42,7 +44,7 @@ Checkpoints belong in the `./checkpoints` directory.
 There is only one unconditional checkpoint. This one doesn't require a randomized class like the others do. Use `--class_cond False` to use.
 - 256 (unconditional):  https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt
 
-### Quick start:
+### Generate an image
 
 ```sh
 (cgd_venv) $ python cgd.py --image_size 256 --prompt "32K HUHD Mushroom"
