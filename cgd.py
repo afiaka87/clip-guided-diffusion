@@ -87,7 +87,7 @@ def main():
         description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     p.add_argument("--prompt", type=str, help="the prompt to reward")
-    p.add_argument("--prompt_min", type=str, help="the prompt to penalize")
+    p.add_argument("--prompt_min", type=str, default="", help="the prompt to penalize")
     p.add_argument("--image_size", type=int, default=128,
                    help="Diffusion image size. Must be one of [64, 128, 256, 512].")
     p.add_argument("--init_image", type=str,
