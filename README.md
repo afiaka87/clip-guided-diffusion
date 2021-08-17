@@ -21,7 +21,7 @@ cd clip-guided-diffusion
 python3 -m venv cgd_venv
 source cgd_venv/bin/activate
 ❯ (cgd_venv) pip install -r requirements.txt
-❯ (cgd_venv) git clone https://github.com/crowsonkb/guided-diffusion.git
+❯ (cgd_venv) git clone https://github.com/afiaka87/guided-diffusion.git
 ❯ (cgd_venv) python guided-diffusion/setup.py install
 ```
 
@@ -40,6 +40,10 @@ There is only one unconditional checkpoint. This one doesn't require a randomize
 
 ### Generate an image
 
+- Outputs are saved in `--prefix` (default:'./outputs')
+- Filename format `f"{caption}/batch_idx_{j}_iteration_{i}.png"`
+- The most recent generation will also be stored in the file `current.png`
+
 ```sh
 ❯ (cgd_venv) python cgd.py \
   --image_size 256 \
@@ -48,11 +52,6 @@ Step 999, output 0:
 00%|███████████████| 1000/1000 [00:00<12:30,  1.02it/s]
 ```
 ![](/images/32K_HUHD_Mushroom.png?raw=true)
-
-Generations will be saved in the folder from `--prefix` (default:'./outputs')
-with the format `{caption}/batch_idx_{j}_iteration_{i}.png`
-The most recent generation will also be stored in the file `current.png` if you would like to
-watch the generations in real time.
 
 
 ### Class scoring
@@ -91,7 +90,7 @@ You may need to tinker with `--skip_timesteps` to get the best results.
 - Default is 128px
 - Available image sizes are `64, 128, 256, 512 pixels (square)`
 - The 512x512 pixel checkpoint **requires a GPU with at least 12GB of VRAM.**
-- CLIP_GUIDANCE_SCALE and TV_SCALE will require experimentation.
+- `--clip_guidance_scale` and `--tv_scale` will require experimentation.
 - the 64x64 diffusion checkpoint is challenging to work with and often results in an all-white or all-black image.
   - This is much less of an issue when using an existing image of some sort.
 ```sh
@@ -104,7 +103,7 @@ You may need to tinker with `--skip_timesteps` to get the best results.
 <img src="images/32K_HUHD_Mushroom_64.png?raw=true" width="256"></img>
 
 ```sh
-(cgd_venv) $ python cgd.py --image_size 512 --prompt "8K HUHD Mushroom"
+❯ (cgd_venv) $ python cgd.py --image_size 512 --prompt "8K HUHD Mushroom"
   ```
 <img src="images/32K_HUHD_Mushroom_512.png?raw=true" width="360"></img>
 
