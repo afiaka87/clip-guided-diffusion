@@ -12,8 +12,8 @@ See captions and more generations in the [Gallery](/images/README.md)
 
 See also - <a href="https://github.com/nerdyrodent/VQGAN-CLIP">VQGAN-CLIP</a>
 
-_Note:_ `prompt` has been changed from a positional argument to the keyword argument `--prompt`.
-`--prompt_min` has been added to specify a prompt to penalize during generation.
+- [latest] Use `--clip_class_search` to compare 0-999 imagenet labels with `--prompt`. Scores are used to weight class selection.
+- e.g. `(cgd_venv) $ python cgd.py --clip_class_search --top_n 512 --prompt "An image of a cat"`
 
 ---
 
