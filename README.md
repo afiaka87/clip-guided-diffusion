@@ -12,18 +12,6 @@ See captions and more generations in the [Gallery](/images/README.md)
 
 See also - <a href="https://github.com/nerdyrodent/VQGAN-CLIP">VQGAN-CLIP</a>
 
-[latest] 
-- Use `--class_score` to compare 0-999 imagenet labels with `--prompt`. 
-- `--top_n` will use only the top N most likely classes.
-- Scores are used to weight class selection.
-- e.g. 
-```sh
-❯ (cgd_venv) python cgd.py \
-  --class_score \
-  --top_n 50 \
-  --prompt "An image of a cat"`
-```
-
 ---
 
 ### Installation
@@ -53,7 +41,9 @@ There is only one unconditional checkpoint. This one doesn't require a randomize
 ### Generate an image
 
 ```sh
-❯ (cgd_venv) python cgd.py --image_size 256 --prompt "32K HUHD Mushroom"
+❯ (cgd_venv) python cgd.py \
+  --image_size 256 \
+  --prompt "32K HUHD Mushroom"
 Step 999, output 0:
 00%|███████████████| 1000/1000 [00:00<12:30,  1.02it/s]
 ```
@@ -64,15 +54,27 @@ with the format `{caption}/batch_idx_{j}_iteration_{i}.png`
 The most recent generation will also be stored in the file `current.png` if you would like to
 watch the generations in real time.
 
+
+### Class scoring
+- Scores are used to weight class selection.
+```sh
+❯ (cgd_venv) python cgd.py \
+  --class_score \
+  --top_n 50 \
+  --prompt "An image of a cat"`
+```
+
+
 ### Penalize a prompt
+- `--prompt_min` loss is weighted half.
+- `--prompt_min` is also used to weight class selection with `--class_score`.
 ```sh
 ❯ (cgd_venv) python cgd.py \
     --prompt "32K HUHD Mushroom" \
     --prompt_min "green grass"
 ```
+
 <img src="images/32K_HUHD_Mushroom_MIN_green_grass.png" width="256"></img>
-
-
 ### Blending an existing image
 
 This method will blend an image with the diffusion for a number of steps. 
