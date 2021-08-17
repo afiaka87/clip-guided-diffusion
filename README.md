@@ -12,8 +12,17 @@ See captions and more generations in the [Gallery](/images/README.md)
 
 See also - <a href="https://github.com/nerdyrodent/VQGAN-CLIP">VQGAN-CLIP</a>
 
-- [latest] Use `--clip_class_search` to compare 0-999 imagenet labels with `--prompt`. Scores are used to weight class selection.
-- e.g. `(cgd_venv) $ python cgd.py --clip_class_search --top_n 512 --prompt "An image of a cat"`
+[latest] 
+- Use `--class_score` to compare 0-999 imagenet labels with `--prompt`. 
+- `--top_n` will use only the top N most likely classes.
+- Scores are used to weight class selection.
+- e.g. 
+```sh
+❯ (cgd_venv) python cgd.py \
+  --class_score \
+  --top_n 50 \
+  --prompt "An image of a cat"`
+```
 
 ---
 
@@ -23,9 +32,9 @@ git clone https://github.com/afiaka87/clip-guided-diffusion.git
 cd clip-guided-diffusion
 python3 -m venv cgd_venv
 source cgd_venv/bin/activate
-(cgd_venv) $ pip install -r requirements.txt
-(cgd_venv) $ git clone https://github.com/crowsonkb/guided-diffusion.git
-(cgd_venv) $ python guided-diffusion/setup.py install
+❯ (cgd_venv) pip install -r requirements.txt
+❯ (cgd_venv) git clone https://github.com/crowsonkb/guided-diffusion.git
+❯ (cgd_venv) python guided-diffusion/setup.py install
 ```
 
 ### Download checkpoints
@@ -44,7 +53,7 @@ There is only one unconditional checkpoint. This one doesn't require a randomize
 ### Generate an image
 
 ```sh
-(cgd_venv) $ python cgd.py --image_size 256 --prompt "32K HUHD Mushroom"
+❯ (cgd_venv) python cgd.py --image_size 256 --prompt "32K HUHD Mushroom"
 Step 999, output 0:
 00%|███████████████| 1000/1000 [00:00<12:30,  1.02it/s]
 ```
@@ -57,7 +66,7 @@ watch the generations in real time.
 
 ### Penalize a prompt
 ```sh
-(cgd_venv) $ python cgd.py \
+❯ (cgd_venv) python cgd.py \
     --prompt "32K HUHD Mushroom" \
     --prompt_min "green grass"
 ```
@@ -69,7 +78,7 @@ watch the generations in real time.
 This method will blend an image with the diffusion for a number of steps. 
 You may need to tinker with `--skip_timesteps` to get the best results.
 ```sh
-(cgd_venv) $ python cgd.py \
+❯ (cgd_venv) python cgd.py \
     --init_image=images/32K_HUHD_Mushroom.png \
     --skip_timesteps=500 \
     --prompt "A mushroom in the style of Vincent Van Gogh"
@@ -84,7 +93,7 @@ You may need to tinker with `--skip_timesteps` to get the best results.
 - the 64x64 diffusion checkpoint is challenging to work with and often results in an all-white or all-black image.
   - This is much less of an issue when using an existing image of some sort.
 ```sh
-(cgd_venv) $ python cgd.py \
+❯ (cgd_venv) python cgd.py \
     --init_image=images/32K_HUHD_Mushroom.png \
     --skip_timesteps=500 \
     --image_size 64 \
@@ -103,48 +112,53 @@ You may need to tinker with `--skip_timesteps` to get the best results.
 ## Full Usage:
 
 ```sh
-(cgd_venv) $ python cgd.py --help
-usage: cgd.py [-h] [--prompt PROMPT] [--prompt_min PROMPT_MIN] [--image_size IMAGE_SIZE] [--init_image INIT_IMAGE] [--skip_timesteps SKIP_TIMESTEPS] [--num_cutouts NUM_CUTOUTS] [--prefix PREFIX]
-              [--batch_size BATCH_SIZE] [--clip_guidance_scale CLIP_GUIDANCE_SCALE] [--tv_scale TV_SCALE] [--seed SEED] [--save_frequency SAVE_FREQUENCY] [--device DEVICE]
-              [--diffusion_steps DIFFUSION_STEPS] [--timestep_respacing TIMESTEP_RESPACING] [--cutout_power CUTOUT_POWER] [--clip_model CLIP_MODEL] [--class_cond CLASS_COND]
-              [--custom_class CUSTOM_CLASS] [--clip_class_search]
+❯ (cgd_venv) python cgd.py --help
+usage: cgd.py [-h] [--prompt PROMPT] [--prompt_min PROMPT_MIN] [--image_size IMAGE_SIZE] [--init_image INIT_IMAGE]
+              [--skip_timesteps SKIP_TIMESTEPS] [--prefix PREFIX] [--batch_size BATCH_SIZE]
+              [--clip_guidance_scale CLIP_GUIDANCE_SCALE] [--tv_scale TV_SCALE] [--class_score CLASS_SCORE] [--top_n TOP_N]
+              [--seed SEED] [--save_frequency SAVE_FREQUENCY] [--device DEVICE] [--diffusion_steps DIFFUSION_STEPS]
+              [--timestep_respacing TIMESTEP_RESPACING] [--num_cutouts NUM_CUTOUTS] [--cutout_power CUTOUT_POWER]
+              [--clip_model CLIP_MODEL] [--class_cond CLASS_COND]
 
 optional arguments:
   -h, --help            show this help message and exit
   --prompt PROMPT       the prompt to reward (default: None)
   --prompt_min PROMPT_MIN
-                        the prompt to penalize (default: None)
-  --image_size IMAGE_SIZE
+                        the prompt to penalize (default: )
+  --image_size IMAGE_SIZE, -size IMAGE_SIZE
                         Diffusion image size. Must be one of [64, 128, 256, 512]. (default: 128)
   --init_image INIT_IMAGE
                         Blend an image with diffusion for n steps (default: None)
-  --skip_timesteps SKIP_TIMESTEPS
+  --skip_timesteps SKIP_TIMESTEPS, -skipt SKIP_TIMESTEPS
                         Number of timesteps to blend image for. CLIP guidance occurs after this. (default: 0)
-  --num_cutouts NUM_CUTOUTS, -cutn NUM_CUTOUTS
-                        Number of randomly cut patches to distort from diffusion. (default: 64)
-  --prefix PREFIX, --output_dir PREFIX
+  --prefix PREFIX, -dir PREFIX
                         output directory (default: outputs)
   --batch_size BATCH_SIZE, -bs BATCH_SIZE
                         the batch size (default: 1)
   --clip_guidance_scale CLIP_GUIDANCE_SCALE, -cgs CLIP_GUIDANCE_SCALE
-                        Scale for CLIP spherical distance loss. Default value varies depending on image size. (default: 1500)
+                        Scale for CLIP spherical distance loss. Default value varies depending on image size. (default: 900.0)
   --tv_scale TV_SCALE, -tvs TV_SCALE
-                        Scale for denoising loss. Disabled by default for 64 and 128 (default: 150)
+                        Scale for denoising loss (default: 0.0)
+  --class_score CLASS_SCORE, -score CLASS_SCORE
+                        Enables CLIP guided class randomization. Use `-score False` to disable CLIP guided class generation.
+                        (default: True)
+  --top_n TOP_N, -tn TOP_N
+                        Top n imagenet classes compared to phrase by CLIP (default: 1000)
   --seed SEED           Random number seed (default: 0)
   --save_frequency SAVE_FREQUENCY, -sf SAVE_FREQUENCY
-                        Save frequency (default: 25)
+                        Save frequency (default: 5)
   --device DEVICE       device to run on .e.g. cuda:0 or cpu (default: None)
-  --diffusion_steps DIFFUSION_STEPS
+  --diffusion_steps DIFFUSION_STEPS, -steps DIFFUSION_STEPS
                         Diffusion steps (default: 1000)
-  --timestep_respacing TIMESTEP_RESPACING
+  --timestep_respacing TIMESTEP_RESPACING, -respace TIMESTEP_RESPACING
                         Timestep respacing (default: 1000)
+  --num_cutouts NUM_CUTOUTS, -cutn NUM_CUTOUTS
+                        Number of randomly cut patches to distort from diffusion. (default: 16)
   --cutout_power CUTOUT_POWER, -cutpow CUTOUT_POWER
-                        Cutout size power (default: 0.5)
-  --clip_model CLIP_MODEL
-                        clip model name. Should be one of: [ViT-B/16, ViT-B/32, RN50, RN101, RN50x4, RN50x16] (default: ViT-B/32)
-  --class_cond CLASS_COND
+                        Cutout size power (default: 1.0)
+  --clip_model CLIP_MODEL, -clip CLIP_MODEL
+                        clip model name. Should be one of: ['ViT-B/16', 'ViT-B/32', 'RN50', 'RN101', 'RN50x4', 'RN50x16']
+                        (default: ViT-B/16)
+  --class_cond CLASS_COND, -cond CLASS_COND
                         Use class conditional. Required for image sizes other than 256 (default: True)
-  --custom_class CUSTOM_CLASS
-                        Custom class to use for image generation. Should be one of: [0-999] (default: None)
-  --clip_class_search   Lookup imagenet class with CLIP rather than changing them throughout run. Use `--clip_class_search` on its own to enable. (default: False)
 ```
