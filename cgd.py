@@ -1,32 +1,24 @@
 import argparse
-from data.imagenet1000_clsidx_to_labels import IMAGENET_CLASSES
-import kornia
-import kornia.augmentation as kaug
 import os
 import re
 import sys
 import time
 from functools import lru_cache
 from pathlib import Path
-from kornia.augmentation.augmentation import RandomBoxBlur
-
-from kornia.augmentation.container import augment
 
 import clip
 import torch as th
 from guided_diffusion.nn import checkpoint
 from PIL import Image
 from torch import clip_, nn
-from torch.distributions import multinomial
 from torch.nn import functional as F
 from torchvision import transforms
 from torchvision.transforms import functional as TF
-from torchvision.transforms.transforms import RandomAffine, RandomHorizontalFlip, RandomVerticalFlip
 from tqdm import tqdm
 
+from data.imagenet1000_clsidx_to_labels import IMAGENET_CLASSES
 from torch_util import spherical_dist_loss, tv_loss
 from util import fetch, load_guided_diffusion
-
 
 sys.path.append("./guided-diffusion")
 
@@ -88,7 +80,7 @@ def imagenet_top_n(prompt, prompt_min='', clip_model=None, device=None, n: int =
             prompt_min_tokens = clip.tokenize(prompt_min).to(device)
             prompt_min_features = clip_model.encode_text(prompt_min_tokens).float()
             prompt_min_features /= prompt_min_features.norm(dim=-1, keepdim=True)
-            prompt_features = prompt_features - prompt_min_features
+            prompt_features = prompt_features - (0.5 * prompt_min_features)
 
         text_probs = (100.0 * prompt_features @ imagenet_features.T).softmax(dim=-1)
         sorted_probs, sorted_classes = text_probs.cpu().topk(n, dim=-1, sorted=True)
@@ -110,7 +102,7 @@ def main():
     p.add_argument("--skip_timesteps", "-skipt", type=int, default=0, help="Number of timesteps to blend image for. CLIP guidance occurs after this.")
     p.add_argument("--prefix", "-dir", default="outputs", type=str, help="output directory")
     p.add_argument("--batch_size", "-bs", type=int, default=1, help="the batch size")
-    p.add_argument("--clip_guidance_scale", "-cgs", type=int, default=900,
+    p.add_argument("--clip_guidance_scale", "-cgs", type=float, default=900.,
         help="Scale for CLIP spherical distance loss. Default value varies depending on image size.",
     )
     p.add_argument("--tv_scale", "-tvs", type=float, default=0., help="Scale for denoising loss",)
@@ -193,11 +185,7 @@ def main():
         clip_scores = None
         print("Randomizing class as generation occurs.")
 
-    make_cutouts = MakeCutouts(clip_size, num_cutouts, cutout_size_power=cutout_power, augment_list=[
-        # kaug.RandomChannelShuffle(p=0.1),
-        # kaug.RandomBoxBlur(p=0.1),
-        # kaug.RandomSharpness(sharpness=2, p=0.1),
-    ])
+    make_cutouts = MakeCutouts(clip_size, num_cutouts, cutout_size_power=cutout_power, augment_list=[])
 
     # Embed text with CLIP model
     text_embed = clip_model.encode_text(
@@ -243,8 +231,7 @@ def main():
             min_dists = 0
             if len(prompt_min) > 0:
                 min_dists = spherical_dist_loss(cutout_embeds, text_min_embed.unsqueeze(0))
-                # dists = (0.5 * max_dists) - (0.5 * min_dists) # TODO make these kwargs
-                dists = max_dists - min_dists
+                dists = max_dists - (0.5 * min_dists)
             else:
                 dists = max_dists
             losses = dists.mean(0)
