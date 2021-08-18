@@ -124,6 +124,18 @@ Blend an image with the diffusion for a number of steps.
   ```
 <img src="images/32K_HUHD_Mushroom_512.png?raw=true" width="200"></img>
 
+### Process multiple images from captions in file
+I plan to implement this in proper Python eventually.
+For now, you can make use of `xargs` to generate one image per caption in a file, e.g.:
+```sh
+caption_file="captions.txt"
+cutn=32
+size=128
+penalty_prompt="an image containing letters or words"
+cat $caption_file | xargs -n 1 -I {} python cgd.py -txt {} -min $penalty_prompt -cutn $cutn -size $size;
+```
+
+
 ## Full Usage:
 ```sh
 -h, --help            show this help message and exit
