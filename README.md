@@ -24,22 +24,37 @@ source cgd_venv/bin/activate
 ❯ (cgd_venv) git clone https://github.com/afiaka87/guided-diffusion.git
 ❯ (cgd_venv) python guided-diffusion/setup.py install
 ```
+## Usage - Python
 
-## Download checkpoints
+```python
+# Initialize diffusion generator
+from cgd import clip_guided_diffusion
+import cgd_util
 
-You only need to download the checkpoint for the size you want to generate.
-Checkpoints belong in the `./checkpoints` directory.
+prompt = "An image of a fox in a forest."
 
-- 64: https://openaipublic.blob.core.windows.net/diffusion/jul-2021/64x64_diffusion.pt
-- 128: https://openaipublic.blob.core.windows.net/diffusion/jul-2021/128x128_diffusion.pt
-- 256: https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion.pt
-- 512: https://openaipublic.blob.core.windows.net/diffusion/jul-2021/512x512_diffusion.pt
+# Remove non-alphanumeric and white space characters from prompt and prompt_min for directory name
+outputs_path = cgd_util.txt_to_dir(base_path=prefix_path, txt=prompt)
+outputs_path.mkdir(exist_ok=True)
 
-There is only one unconditional checkpoint. This one doesn't require a randomized class like the others do. Use `--class_cond False` to use.
-- 256 (unconditional):  https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt
+# `cgd_samples` is a generator that yields the output images
+cgd_samples, _, diffusion = clip_guided_diffusion(prompt=prompt, prefix=outputs_path)
 
-## Usage
+# Image paths will all be in `all_images` for e.g. video generation at the end.
+all_images = []
+current_timestep = diffusion.num_timesteps - 1
+for step, sample in enumerate(cgd_samples):
+    current_timestep -= 1
+    if step % save_frequency == 0 or current_timestep == -1:
+        for j, image in enumerate(sample["pred_xstart"]): # j is the index of the batch
+            image_path = Path(log_image(image, prefix_path, step, j))
+            print(f"Saved {image_path}")
+            all_images.append(image_path)
+```
+- Respective guided-diffusion checkpoints from OpenAI will be downloaded to `./checkpoints` by default.
+- The file `current.png` can be refreshed to see the current image.
 
+## Usage - CLI
 ### Text to image generation
 
 `--prompt` / `-txt`
@@ -121,20 +136,8 @@ Blend an image with the diffusion for a number of steps.
 
 ```sh
 ❯ (cgd_venv) $ python cgd.py --image_size 512 --prompt "8K HUHD Mushroom"
-  ```
-<img src="images/32K_HUHD_Mushroom_512.png?raw=true" width="200"></img>
-
-### Process multiple images from captions in file
-I plan to implement this in proper Python eventually.
-For now, you can make use of `xargs` to generate one image per caption in a file, e.g.:
-```sh
-caption_file="captions.txt"
-cutn=32
-size=128
-penalty_prompt="an image containing letters or words"
-cat $caption_file | xargs -n 1 -I {} python cgd.py -txt {} -min $penalty_prompt -cutn $cutn -size $size;
 ```
-
+<img src="images/32K_HUHD_Mushroom_512.png?raw=true" width="200"></img>
 
 ## Full Usage:
 ```sh
