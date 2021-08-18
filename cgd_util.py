@@ -94,17 +94,13 @@ DIFFUSION_512_MODEL_FLAGS = {
 # modified from https://github.com/lucidrains/DALLE-pytorch/blob/d355100061911b13e1f1c22de8c2b5deb44e65f8/dalle_pytorch/vae.py
 def download(url, filename=None, root=CACHE_PATH):
     os.makedirs(root, exist_ok=True)
-    filename = filename if os.path.basename(
-        url) is not None else os.path.basename(url)
-    download_target = os.path.join(root, filename)
-    download_target_tmp = Path(os.path.join(root, f'tmp_{filename}'))
-    download_target_tmp.mkdir(parents=True, exist_ok=True)
+    filename = filename if os.path.basename(url) is not None else filename
+    download_target = Path(os.path.join(root, filename))
+    download_target_tmp = Path(os.path.join(root, f"tmp_filename"))
     if os.path.exists(download_target) and not os.path.isfile(download_target):
-        raise RuntimeError(
-            f"{download_target} exists and is not a regular file")
+        raise RuntimeError(f"{download_target} exists and is not a regular file")
     if os.path.isfile(download_target):
         return download_target
-    os.rename(download_target_tmp, download_target)
     with request.urlopen(url) as source, open(download_target_tmp, "wb") as output:
         with tqdm(total=int(source.info().get("Content-Length")), ncols=80) as loop:
             while True:
@@ -113,6 +109,7 @@ def download(url, filename=None, root=CACHE_PATH):
                     break
                 output.write(buffer)
                 loop.update(len(buffer))
+    os.rename(download_target_tmp, download_target)
     return download_target
 
 
