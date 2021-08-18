@@ -51,7 +51,7 @@ for step, sample in enumerate(cgd_samples):
             print(f"Saved {image_path}")
             all_images.append(image_path)
 ```
-- Respective guided-diffusion checkpoints from OpenAI will be downloaded to `./checkpoints` by default.
+- Respective guided-diffusion checkpoints from OpenAI will be downloaded to `~/.cache/clip-guided-diffusion/` by default.
 - The file `current.png` can be refreshed to see the current image.
 
 ## Usage - CLI
