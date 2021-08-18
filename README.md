@@ -16,7 +16,7 @@ See also - <a href="https://github.com/nerdyrodent/VQGAN-CLIP">VQGAN-CLIP</a>
 
 ## Installation
 ```sh
-git clone https://github.com/afiaka87/clip-guided-diffusion.git
+git clone --recursive https://github.com/afiaka87/clip-guided-diffusion.git
 cd clip-guided-diffusion
 python3 -m venv cgd_venv
 source cgd_venv/bin/activate
