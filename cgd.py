@@ -1,7 +1,10 @@
 import argparse
 import sys
+import os
 from functools import lru_cache
 from pathlib import Path
+
+from guided_diffusion.nn import checkpoint
 
 import clip
 import torch as th
@@ -10,9 +13,10 @@ from torchvision import transforms as tvt
 from torchvision.transforms import functional as tf
 
 from data.imagenet1000_clsidx_to_labels import IMAGENET_CLASSES
-from cgd_util import MakeCutouts, download_guided_diffusion, fetch, load_guided_diffusion, log_image, spherical_dist_loss, tv_loss, txt_to_dir
+import cgd_util
 
-sys.path.append("./guided-diffusion")
+sys.path.append(os.path.join(os.getcwd(), "guided-diffusion"))
+
 
 TIMESTEP_RESPACINGS = ("25", "50", "100", "250", "500", "1000",
                        "ddim25", "ddim50", "ddim100", "ddim250", "ddim500", "ddim1000")
@@ -23,6 +27,7 @@ CLIP_MODEL_NAMES = ("ViT-B/16", "ViT-B/32", "RN50",
 
 CLIP_NORMALIZE = tvt.Normalize(mean=[0.48145466, 0.4578275, 0.40821073], std=[
                                0.26862954, 0.26130258, 0.27577711])
+
 
 
 @lru_cache(maxsize=None)
@@ -67,7 +72,7 @@ def clip_guided_diffusion(
     diffusion_steps: int = 1000,
     skip_timesteps: int = 0,
     init_image: str = None,
-    checkpoints_dir: Path = Path("./checkpoints"),
+    checkpoints_dir: Path = Path(cgd_util.CACHE_PATH),
     clip_model_name: str = "ViT-B/32",
     class_score: bool = False,
     augs: list = [],
@@ -97,18 +102,15 @@ def clip_guided_diffusion(
     else:
         assert skip_timesteps == 0, f"--skip_timesteps/-skip must be 0 when --init_image/-init is None."
 
-    assert Path(checkpoints_dir).is_dir(
-    ), f"--checkpoints_dir/-ckpts {checkpoints_dir} is a file, not a directory. Please provide a directory."
-    assert Path(checkpoints_dir).exists(
-    ), f"--checkpoints_dir/-ckpts {checkpoints_dir} does not exist. Create it or provide another directory."
+    # Create checkpoints directory
+    checkpoints_dir.mkdir(parents=True, exist_ok=True)
     # Setup
     if seed:
         th.manual_seed(seed)
 
     # Download pretrained Guided Diffusion model
     checkpoints_dir = Path(checkpoints_dir)
-    diffusion_path = download_guided_diffusion(
-        image_size=image_size, checkpoints_dir=checkpoints_dir, class_cond=class_cond)
+    diffusion_path = cgd_util.download_guided_diffusion(image_size=image_size, checkpoints_dir=checkpoints_dir, class_cond=class_cond)
 
     # Load CLIP model
     clip_model = clip.load(clip_model_name, jit=False)[
@@ -127,7 +129,7 @@ def clip_guided_diffusion(
         print("Ranking all ImageNet classes uniformly. Use --class_score/-score to enable CLIP guided class selection instead.")
 
     # Setup CLIP cutouts/embeds
-    make_cutouts = MakeCutouts(
+    make_cutouts = cgd_util.MakeCutouts(
         clip_size, num_cutouts, cutout_size_power=cutout_power, augment_list=augs)
     text_embed = clip_model.encode_text(
         clip.tokenize(prompt).to(device)).float()
@@ -137,13 +139,13 @@ def clip_guided_diffusion(
     # Load initial image (if provided)
     init_tensor = None
     if init_image:
-        pil_image = Image.open(fetch(init_image)).convert(
+        pil_image = Image.open(cgd_util.fetch(init_image)).convert(
             "RGB").resize((image_size, image_size), Image.LANCZOS)
         init_tensor = tf.to_tensor(pil_image).to(
             device).unsqueeze(0).mul(2).sub(1)
 
     # Load guided diffusion
-    gd_model, diffusion = load_guided_diffusion(
+    gd_model, diffusion = cgd_util.load_guided_diffusion(
         checkpoint_path=diffusion_path,
         image_size=image_size,
         diffusion_steps=diffusion_steps,
@@ -168,16 +170,16 @@ def clip_guided_diffusion(
             clip_in = CLIP_NORMALIZE(make_cutouts(x_in.add(1).div(2)))
             cutout_embeds = clip_model.encode_image(
                 clip_in).float().view([num_cutouts, n, -1])
-            max_dists = spherical_dist_loss(
+            max_dists = cgd_util.spherical_dist_loss(
                 cutout_embeds, text_embed.unsqueeze(0))
             if text_min_embed is not None:  # Implicit comparison to None is not supported by pytorch tensors
-                min_dists = spherical_dist_loss(
+                min_dists = cgd_util.spherical_dist_loss(
                     cutout_embeds, text_min_embed.unsqueeze(0))
                 dists = max_dists - (min_weight * min_dists)
             else:
                 dists = max_dists
             losses = dists.mean(0)
-            tv_losses = tv_loss(x_in)
+            tv_losses = cgd_util.tv_loss(x_in)
             loss = losses.sum() * clip_guidance_scale + tv_losses.sum() * tv_scale
             return -th.autograd.grad(loss, x)[0]
 
@@ -213,7 +215,7 @@ def main():
                    help="Number of timesteps to blend image for. CLIP guidance occurs after this.")
     p.add_argument("--prefix", "-dir", default="outputs",
                    type=Path, help="output directory")
-    p.add_argument("--checkpoints_dir", "-ckpts", default='checkpoints',
+    p.add_argument("--checkpoints_dir", "-ckpts", default=cgd_util.CACHE_PATH,
                    type=Path, help="Path subdirectory containing checkpoints.")
     p.add_argument("--batch_size", "-bs", type=int,
                    default=1, help="the batch size")
@@ -279,7 +281,7 @@ def main():
     )
 
     # Remove non-alphanumeric and white space characters from prompt and prompt_min for directory name
-    outputs_path = txt_to_dir(base_path=prefix_path,
+    outputs_path = cgd_util.txt_to_dir(base_path=prefix_path,
                               txt=args.prompt, txt_min=args.prompt_min)
     outputs_path.mkdir(exist_ok=True)
 
@@ -289,7 +291,7 @@ def main():
             current_timestep -= 1
             if step % args.save_frequency == 0 or current_timestep == -1:
                 for j, image in enumerate(sample["pred_xstart"]):
-                    log_image(image, prefix_path, step, j)
+                    cgd_util.log_image(image, prefix_path, step, j)
     except RuntimeError as runtime_ex:
         if "CUDA out of memory" in str(runtime_ex):
             print(f"CUDA OOM error occurred.")

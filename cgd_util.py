@@ -1,3 +1,5 @@
+
+from urllib import request
 import io
 import requests
 import os
@@ -6,11 +8,15 @@ from pathlib import Path
 
 import requests
 import torch as th
-from guided_diffusion.script_util import (create_model_and_diffusion, model_and_diffusion_defaults)
+from guided_diffusion.script_util import (
+    create_model_and_diffusion, model_and_diffusion_defaults)
 from PIL import Image
 from torch import nn
 from torch.nn import functional as tf
 from torchvision.transforms import functional as tvf
+from tqdm import tqdm
+
+CACHE_PATH = os.path.expanduser("~/.cache/clip-guided-diffusion")
 
 DIFFUSION_64_MODEL_FLAGS = {
     "attention_resolutions": '32,16,8',
@@ -85,26 +91,48 @@ DIFFUSION_512_MODEL_FLAGS = {
     'use_scale_shift_norm': True
 }
 
-def download_guided_diffusion(image_size, checkpoints_dir=Path('./checkpoints'), class_cond=True, overwrite=False):
+# modified from https://github.com/lucidrains/DALLE-pytorch/blob/d355100061911b13e1f1c22de8c2b5deb44e65f8/dalle_pytorch/vae.py
+def download(url, filename=None, root=CACHE_PATH):
+    os.makedirs(root, exist_ok=True)
+    filename = filename if os.path.basename(
+        url) is not None else os.path.basename(url)
+    download_target = os.path.join(root, filename)
+    download_target_tmp = Path(os.path.join(root, f'tmp_{filename}'))
+    download_target_tmp.mkdir(parents=True, exist_ok=True)
+    if os.path.exists(download_target) and not os.path.isfile(download_target):
+        raise RuntimeError(
+            f"{download_target} exists and is not a regular file")
+    if os.path.isfile(download_target):
+        return download_target
+    os.rename(download_target_tmp, download_target)
+    with request.urlopen(url) as source, open(download_target_tmp, "wb") as output:
+        with tqdm(total=int(source.info().get("Content-Length")), ncols=80) as loop:
+            while True:
+                buffer = source.read(8192)
+                if not buffer:
+                    break
+                output.write(buffer)
+                loop.update(len(buffer))
+    return download_target
+
+
+def download_guided_diffusion(image_size, checkpoints_dir=CACHE_PATH, class_cond=True, overwrite=False):
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
     if class_cond:
-        gd_path = checkpoints_dir.joinpath(Path(f'{image_size}x{image_size}_diffusion.pt'))
+        gd_path = checkpoints_dir.joinpath(
+            Path(f'{image_size}x{image_size}_diffusion.pt'))
         gd_url = f'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/{image_size}x{image_size}_diffusion.pt'
     else:
         assert image_size == 256, "class_cond=False only works for 256x256 images"
         gd_path = checkpoints_dir.joinpath(Path("256x256_diffusion_uncond.pt"))
         gd_url = f'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt'
-    
+
     if gd_path.exists() and not overwrite:
         print("Already downloaded")
         return gd_path
 
     print(f'Downloading {gd_url} to {gd_path}')
-    r = requests.get(gd_url.format(image_size=image_size), stream=True)
-    with gd_path.open('wb') as f:
-        for chunk in r.iter_content(chunk_size=1024):
-            f.write(chunk)
-            print('\rDownloaded {0:.2f}%'.format(f.tell() * 100 / int(r.headers['Content-Length'])), end='')
+    download(gd_url, gd_path)
     return gd_path
 
 
@@ -163,17 +191,21 @@ def fetch(url_or_path):
         return fd
     return open(url_or_path, 'rb')
 
+
 def log_image(image, prefix_path, current_step, batch_idx):
-    filename = os.path.join(prefix_path, f"{batch_idx:04}_iteration_{current_step:04}.png")
+    filename = os.path.join(
+        prefix_path, f"{batch_idx:04}_iteration_{current_step:04}.png")
     pil_image = tvf.to_pil_image(image.add(1).div(2).clamp(0, 1))
     pil_image.save("current.png")
     return filename
+
 
 def txt_to_dir(base_path, txt, txt_min=None):
     dir_name = f"{txt}_MIN_{txt_min}" if txt_min else txt
     dir_name = Path(
         re.sub(r"[^\w\s]", "", f"{dir_name}").replace(" ", "_")[:256])
     return Path(os.path.join(base_path, dir_name))
+
 
 def resize_image(image, out_size):
     """Resize image"""
