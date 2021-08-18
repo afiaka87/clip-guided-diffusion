@@ -14,7 +14,7 @@ See also - <a href="https://github.com/nerdyrodent/VQGAN-CLIP">VQGAN-CLIP</a>
 
 ---
 
-### Installation
+## Installation
 ```sh
 git clone https://github.com/afiaka87/clip-guided-diffusion.git
 cd clip-guided-diffusion
@@ -25,7 +25,7 @@ source cgd_venv/bin/activate
 ❯ (cgd_venv) python guided-diffusion/setup.py install
 ```
 
-### Download checkpoints
+## Download checkpoints
 
 You only need to download the checkpoint for the size you want to generate.
 Checkpoints belong in the `./checkpoints` directory.
@@ -38,53 +38,70 @@ Checkpoints belong in the `./checkpoints` directory.
 There is only one unconditional checkpoint. This one doesn't require a randomized class like the others do. Use `--class_cond False` to use.
 - 256 (unconditional):  https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt
 
-### Generate an image
+## Usage
 
-- Outputs are saved in `--prefix` (default:'./outputs')
+### Text to image generation
+
+`--prompt` / `-txt`
+`--image_size` / `-size`
 - Filename format `f"{caption}/batch_idx_{j}_iteration_{i}.png"`
 - The most recent generation will also be stored in the file `current.png`
 
 ```sh
-❯ (cgd_venv) python cgd.py \
-  --image_size 256 \
-  --prompt "32K HUHD Mushroom"
+❯ (cgd_venv) python cgd.py -size 256 -txt "32K HUHD Mushroom"
 Step 999, output 0:
 00%|███████████████| 1000/1000 [00:00<12:30,  1.02it/s]
 ```
 ![](/images/32K_HUHD_Mushroom.png?raw=true)
 
 
-### Class scoring
+### CLIP Class Scoring
+- `--class_score` / `-score`
 - Scores are used to weight class selection.
 ```sh
-❯ (cgd_venv) python cgd.py \
-  --class_score \
-  --top_n 50 \
-  --prompt "An image of a cat"`
+❯ (cgd_venv) python cgd.py -score -cgs 200 -cutn 64 -size 256 -respace 'ddim100' --prompt "cat painting"
 ```
 
+### Iterations/Steps (Timestep Respacing)
+- `--diffusion_steps`, `-steps` (default: `1000`)
+  - `25`, `50`, `150`, `250`, `500`, `1000`,
+  - **The default of `1000` is the most accurate and is recommended.**
+- `--timestep_respacing` or `-respace`  (default: `1000`)
+  - Use fewer timesteps over the same diffusion schedule. 
+    - e.g. `-respace "ddim25"`
+  - `options`: 
+    - `25`, `50`, `150`, `250`, `500`, `1000`,
+    - `ddim25`,`ddim50`,`ddim150`, `ddim250`,`ddim500`,`ddim1000`
+```sh
+❯ (cgd_venv) python cgd.py -respace 'ddim50' -txt "cat painting"
+```
+- Smaller `-respace` values can benefit a lot from class scoring.
+```sh
+❯ (cgd_venv) python cgd.py -score -respace 50 -txt "cat painting"
+```
 
-### Penalize a prompt
-- `--prompt_min` loss is weighted half.
-- `--prompt_min` is also used to weight class selection with `--class_score`.
+### Penalize a text prompt as well
+- `--prompt_min`/`-min`
+- Loss for prompt_min is weighted 0.5, a value found in experimentation.
+- Also used to weight class selection with `-score`.
+```sh
+❯ (cgd_venv) python cgd.py -txt "32K HUHD Mushroom" -min "green grass"
+```
+<img src="images/32K_HUHD_Mushroom_MIN_green_grass.png" width="200"></img>
+
+### Existing image 
+- `--init_image`/`-init` and  `--skip_timesteps`/`-skip`
+Blend an image with the diffusion for a number of steps. 
+- `--skip_timesteps`/`-skip` is the number of timesteps to spend blending.
+  - **Needs to be set in order to blend an image.**
+  - Good range for `-respace=1000` is 350 to 650.
 ```sh
 ❯ (cgd_venv) python cgd.py \
-    --prompt "32K HUHD Mushroom" \
-    --prompt_min "green grass"
+  -init "images/32K_HUHD_Mushroom.png" \
+  -skip 500 \
+  -txt "A mushroom in the style of Vincent Van Gogh"
 ```
-
-<img src="images/32K_HUHD_Mushroom_MIN_green_grass.png" width="256"></img>
-### Blending an existing image
-
-This method will blend an image with the diffusion for a number of steps. 
-You may need to tinker with `--skip_timesteps` to get the best results.
-```sh
-❯ (cgd_venv) python cgd.py \
-    --init_image=images/32K_HUHD_Mushroom.png \
-    --skip_timesteps=500 \
-    --prompt "A mushroom in the style of Vincent Van Gogh"
-```
-![](images/a_mushroom_in_the_style_of_vangogh.png?raw=true)
+<img src="images/a_mushroom_in_the_style_of_vangogh.png?raw=true" width="200"></img>
 
 ### Image size
 - Default is 128px
@@ -100,66 +117,58 @@ You may need to tinker with `--skip_timesteps` to get the best results.
     --image_size 64 \
     --prompt "8K HUHD Mushroom"
 ```
-<img src="images/32K_HUHD_Mushroom_64.png?raw=true" width="256"></img>
+<img src="images/32K_HUHD_Mushroom_64.png?raw=true" width="128"></img>
 
 ```sh
 ❯ (cgd_venv) $ python cgd.py --image_size 512 --prompt "8K HUHD Mushroom"
   ```
-<img src="images/32K_HUHD_Mushroom_512.png?raw=true" width="360"></img>
-
-
-> This code is currently under active development and is subject to frequent changes. Please file an issue if you have any constructive feedback, questions, or issues with the code or colab notebook.
+<img src="images/32K_HUHD_Mushroom_512.png?raw=true" width="200"></img>
 
 ## Full Usage:
-
 ```sh
-❯ (cgd_venv) python cgd.py --help
-usage: cgd.py [-h] [--prompt PROMPT] [--prompt_min PROMPT_MIN] [--image_size IMAGE_SIZE] [--init_image INIT_IMAGE]
-              [--skip_timesteps SKIP_TIMESTEPS] [--prefix PREFIX] [--batch_size BATCH_SIZE]
-              [--clip_guidance_scale CLIP_GUIDANCE_SCALE] [--tv_scale TV_SCALE] [--class_score CLASS_SCORE] [--top_n TOP_N]
-              [--seed SEED] [--save_frequency SAVE_FREQUENCY] [--device DEVICE] [--diffusion_steps DIFFUSION_STEPS]
-              [--timestep_respacing TIMESTEP_RESPACING] [--num_cutouts NUM_CUTOUTS] [--cutout_power CUTOUT_POWER]
-              [--clip_model CLIP_MODEL] [--class_cond CLASS_COND]
-
-optional arguments:
-  -h, --help            show this help message and exit
-  --prompt PROMPT       the prompt to reward (default: None)
-  --prompt_min PROMPT_MIN
-                        the prompt to penalize (default: )
-  --image_size IMAGE_SIZE, -size IMAGE_SIZE
-                        Diffusion image size. Must be one of [64, 128, 256, 512]. (default: 128)
-  --init_image INIT_IMAGE
-                        Blend an image with diffusion for n steps (default: None)
-  --skip_timesteps SKIP_TIMESTEPS, -skipt SKIP_TIMESTEPS
-                        Number of timesteps to blend image for. CLIP guidance occurs after this. (default: 0)
-  --prefix PREFIX, -dir PREFIX
-                        output directory (default: outputs)
-  --batch_size BATCH_SIZE, -bs BATCH_SIZE
-                        the batch size (default: 1)
-  --clip_guidance_scale CLIP_GUIDANCE_SCALE, -cgs CLIP_GUIDANCE_SCALE
-                        Scale for CLIP spherical distance loss. Default value varies depending on image size. (default: 900.0)
-  --tv_scale TV_SCALE, -tvs TV_SCALE
-                        Scale for denoising loss (default: 0.0)
-  --class_score CLASS_SCORE, -score CLASS_SCORE
-                        Enables CLIP guided class randomization. Use `-score False` to disable CLIP guided class generation.
-                        (default: True)
-  --top_n TOP_N, -tn TOP_N
-                        Top n imagenet classes compared to phrase by CLIP (default: 1000)
-  --seed SEED           Random number seed (default: 0)
-  --save_frequency SAVE_FREQUENCY, -sf SAVE_FREQUENCY
-                        Save frequency (default: 5)
-  --device DEVICE       device to run on .e.g. cuda:0 or cpu (default: None)
-  --diffusion_steps DIFFUSION_STEPS, -steps DIFFUSION_STEPS
-                        Diffusion steps (default: 1000)
-  --timestep_respacing TIMESTEP_RESPACING, -respace TIMESTEP_RESPACING
-                        Timestep respacing (default: 1000)
-  --num_cutouts NUM_CUTOUTS, -cutn NUM_CUTOUTS
-                        Number of randomly cut patches to distort from diffusion. (default: 16)
-  --cutout_power CUTOUT_POWER, -cutpow CUTOUT_POWER
-                        Cutout size power (default: 1.0)
-  --clip_model CLIP_MODEL, -clip CLIP_MODEL
-                        clip model name. Should be one of: ['ViT-B/16', 'ViT-B/32', 'RN50', 'RN101', 'RN50x4', 'RN50x16']
-                        (default: ViT-B/16)
-  --class_cond CLASS_COND, -cond CLASS_COND
-                        Use class conditional. Required for image sizes other than 256 (default: True)
+-h, --help            show this help message and exit
+--prompt PROMPT, -txt PROMPT
+                      the prompt to reward (default: )
+--prompt_min PROMPT_MIN, -min PROMPT_MIN
+                      the prompt to penalize (default: None)
+--min_weight MIN_WEIGHT, -min_wt MIN_WEIGHT
+                      the prompt to penalize (default: 0.1)
+--image_size IMAGE_SIZE, -size IMAGE_SIZE
+                      Diffusion image size. Must be one of [64, 128, 256, 512]. (default: 128)
+--init_image INIT_IMAGE, -init INIT_IMAGE
+                      Blend an image with diffusion for n steps (default: None)
+--skip_timesteps SKIP_TIMESTEPS, -skip SKIP_TIMESTEPS
+                      Number of timesteps to blend image for. CLIP guidance occurs after this. (default: 0)
+--prefix PREFIX, -dir PREFIX
+                      output directory (default: outputs)
+--checkpoints_dir CHECKPOINTS_DIR, -ckpts CHECKPOINTS_DIR
+                      Path subdirectory containing checkpoints. (default: checkpoints)
+--batch_size BATCH_SIZE, -bs BATCH_SIZE
+                      the batch size (default: 1)
+--clip_guidance_scale CLIP_GUIDANCE_SCALE, -cgs CLIP_GUIDANCE_SCALE
+                      Scale for CLIP spherical distance loss. Values will need tinkering for different settings. (default: 1000)
+--tv_scale TV_SCALE, -tvs TV_SCALE
+                      Scale for denoising loss (default: 100)
+--class_score, -score
+                      Enables CLIP guided class randomization. (default: False)
+--top_n TOP_N, -top TOP_N
+                      Top n imagenet classes compared to phrase by CLIP (default: 1000)
+--seed SEED, -seed SEED
+                      Random number seed (default: 0)
+--save_frequency SAVE_FREQUENCY, -freq SAVE_FREQUENCY
+                      Save frequency (default: 5)
+--device DEVICE       device to run on .e.g. cuda:0 or cpu (default: None)
+--diffusion_steps DIFFUSION_STEPS, -steps DIFFUSION_STEPS
+                      Diffusion steps (default: 1000) --timestep_respacing TIMESTEP_RESPACING, -respace TIMESTEP_RESPACING
+                      Timestep respacing (default: 1000)
+--num_cutouts NUM_CUTOUTS, -cutn NUM_CUTOUTS
+                      Number of randomly cut patches to distort from diffusion. (default: 32)
+--cutout_power CUTOUT_POWER, -cutpow CUTOUT_POWER
+                      Cutout size power (default: 0.5)
+--clip_model CLIP_MODEL, -clip CLIP_MODEL
+                      clip model name. Should be one of: ('ViT-B/16', 'ViT-B/32', 'RN50', 'RN101', 'RN50x4', 'RN50x16') (default: ViT-B/32)
+--class_cond CLASS_COND, -cond CLASS_COND
+                      Use class conditional. Required for image sizes other than 256 (default: True)
 ```
+
+> This code is currently under active development and is subject to frequent changes. Please file an issue if you have any constructive feedback, questions, or issues with the code or colab notebook.

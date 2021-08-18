@@ -9,3 +9,4 @@ cgd_venv/
 __pycache__/
 dist/
 output/
+*.png

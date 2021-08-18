@@ -1,39 +1,84 @@
-import argparse
 import io
-import requests
-import json
-import os
-import sys
-import random
 from functools import lru_cache
+
+import requests
 import torch
+from guided_diffusion.script_util import (create_model_and_diffusion,
+                                          model_and_diffusion_defaults)
 
-from guided_diffusion.script_util import (
-    create_model_and_diffusion,
-    model_and_diffusion_defaults,
-)
+DIFFUSION_64_MODEL_FLAGS = {
+    "attention_resolutions": '32,16,8',
+    "class_cond": True,
+    "diffusion_steps": 1000,
+    "dropout": 0.1,
+    "image_size": 64,
+    "learn_sigma": True,
+    "noise_schedule": 'cosine',
+    "num_channels": 192,
+    "num_head_channels": 64,
+    "num_res_blocks": 3,
+    "resblock_updown": True,
+    "use_new_attention_order": True,
+    "use_fp16": True,
+    "use_scale_shift_norm": True
+}
+DIFFUSION_128_MODEL_FLAGS = {
+    "attention_resolutions": '32,16,8',
+    "class_cond": True,
+    "diffusion_steps": 1000,
+    "image_size": 128,
+    "learn_sigma": True,
+    "noise_schedule": 'linear',
+    "num_channels": 256,
+    "num_heads": 4,
+    "num_res_blocks": 2,
+    "resblock_updown": True,
+    "use_fp16": True,
+    "use_scale_shift_norm": True
+}
+DIFFUSION_256_MODEL_FLAGS = {
+    "attention_resolutions": "32,16,8",
+    "class_cond": True,
+    "diffusion_steps": 1000,
+    "image_size": 256,
+    "learn_sigma": True,
+    "noise_schedule": "linear",
+    "num_channels": 256,
+    "num_head_channels": 64,
+    "num_res_blocks": 2,
+    "resblock_updown": True,
+    "use_fp16": True,
+    "use_scale_shift_norm": True
+}
+DIFFUSION_256_UNCOND_MODEL_FLAGS = {
+    "attention_resolutions": '32,16,8',
+    "class_cond": False,
+    "diffusion_steps": 1000,
+    "image_size": 256,
+    "learn_sigma": True,
+    "noise_schedule": 'linear',
+    "num_channels": 256,
+    "num_head_channels": 64,
+    "num_res_blocks": 2,
+    "resblock_updown": True,
+    "use_fp16": True,
+    "use_scale_shift_norm": True
+}
+DIFFUSION_512_MODEL_FLAGS = {
+    'attention_resolutions': '32,16,8',
+    'class_cond': True,
+    'diffusion_steps': 1000,
+    'image_size': 512,
+    'learn_sigma': True,
+    'noise_schedule': 'linear',
+    'num_channels': 256,
+    'num_head_channels': 64,
+    'num_res_blocks': 2,
+    'resblock_updown': True,
+    'use_fp16': False,
+    'use_scale_shift_norm': True
+}
 
-# load the list of classes from yaml file
-imagenet_class_labels_filename = "imagenet1000_clsidx_to_labels.json"
-
-
-@lru_cache(maxsize=1)
-def get_idx_to_class_map():
-    with open(imagenet_class_labels_filename, "r") as infile:
-        mapping = json.load(infile)
-        return mapping
-
-
-@lru_cache(maxsize=None)
-def get_classes_for_idx(idx):
-    idx_to_class_mapping = get_idx_to_class_map()
-    return idx_to_class_mapping[str(idx)]
-
-DIFFUSION_64_MODEL_FLAGS = { "attention_resolutions": '32,16,8', "class_cond": True, "diffusion_steps": 1000, "dropout": 0.1, "image_size": 64, "learn_sigma": True, "noise_schedule": 'cosine', "num_channels": 192, "num_head_channels": 64, "num_res_blocks": 3, "resblock_updown": True, "use_new_attention_order": True, "use_fp16": True, "use_scale_shift_norm": True }
-DIFFUSION_128_MODEL_FLAGS = { "attention_resolutions": '32,16,8', "class_cond": True, "diffusion_steps": 1000, "image_size": 128, "learn_sigma": True, "noise_schedule": 'linear', "num_channels": 256, "num_heads": 4, "num_res_blocks": 2, "resblock_updown": True, "use_fp16": True, "use_scale_shift_norm": True }
-DIFFUSION_256_MODEL_FLAGS = { "attention_resolutions": "32,16,8", "class_cond": True, "diffusion_steps": 1000, "image_size": 256, "learn_sigma": True, "noise_schedule": "linear", "num_channels": 256, "num_head_channels": 64, "num_res_blocks": 2, "resblock_updown": True, "use_fp16": True, "use_scale_shift_norm": True }
-DIFFUSION_256_UNCOND_MODEL_FLAGS = { "attention_resolutions": '32,16,8', "class_cond": False, "diffusion_steps": 1000, "image_size": 256, "learn_sigma": True, "noise_schedule": 'linear', "num_channels": 256, "num_head_channels": 64, "num_res_blocks": 2, "resblock_updown": True, "use_fp16": True, "use_scale_shift_norm": True }
-DIFFUSION_512_MODEL_FLAGS = { 'attention_resolutions': '32,16,8', 'class_cond': True, 'diffusion_steps': 1000, 'image_size': 512, 'learn_sigma': True, 'noise_schedule': 'linear', 'num_channels': 256, 'num_head_channels': 64, 'num_res_blocks': 2, 'resblock_updown': True, 'use_fp16': False, 'use_scale_shift_norm': True }
 
 def load_guided_diffusion(
     checkpoint_path,
@@ -82,11 +127,13 @@ def load_guided_diffusion(
 
 def parse_prompt(prompt):  # NR: Weights after colons
     vals = prompt.rsplit(":", 2)
-    vals = vals + ["", "1", "-inf"][len(vals) :]
+    vals = vals + ["", "1", "-inf"][len(vals):]
     return vals[0], float(vals[1]), float(vals[2])
 
+
 def fetch(url_or_path):
-    if str(url_or_path).startswith('http://') or str(url_or_path).startswith('https://'):
+    if str(url_or_path).startswith('http://') or str(url_or_path).startswith(
+            'https://'):
         r = requests.get(url_or_path)
         r.raise_for_status()
         fd = io.BytesIO()
