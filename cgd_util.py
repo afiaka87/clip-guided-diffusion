@@ -17,6 +17,8 @@ from torchvision.transforms import functional as tvf
 from tqdm import tqdm
 
 CACHE_PATH = os.path.expanduser("~/.cache/clip-guided-diffusion")
+UNCOND_512_URL = 'https://the-eye.eu/public/AI/models/512x512_diffusion_unconditional_ImageNet/512x512_diffusion_uncond_finetune_008100.pt'
+UNCOND_256_URL = f'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt'
 
 DIFFUSION_64_MODEL_FLAGS = {
     "attention_resolutions": '32,16,8',
@@ -62,24 +64,12 @@ DIFFUSION_256_MODEL_FLAGS = {
     "use_fp16": True,
     "use_scale_shift_norm": True
 }
-DIFFUSION_256_UNCOND_MODEL_FLAGS = {
-    "attention_resolutions": '32,16,8',
-    "class_cond": False,
-    "diffusion_steps": 1000,
-    "image_size": 256,
-    "learn_sigma": True,
-    "noise_schedule": 'linear',
-    "num_channels": 256,
-    "num_head_channels": 64,
-    "num_res_blocks": 2,
-    "resblock_updown": True,
-    "use_fp16": True,
-    "use_scale_shift_norm": True
-}
 DIFFUSION_512_MODEL_FLAGS = {
-    'attention_resolutions': '32,16,8',
+    'attention_resolutions': '32, 16, 8',
     'class_cond': True,
     'diffusion_steps': 1000,
+    'rescale_timesteps': True,
+    'timestep_respacing': '1000',
     'image_size': 512,
     'learn_sigma': True,
     'noise_schedule': 'linear',
@@ -87,16 +77,17 @@ DIFFUSION_512_MODEL_FLAGS = {
     'num_head_channels': 64,
     'num_res_blocks': 2,
     'resblock_updown': True,
-    'use_fp16': False,
-    'use_scale_shift_norm': True
+    'use_fp16': True,
+    'use_scale_shift_norm': True,
 }
 
 # modified from https://github.com/lucidrains/DALLE-pytorch/blob/d355100061911b13e1f1c22de8c2b5deb44e65f8/dalle_pytorch/vae.py
-def download(url, filename=None, root=CACHE_PATH):
+def download(url, filename, root=CACHE_PATH):
+    filename = Path(filename)
+    root = Path(root)
     os.makedirs(root, exist_ok=True)
-    filename = filename if os.path.basename(url) is not None else filename
     download_target = Path(os.path.join(root, filename))
-    download_target_tmp = Path(os.path.join(root, f"tmp_filename"))
+    download_target_tmp = root.joinpath(filename.with_suffix('.tmp'))
     if os.path.exists(download_target) and not os.path.isfile(download_target):
         raise RuntimeError(f"{download_target} exists and is not a regular file")
     if os.path.isfile(download_target):
@@ -104,7 +95,7 @@ def download(url, filename=None, root=CACHE_PATH):
     with request.urlopen(url) as source, open(download_target_tmp, "wb") as output:
         with tqdm(total=int(source.info().get("Content-Length")), ncols=80) as loop:
             while True:
-                buffer = source.read(8192)
+                buffer = source.read(16384)
                 if not buffer:
                     break
                 output.write(buffer)
@@ -113,16 +104,19 @@ def download(url, filename=None, root=CACHE_PATH):
     return download_target
 
 
-def download_guided_diffusion(image_size, checkpoints_dir=CACHE_PATH, class_cond=True, overwrite=False):
-    checkpoints_dir.mkdir(parents=True, exist_ok=True)
+def download_guided_diffusion(image_size, class_cond=False, checkpoints_dir=CACHE_PATH, overwrite=False):
     if class_cond:
-        gd_path = checkpoints_dir.joinpath(
-            Path(f'{image_size}x{image_size}_diffusion.pt'))
+        checkpoints_dir.mkdir(parents=True, exist_ok=True)
+        gd_path = checkpoints_dir.joinpath(Path(f'{image_size}x{image_size}_diffusion.pt'))
         gd_url = f'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/{image_size}x{image_size}_diffusion.pt'
     else:
-        assert image_size == 256, "class_cond=False only works for 256x256 images"
-        gd_path = checkpoints_dir.joinpath(Path("256x256_diffusion_uncond.pt"))
-        gd_url = f'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt'
+        print("Using finetuned uncond checkpoint.")
+        assert image_size in [256,512], "class_cond=False only works for 256x256 images"
+        if image_size == 256:
+            gd_path = checkpoints_dir.joinpath(Path(f"{image_size}x{image_size}_diffusion_uncond.pt"))
+        elif image_size == 512:
+            gd_path = checkpoints_dir.joinpath(Path(f"512x512_diffusion_uncond_finetune_008100.pt"))
+        gd_url = UNCOND_512_URL if image_size == 512 else UNCOND_256_URL
 
     if gd_path.exists() and not overwrite:
         print("Already downloaded")
@@ -136,10 +130,10 @@ def download_guided_diffusion(image_size, checkpoints_dir=CACHE_PATH, class_cond
 def load_guided_diffusion(
     checkpoint_path,
     image_size,
+    class_cond,
     diffusion_steps=None,
     timestep_respacing=None,
     device=None,
-    class_cond=True,
 ):
     '''
     checkpoint_path: path to the checkpoint to load.
@@ -155,17 +149,17 @@ def load_guided_diffusion(
     elif image_size == 128:
         model_config.update(DIFFUSION_128_MODEL_FLAGS)
     elif image_size == 256:
-        if class_cond:
-            model_config.update(DIFFUSION_256_MODEL_FLAGS)
-        else:
-            model_config.update(DIFFUSION_256_UNCOND_MODEL_FLAGS)
+        model_config.update(DIFFUSION_256_MODEL_FLAGS)
     elif image_size == 512:
         model_config.update(DIFFUSION_512_MODEL_FLAGS)
     else:
         raise ValueError("Invalid image size")
 
-    model_config['diffusion_steps'] = diffusion_steps
-    model_config['timestep_respacing'] = timestep_respacing
+    model_config.update({
+        'class_cond': class_cond,
+        'diffusion_steps': diffusion_steps,
+        'timestep_respacing': timestep_respacing,
+    })
 
     model, diffusion = create_model_and_diffusion(**model_config)
     model.load_state_dict(th.load(checkpoint_path, map_location="cpu"))

@@ -62,7 +62,7 @@ def clip_guided_diffusion(
     tv_scale: float = 100,
     top_n: int = len(IMAGENET_CLASSES),
     image_size: int = 128,
-    class_cond: bool = False,
+    class_cond: bool = True,
     clip_guidance_scale: float = 1000,
     cutout_power: float = 1.0,
     num_cutouts: int = 16,
@@ -91,8 +91,6 @@ def clip_guided_diffusion(
     assert 0 < top_n <= len(
         IMAGENET_CLASSES), f"top_n must be less than or equal to the number of classes: {top_n} > {len(IMAGENET_CLASSES)}"
     assert 0.0 <= min_weight <= 1.0, f"min_weight must be between 0 and 1: {min_weight} not in [0, 1]"
-    assert (not class_cond and image_size ==
-            256) or class_cond, f"Image size must be 256 when --class_cond/-cond is False."
     if init_image:
         # Check skip timesteps logic
         assert skip_timesteps > 0 and skip_timesteps < int(timestep_respacing.replace("ddim", "")), \
@@ -119,11 +117,11 @@ def clip_guided_diffusion(
 
     # Use CLIP scores as weights for random class selection.
     model_kwargs = {}
-    model_kwargs["y"] = th.zeros([batch_size], device=device, dtype=th.long)
     # Rank the classes by their CLIP score
     clip_scores = imagenet_top_n(
         prompt, prompt_min, min_weight, clip_model, device, top_n) if class_score else None
     if clip_scores is not None:
+        model_kwargs["y"] = th.zeros([batch_size], device=device, dtype=th.long)
         print(f"Ranking top {top_n} ImageNet classes by their CLIP score.")
     else:
         print("Ranking all ImageNet classes uniformly. Use --class_score/-score to enable CLIP guided class selection instead.")
@@ -148,10 +146,10 @@ def clip_guided_diffusion(
     gd_model, diffusion = cgd_util.load_guided_diffusion(
         checkpoint_path=diffusion_path,
         image_size=image_size,
+        class_cond=class_cond,
         diffusion_steps=diffusion_steps,
         timestep_respacing=timestep_respacing,
         device=device,
-        class_cond=class_cond,
     )
 
     # Customize guided-diffusion model with function that uses CLIP guidance.
@@ -188,11 +186,12 @@ def clip_guided_diffusion(
     else:
         diffusion_sample_loop = diffusion.p_sample_loop_progressive
 
+    randomize_class = not class_cond
     samples = diffusion_sample_loop(
         gd_model, (batch_size, 3, image_size, image_size),
         clip_denoised=False, model_kwargs=model_kwargs, cond_fn=cond_fn,
         progress=True, skip_timesteps=skip_timesteps, init_image=init_tensor,
-        randomize_class=class_cond, clip_scores=clip_scores,
+        randomize_class=randomize_class, clip_scores=clip_scores,
     )
     return samples, gd_model, diffusion
 
@@ -243,9 +242,10 @@ def main():
                    default=0.5, help="Cutout size power")
     p.add_argument("--clip_model", "-clip", type=str, default="ViT-B/32",
                    help=f"clip model name. Should be one of: {CLIP_MODEL_NAMES}")
-    p.add_argument("--class_cond", "-cond", type=bool, default=True,
-                   help="Use class conditional. Required for image sizes other than 256")
+    p.add_argument("--uncond", "-uncond", action="store_true")
     args = p.parse_args()
+
+    _class_cond = not args.uncond
 
     assert 0 < args.save_frequency <= int(args.timestep_respacing.replace('ddim', '')), \
         "--save_frequency/--freq must be greater than 0and less than --timestep_respacing"
@@ -265,7 +265,7 @@ def main():
         tv_scale=args.tv_scale,
         top_n=args.top_n,
         image_size=args.image_size,
-        class_cond=args.class_cond,
+        class_cond=_class_cond,
         clip_guidance_scale=args.clip_guidance_scale,
         cutout_power=args.cutout_power,
         num_cutouts=args.num_cutouts,
