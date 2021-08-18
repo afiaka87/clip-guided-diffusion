@@ -10,3 +10,4 @@ __pycache__/
 dist/
 output/
 *.png
+guided-diffusion/
