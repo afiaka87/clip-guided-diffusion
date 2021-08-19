@@ -1,4 +1,7 @@
 import argparse
+from datetime import time
+import random
+from tqdm import tqdm
 import sys
 import os
 from functools import lru_cache
@@ -18,40 +21,36 @@ import cgd_util
 sys.path.append(os.path.join(os.getcwd(), "guided-diffusion"))
 
 
-TIMESTEP_RESPACINGS = ("25", "50", "100", "250", "500", "1000",
-                       "ddim25", "ddim50", "ddim100", "ddim250", "ddim500", "ddim1000")
+TIMESTEP_RESPACINGS = ("25", "50", "100", "250", "500", "1000", "ddim25", "ddim50", "ddim100", "ddim250", "ddim500", "ddim1000")
 DIFFUSION_SCHEDULES = (25, 50, 100, 250, 500, 1000)
 IMAGE_SIZES = (64, 128, 256, 512)
-CLIP_MODEL_NAMES = ("ViT-B/16", "ViT-B/32", "RN50",
-                    "RN101", "RN50x4", "RN50x16")
-
-CLIP_NORMALIZE = tvt.Normalize(mean=[0.48145466, 0.4578275, 0.40821073], std=[
-                               0.26862954, 0.26130258, 0.27577711])
+CLIP_MODEL_NAMES = ("ViT-B/16", "ViT-B/32", "RN50", "RN101", "RN50x4", "RN50x16")
+CLIP_NORMALIZE = tvt.Normalize(mean=[0.48145466, 0.4578275, 0.40821073], std=[0.26862954, 0.26130258, 0.27577711])
 
 
-
-@lru_cache(maxsize=None)
 def imagenet_top_n(prompt, prompt_min='', min_weight=0.1, clip_model=None, device=None, n: int = len(IMAGENET_CLASSES)):
+    imagenet_lbl_tokens = clip.tokenize(IMAGENET_CLASSES).to(device)
+    prompt_tokens = clip.tokenize(prompt).to(device)
+    prompt_min_features = None
+    prompt_min_tokens = None
+    if prompt_min is not None:
+        prompt_min_tokens = clip.tokenize(prompt_min).to(device)
+
     with th.no_grad():
-        imagenet_lbl_tokens = clip.tokenize(IMAGENET_CLASSES).to(device)
-        prompt_tokens = clip.tokenize(prompt).to(device)
         imagenet_features = clip_model.encode_text(imagenet_lbl_tokens).float()
         prompt_features = clip_model.encode_text(prompt_tokens).float()
-        imagenet_features /= imagenet_features.norm(dim=-1, keepdim=True)
-        prompt_features /= prompt_features.norm(dim=-1, keepdim=True)
-        if len(prompt_min) > 0:
-            prompt_min_tokens = clip.tokenize(prompt_min).to(device)
-            prompt_min_features = clip_model.encode_text(
-                prompt_min_tokens).float()
-            prompt_min_features /= prompt_min_features.norm(
-                dim=-1, keepdim=True)
-            prompt_features = prompt_features - \
-                (min_weight * prompt_min_features)
-        text_probs = (100.0 * prompt_features @
-                      imagenet_features.T).softmax(dim=-1)
-        sorted_probs, sorted_classes = text_probs.cpu().topk(n, dim=-1, sorted=True)
-        categorical_clip_scores = th.distributions.Categorical(sorted_probs)
-        return (sorted_classes[0], categorical_clip_scores)
+        if prompt_min_tokens is not None:
+            prompt_min_features = clip_model.encode_text(prompt_min_tokens).float()
+            prompt_min_features /= prompt_min_features.norm(dim=-1, keepdim=True)
+
+    imagenet_features /= imagenet_features.norm(dim=-1, keepdim=True)
+    prompt_features /= prompt_features.norm(dim=-1, keepdim=True)
+    if prompt_min_features is not None:
+        prompt_features = prompt_features - (min_weight * prompt_min_features)
+    text_probs = (100.0 * prompt_features @ imagenet_features.T).softmax(dim=-1)
+    sorted_probs, sorted_classes = text_probs.cpu().topk(n, dim=-1, sorted=True)
+    categorical_clip_scores = th.distributions.Categorical(sorted_probs)
+    return (sorted_classes[0], categorical_clip_scores)
 
 
 def clip_guided_diffusion(
@@ -63,7 +62,8 @@ def clip_guided_diffusion(
     top_n: int = len(IMAGENET_CLASSES),
     image_size: int = 128,
     class_cond: bool = True,
-    clip_guidance_scale: float = 1000,
+    class_score: bool = False,
+    clip_guidance_scale: int = 1000,
     cutout_power: float = 1.0,
     num_cutouts: int = 16,
     timestep_respacing: str = "1000",
@@ -74,8 +74,8 @@ def clip_guided_diffusion(
     init_image: str = None,
     checkpoints_dir: Path = Path(cgd_util.CACHE_PATH),
     clip_model_name: str = "ViT-B/32",
-    class_score: bool = False,
     augs: list = [],
+    randomize_class: bool = True,
 ):
     assert timestep_respacing in TIMESTEP_RESPACINGS, f"timestep_respacing should be one of {TIMESTEP_RESPACINGS}"
     assert diffusion_steps in DIFFUSION_SCHEDULES, f"Diffusion steps should be one of: {DIFFUSION_SCHEDULES}"
@@ -88,91 +88,68 @@ def clip_guided_diffusion(
 
     # Assertions
     assert len(prompt) > 0, "--prompt/-txt cant be empty"
-    assert 0 < top_n <= len(
-        IMAGENET_CLASSES), f"top_n must be less than or equal to the number of classes: {top_n} > {len(IMAGENET_CLASSES)}"
+    assert 0 < top_n <= len(IMAGENET_CLASSES), f"top_n must be less than or equal to the number of classes: {top_n} > {len(IMAGENET_CLASSES)}"
     assert 0.0 <= min_weight <= 1.0, f"min_weight must be between 0 and 1: {min_weight} not in [0, 1]"
     if init_image:
         # Check skip timesteps logic
         assert skip_timesteps > 0 and skip_timesteps < int(timestep_respacing.replace("ddim", "")), \
             f"--skip_timesteps/-skip (currently {skip_timesteps}) must be greater than 0 and less than --timestep_respacing/-respace (currently {timestep_respacing}) when --init_image/-init is not None."
-        assert Path(init_image).exists(
-        ), f"{init_image} does not exist. Check spelling or provide another path."
+        assert Path(init_image).exists(), f"{init_image} does not exist. Check spelling or provide another path."
     else:
         assert skip_timesteps == 0, f"--skip_timesteps/-skip must be 0 when --init_image/-init is None."
 
-    # Create checkpoints directory
+    # Download guided-diffusion checkpoint
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
-    # Setup
     if seed:
         th.manual_seed(seed)
-
-    # Download pretrained Guided Diffusion model
     checkpoints_dir = Path(checkpoints_dir)
     diffusion_path = cgd_util.download_guided_diffusion(image_size=image_size, checkpoints_dir=checkpoints_dir, class_cond=class_cond)
-
-    # Load CLIP model
-    clip_model = clip.load(clip_model_name, jit=False)[
-        0].eval().requires_grad_(False).to(device)
+    # Load CLIP model/Encode text/Create `MakeCutouts`
+    clip_model = clip.load(clip_model_name, jit=False)[0].eval().requires_grad_(False).to(device)
     clip_size = clip_model.visual.input_resolution
-
-    # Use CLIP scores as weights for random class selection.
-    model_kwargs = {}
-    # Rank the classes by their CLIP score
-    clip_scores = imagenet_top_n(
-        prompt, prompt_min, min_weight, clip_model, device, top_n) if class_score else None
-    if clip_scores is not None:
-        model_kwargs["y"] = th.zeros([batch_size], device=device, dtype=th.long)
-        print(f"Ranking top {top_n} ImageNet classes by their CLIP score.")
-    else:
-        print("Ranking all ImageNet classes uniformly. Use --class_score/-score to enable CLIP guided class selection instead.")
-
-    # Setup CLIP cutouts/embeds
-    make_cutouts = cgd_util.MakeCutouts(
-        clip_size, num_cutouts, cutout_size_power=cutout_power, augment_list=augs)
-    text_embed = clip_model.encode_text(
-        clip.tokenize(prompt).to(device)).float()
-    text_min_embed = clip_model.encode_text(clip.tokenize(
-        prompt_min).to(device)).float() if prompt_min else None
+    make_cutouts = cgd_util.MakeCutouts(clip_size, num_cutouts, cutout_size_power=cutout_power, augment_list=augs)
+    text_embed = clip_model.encode_text(clip.tokenize(prompt).to(device)).float()
+    if prompt_min is not None:
+        text_min_embed = clip_model.encode_text(clip.tokenize(prompt_min).to(device)).float()
 
     # Load initial image (if provided)
     init_tensor = None
     if init_image:
-        pil_image = Image.open(cgd_util.fetch(init_image)).convert(
-            "RGB").resize((image_size, image_size), Image.LANCZOS)
-        init_tensor = tf.to_tensor(pil_image).to(
-            device).unsqueeze(0).mul(2).sub(1)
-
+        pil_image = Image.open(cgd_util.fetch(init_image)).convert("RGB").resize((image_size, image_size), Image.LANCZOS)
+        init_tensor = tf.to_tensor(pil_image).to(device).unsqueeze(0).mul(2).sub(1)
+    
+    # Use CLIP scores as weights for random class selection.
+    imagenet_clip_scores = imagenet_top_n(prompt, prompt_min, min_weight, clip_model, device, top_n)
+    model_kwargs = {}
+    # Rank the classes by their CLIP score
+    if class_cond:
+        model_kwargs["y"] = th.zeros([batch_size], device=device, dtype=th.long)
+        print(f"Ranking top {top_n} ImageNet classes by their CLIP score.")
+    else:
+        # model_kwargs["y"] = [0] * batch_size
+        print("Ranking all ImageNet classes uniformly. Use --class_score/-score to enable CLIP guided class selection instead.")
     # Load guided diffusion
     gd_model, diffusion = cgd_util.load_guided_diffusion(
-        checkpoint_path=diffusion_path,
-        image_size=image_size,
-        class_cond=class_cond,
-        diffusion_steps=diffusion_steps,
-        timestep_respacing=timestep_respacing,
-        device=device,
+        checkpoint_path=diffusion_path, image_size=image_size, class_cond=class_cond, 
+        diffusion_steps=diffusion_steps, timestep_respacing=timestep_respacing, device=device,
     )
-
+    # TODO needs refactor
     # Customize guided-diffusion model with function that uses CLIP guidance.
+    # `clip_scores` should be of type `Tuple(indices, torch.distributions.Categorical)
     current_timestep = diffusion.num_timesteps - 1
-
     def cond_fn(x, t, y=None):
         with th.enable_grad():
             x = x.detach().requires_grad_()
             n = x.shape[0]
-            my_t = th.ones([n], device=device, dtype=th.long) * \
-                current_timestep
-            out = diffusion.p_mean_variance(
-                gd_model, x, my_t, clip_denoised=False, model_kwargs={"y": y})
+            my_t = th.ones([n], device=device, dtype=th.long) * current_timestep
+            out = diffusion.p_mean_variance(gd_model, x, my_t, clip_denoised=False, model_kwargs={"y": y})
             fac = diffusion.sqrt_one_minus_alphas_cumprod[current_timestep]
             x_in = out["pred_xstart"] * fac + x * (1 - fac)
             clip_in = CLIP_NORMALIZE(make_cutouts(x_in.add(1).div(2)))
-            cutout_embeds = clip_model.encode_image(
-                clip_in).float().view([num_cutouts, n, -1])
-            max_dists = cgd_util.spherical_dist_loss(
-                cutout_embeds, text_embed.unsqueeze(0))
-            if text_min_embed is not None:  # Implicit comparison to None is not supported by pytorch tensors
-                min_dists = cgd_util.spherical_dist_loss(
-                    cutout_embeds, text_min_embed.unsqueeze(0))
+            cutout_embeds = clip_model.encode_image(clip_in).float().view([num_cutouts, n, -1])
+            max_dists = cgd_util.spherical_dist_loss(cutout_embeds, text_embed.unsqueeze(0))
+            if prompt_min is not None:  # Implicit comparison to None is not supported by pytorch tensors
+                min_dists = cgd_util.spherical_dist_loss(cutout_embeds, text_min_embed.unsqueeze(0))
                 dists = max_dists - (min_weight * min_dists)
             else:
                 dists = max_dists
@@ -181,17 +158,22 @@ def clip_guided_diffusion(
             loss = losses.sum() * clip_guidance_scale + tv_losses.sum() * tv_scale
             return -th.autograd.grad(loss, x)[0]
 
+    # Erase imagenet_clip_scores if class_score not provided.
+    if class_score is None:
+        imagenet_clip_scores = None
+
+    # Choose between normal or DDIM
     if timestep_respacing.startswith("ddim"):
         diffusion_sample_loop = diffusion.ddim_sample_loop_progressive
     else:
         diffusion_sample_loop = diffusion.p_sample_loop_progressive
 
-    randomize_class = not class_cond
+    # Gather generator for diffusion
     samples = diffusion_sample_loop(
         gd_model, (batch_size, 3, image_size, image_size),
         clip_denoised=False, model_kwargs=model_kwargs, cond_fn=cond_fn,
         progress=True, skip_timesteps=skip_timesteps, init_image=init_tensor,
-        randomize_class=randomize_class, clip_scores=clip_scores,
+        randomize_class=randomize_class, clip_scores=imagenet_clip_scores
     )
     return samples, gd_model, diffusion
 
@@ -204,8 +186,8 @@ def main():
                    default='', help="the prompt to reward")
     p.add_argument("--prompt_min", "-min", type=str,
                    default=None, help="the prompt to penalize")
-    p.add_argument("--min_weight", "-min_wt", type=str,
-                   default=0.1, help="the prompt to penalize")
+    p.add_argument("--min_weight", "-min_wt", type=float,
+                   default=0.25, help="the prompt to penalize")
     p.add_argument("--image_size", "-size", type=int, default=128,
                    help="Diffusion image size. Must be one of [64, 128, 256, 512].")
     p.add_argument("--init_image", "-init", type=str,
@@ -243,6 +225,7 @@ def main():
     p.add_argument("--clip_model", "-clip", type=str, default="ViT-B/32",
                    help=f"clip model name. Should be one of: {CLIP_MODEL_NAMES}")
     p.add_argument("--uncond", "-uncond", action="store_true")
+
     args = p.parse_args()
 
     _class_cond = not args.uncond
@@ -278,11 +261,11 @@ def main():
         checkpoints_dir=args.checkpoints_dir,
         clip_model_name=args.clip_model,
         class_score=args.class_score,
+        randomize_class=(not args.uncond)
     )
 
     # Remove non-alphanumeric and white space characters from prompt and prompt_min for directory name
-    outputs_path = cgd_util.txt_to_dir(base_path=prefix_path,
-                              txt=args.prompt, txt_min=args.prompt_min)
+    outputs_path = cgd_util.txt_to_dir(base_path=prefix_path, txt=args.prompt, txt_min=args.prompt_min)
     outputs_path.mkdir(exist_ok=True)
 
     try:
@@ -295,12 +278,9 @@ def main():
     except RuntimeError as runtime_ex:
         if "CUDA out of memory" in str(runtime_ex):
             print(f"CUDA OOM error occurred.")
-            print(
-                f"Try lowering --image_size/-size, --batch_size/-bs, --num_cutouts/-cutn")
-            print(
-                f"--clip_model/-clip (currently {args.clip_model}) can have a large impact on VRAM usage.")
-            print(
-                f"RN50 will use the least VRAM. ViT-B/32 is the best bang for your buck.")
+            print(f"Try lowering --image_size/-size, --batch_size/-bs, --num_cutouts/-cutn")
+            print(f"--clip_model/-clip (currently {args.clip_model}) can have a large impact on VRAM usage.")
+            print(f"'RN50' will use the least VRAM. 'ViT-B/32' the second least and is good for its memory/runtime constraints.")
         else:
             raise runtime_ex
 
