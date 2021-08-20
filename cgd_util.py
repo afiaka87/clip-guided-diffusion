@@ -104,6 +104,7 @@ def download(url, filename, root=CACHE_PATH):
 
 
 def download_guided_diffusion(image_size, class_cond=False, checkpoints_dir=CACHE_PATH, overwrite=False):
+    gd_path = None
     if class_cond:
         checkpoints_dir.mkdir(parents=True, exist_ok=True)
         gd_path = checkpoints_dir.joinpath(Path(f'{image_size}x{image_size}_diffusion.pt'))
@@ -117,8 +118,8 @@ def download_guided_diffusion(image_size, class_cond=False, checkpoints_dir=CACH
             gd_path = checkpoints_dir.joinpath(Path(f"512x512_diffusion_uncond_finetune_008100.pt"))
         gd_url = UNCOND_512_URL if image_size == 512 else UNCOND_256_URL
 
-    if gd_path.exists() and not overwrite:
-        print("Already downloaded")
+    if gd_path and gd_path.exists() and not overwrite:
+        print(f"Found guided diffusion model for {image_size}x{image_size} at {gd_path}. Skipping download.")
         return gd_path
 
     print(f'Downloading {gd_url} to {gd_path}')
