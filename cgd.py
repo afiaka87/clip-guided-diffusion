@@ -15,8 +15,6 @@ from data.imagenet1000_clsidx_to_labels import IMAGENET_CLASSES
 import cgd_util
 
 sys.path.append(os.path.join(os.getcwd(), "guided-diffusion"))
-
-
 TIMESTEP_RESPACINGS = ("25", "50", "100", "250", "500", "1000", "ddim25", "ddim50", "ddim100", "ddim250", "ddim500", "ddim1000")
 DIFFUSION_SCHEDULES = (25, 50, 100, 250, 500, 1000)
 IMAGE_SIZES = (64, 128, 256, 512)
@@ -73,17 +71,12 @@ def clip_guided_diffusion(
     augs: list = [],
     randomize_class: bool = True,
 ):
-    print(class_score)
+    # Assertions
     assert timestep_respacing in TIMESTEP_RESPACINGS, f"timestep_respacing should be one of {TIMESTEP_RESPACINGS}"
     assert diffusion_steps in DIFFUSION_SCHEDULES, f"Diffusion steps should be one of: {DIFFUSION_SCHEDULES}"
     assert clip_model_name in CLIP_MODEL_NAMES, f"clip model name should be one of: {CLIP_MODEL_NAMES}"
     assert image_size in IMAGE_SIZES, f"image size should be one of {IMAGE_SIZES}"
     assert num_cutouts > 0, "--num_cutouts/-cutn must greater than zero."
-    device = th.device("cuda:0") if th.cuda.is_available() else "cpu"
-    if custom_device:
-        device = th.device(custom_device)
-
-    # Assertions
     assert len(prompt) > 0, "--prompt/-txt cant be empty"
     assert 0 < top_n <= len(IMAGENET_CLASSES), f"top_n must be less than or equal to the number of classes: {top_n} > {len(IMAGENET_CLASSES)}"
     assert 0.0 <= min_weight <= 1.0, f"min_weight must be between 0 and 1: {min_weight} not in [0, 1]"
@@ -95,12 +88,18 @@ def clip_guided_diffusion(
     else:
         assert skip_timesteps == 0, f"--skip_timesteps/-skip must be 0 when --init_image/-init is None."
 
-    # Download guided-diffusion checkpoint
-    checkpoints_dir.mkdir(parents=True, exist_ok=True)
+    # Pytorch setup
+    device = th.device("cuda:0") if th.cuda.is_available() else "cpu"
+    if custom_device:
+        device = th.device(custom_device)
     if seed:
         th.manual_seed(seed)
+
+    # Download guided-diffusion checkpoint
+    checkpoints_dir.mkdir(parents=True, exist_ok=True)
     checkpoints_dir = Path(checkpoints_dir)
     diffusion_path = cgd_util.download_guided_diffusion(image_size=image_size, checkpoints_dir=checkpoints_dir, class_cond=class_cond)
+
     # Load CLIP model/Encode text/Create `MakeCutouts`
     clip_model = clip.load(clip_model_name, jit=False)[0].eval().requires_grad_(False).to(device)
     clip_size = clip_model.visual.input_resolution
