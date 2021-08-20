@@ -1,10 +1,6 @@
 import argparse
-from datetime import time
-import random
-from tqdm import tqdm
 import sys
 import os
-from functools import lru_cache
 from pathlib import Path
 
 from guided_diffusion.nn import checkpoint
@@ -77,6 +73,7 @@ def clip_guided_diffusion(
     augs: list = [],
     randomize_class: bool = True,
 ):
+    print(class_score)
     assert timestep_respacing in TIMESTEP_RESPACINGS, f"timestep_respacing should be one of {TIMESTEP_RESPACINGS}"
     assert diffusion_steps in DIFFUSION_SCHEDULES, f"Diffusion steps should be one of: {DIFFUSION_SCHEDULES}"
     assert clip_model_name in CLIP_MODEL_NAMES, f"clip model name should be one of: {CLIP_MODEL_NAMES}"
@@ -121,9 +118,10 @@ def clip_guided_diffusion(
     # Use CLIP scores as weights for random class selection.
     imagenet_clip_scores = imagenet_top_n(prompt, prompt_min, min_weight, clip_model, device, top_n)
     model_kwargs = {}
-    # Rank the classes by their CLIP score
     if class_cond:
         model_kwargs["y"] = th.zeros([batch_size], device=device, dtype=th.long)
+    # Rank the classes by their CLIP score
+    if class_score:
         print(f"Ranking top {top_n} ImageNet classes by their CLIP score.")
     else:
         # model_kwargs["y"] = [0] * batch_size
@@ -159,7 +157,7 @@ def clip_guided_diffusion(
             return -th.autograd.grad(loss, x)[0]
 
     # Erase imagenet_clip_scores if class_score not provided.
-    if class_score is None:
+    if class_score == False:
         imagenet_clip_scores = None
 
     # Choose between normal or DDIM
