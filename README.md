@@ -33,12 +33,20 @@ import cgd_util
 
 prompt = "An image of a fox in a forest."
 
+# Pass in your own augmentations (supports torchvision.transforms/kornia.augmentation)
+# (defaults to no augmentations, which is likely best unless you're doing something special)
+aug_list = [
+    K.RandomAffine(degrees=0, translate=(0.1, 0.1), scale=(0.9, 1.1), shear=0.1)),
+    K.RandomMotionBlur(kernel_size=(1, 5), angle=15, direction=0.5)),
+    K.RandomHorizontalFlip(p=0.5)),
+]
+
 # Remove non-alphanumeric and white space characters from prompt and prompt_min for directory name
 outputs_path = cgd_util.txt_to_dir(base_path=prefix_path, txt=prompt)
 outputs_path.mkdir(exist_ok=True)
 
 # `cgd_samples` is a generator that yields the output images
-cgd_samples, _, diffusion = clip_guided_diffusion(prompt=prompt, prefix=outputs_path)
+cgd_samples, _, diffusion = clip_guided_diffusion(prompt=prompt, prefix=outputs_path, augs=aug_list)
 
 # Image paths will all be in `all_images` for e.g. video generation at the end.
 all_images = []
