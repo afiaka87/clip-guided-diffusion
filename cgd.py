@@ -270,11 +270,6 @@ def main():
                 for j, image in enumerate(sample["pred_xstart"]):
                     cgd_util.log_image(image, prefix_path, step, j)
     except RuntimeError as runtime_ex:
-        for variable in variables:
-            try:
-                del variable
-            except Exception:
-                pass
         if "CUDA out of memory" in str(runtime_ex):
             print(f"CUDA OOM error occurred.")
             print(f"Try lowering --image_size/-size, --batch_size/-bs, --num_cutouts/-cutn")
