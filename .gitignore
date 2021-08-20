@@ -11,3 +11,5 @@ dist/
 output/
 *.png
 guided-diffusion/
+build/
+cgd_pytorch.egg-info/

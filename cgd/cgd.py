@@ -10,7 +10,7 @@ from torchvision import transforms as tvt
 from torchvision.transforms import functional as tf
 
 from data.imagenet1000_clsidx_to_labels import IMAGENET_CLASSES
-import cgd_util
+from cgd import util as cgd_util
 
 sys.path.append(os.path.join(os.getcwd(), "guided-diffusion"))
 
@@ -206,17 +206,17 @@ def main():
     p.add_argument("--seed", "-seed", type=int,
                    default=0, help="Random number seed")
     p.add_argument("--save_frequency", "-freq", type=int,
-                   default=5, help="Save frequency")
+                   default=1, help="Save frequency")
     p.add_argument("--device", type=str,
                    help="device to run on .e.g. cuda:0 or cpu")
     p.add_argument("--diffusion_steps", "-steps", type=int,
                    default=1000, help="Diffusion steps")
     p.add_argument("--timestep_respacing", "-respace", type=str,
                    default="1000", help="Timestep respacing")
-    p.add_argument("--num_cutouts", "-cutn", type=int, default=32,
+    p.add_argument("--num_cutouts", "-cutn", type=int, default=8,
                    help="Number of randomly cut patches to distort from diffusion.")
     p.add_argument("--cutout_power", "-cutpow", type=float,
-                   default=0.5, help="Cutout size power")
+                   default=1., help="Cutout size power")
     p.add_argument("--clip_model", "-clip", type=str, default="ViT-B/32",
                    help=f"clip model name. Should be one of: {CLIP_MODEL_NAMES}")
     p.add_argument("--uncond", "-uncond", action="store_true")
@@ -231,9 +231,7 @@ def main():
     # convert Path arg to Path object
     prefix_path = Path(args.prefix)
     prefix_path.mkdir(exist_ok=True)
-    assert prefix_path.is_dir(
-    ), f"--prefix,-dir {args.prefix} is a file, not a directory. Please provide a directory."
-
+    assert prefix_path.is_dir(), f"--prefix,-dir {args.prefix} is a file, not a directory. Please provide a directory."
     # Initialize diffusion generator
     cgd_samples, _, diffusion = clip_guided_diffusion(
         prompt=args.prompt,
@@ -260,16 +258,15 @@ def main():
     )
 
     # Remove non-alphanumeric and white space characters from prompt and prompt_min for directory name
-    outputs_path = cgd_util.txt_to_dir(base_path=prefix_path, txt=args.prompt, txt_min=args.prompt_min)
-    outputs_path.mkdir(exist_ok=True)
+    prefix_path.mkdir(exist_ok=True)
 
     try:
         current_timestep = diffusion.num_timesteps - 1
         for step, sample in enumerate(cgd_samples):
             current_timestep -= 1
             if step % args.save_frequency == 0 or current_timestep == -1:
-                for j, image in enumerate(sample["pred_xstart"]):
-                    cgd_util.log_image(image, prefix_path, step, j)
+                for batch_idx, image_tensor in enumerate(sample["pred_xstart"]):
+                    cgd_util.log_image(image_tensor, str(prefix_path), args.prompt, args.prompt_min, step, batch_idx)
     except RuntimeError as runtime_ex:
         if "CUDA out of memory" in str(runtime_ex):
             print(f"CUDA OOM error occurred.")

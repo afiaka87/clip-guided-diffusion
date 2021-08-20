@@ -7,8 +7,7 @@ from pathlib import Path
 
 import requests
 import torch as th
-from guided_diffusion.script_util import (
-    create_model_and_diffusion, model_and_diffusion_defaults)
+from guided_diffusion.script_util import (create_model_and_diffusion, model_and_diffusion_defaults)
 from PIL import Image
 from torch import nn
 from torch.nn import functional as tf
@@ -81,12 +80,10 @@ DIFFUSION_512_MODEL_FLAGS = {
 }
 
 # modified from https://github.com/lucidrains/DALLE-pytorch/blob/d355100061911b13e1f1c22de8c2b5deb44e65f8/dalle_pytorch/vae.py
-def download(url, filename, root=CACHE_PATH):
-    filename = Path(filename)
-    root = Path(root)
+def download(url: str, filename:str, root: str=CACHE_PATH):
     os.makedirs(root, exist_ok=True)
     download_target = Path(os.path.join(root, filename))
-    download_target_tmp = root.joinpath(filename.with_suffix('.tmp'))
+    download_target_tmp = download_target.with_suffix('.tmp')
     if os.path.exists(download_target) and not os.path.isfile(download_target):
         raise RuntimeError(f"{download_target} exists and is not a regular file")
     if os.path.isfile(download_target):
@@ -103,19 +100,19 @@ def download(url, filename, root=CACHE_PATH):
     return download_target
 
 
-def download_guided_diffusion(image_size, class_cond=False, checkpoints_dir=CACHE_PATH, overwrite=False):
+def download_guided_diffusion(image_size: int, class_cond: bool=False, checkpoints_dir:str=CACHE_PATH, overwrite: bool=False):
     gd_path = None
     if class_cond:
-        checkpoints_dir.mkdir(parents=True, exist_ok=True)
-        gd_path = checkpoints_dir.joinpath(Path(f'{image_size}x{image_size}_diffusion.pt'))
+        Path(checkpoints_dir).mkdir(parents=True, exist_ok=True)
+        gd_path = Path(checkpoints_dir).joinpath(Path(f'{image_size}x{image_size}_diffusion.pt'))
         gd_url = f'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/{image_size}x{image_size}_diffusion.pt'
     else:
         print("Using finetuned uncond checkpoint.")
         assert image_size in [256,512], "class_cond=False only works for 256x256 images"
         if image_size == 256:
-            gd_path = checkpoints_dir.joinpath(Path(f"{image_size}x{image_size}_diffusion_uncond.pt"))
+            gd_path = Path(checkpoints_dir).joinpath(Path(f"{image_size}x{image_size}_diffusion_uncond.pt"))
         elif image_size == 512:
-            gd_path = checkpoints_dir.joinpath(Path(f"512x512_diffusion_uncond_finetune_008100.pt"))
+            gd_path = Path(checkpoints_dir).joinpath(Path(f"512x512_diffusion_uncond_finetune_008100.pt"))
         gd_url = UNCOND_512_URL if image_size == 512 else UNCOND_256_URL
 
     if gd_path and gd_path.exists() and not overwrite:
@@ -123,17 +120,17 @@ def download_guided_diffusion(image_size, class_cond=False, checkpoints_dir=CACH
         return gd_path
 
     print(f'Downloading {gd_url} to {gd_path}')
-    download(gd_url, gd_path)
+    download(gd_url, str(gd_path))
     return gd_path
 
 
 def load_guided_diffusion(
-    checkpoint_path,
-    image_size,
-    class_cond,
-    diffusion_steps=None,
-    timestep_respacing=None,
-    device=None,
+    checkpoint_path: str,
+    image_size: int,
+    class_cond: bool,
+    diffusion_steps: int=None,
+    timestep_respacing: str=None,
+    device:str=None,
 ):
     '''
     checkpoint_path: path to the checkpoint to load.
@@ -182,23 +179,19 @@ def fetch(url_or_path):
         return fd
     return open(url_or_path, 'rb')
 
-
-def log_image(image, prefix_path, current_step, batch_idx):
-    filename = os.path.join(prefix_path, f"{batch_idx:04}_iteration_{current_step:04}.png")
+def log_image(image: th.Tensor, base_path: str, txt: str, txt_min: str, current_step: int, batch_idx: int) -> str:
+    cleaned_txt = f"{txt}_MIN_{txt_min}" if txt_min else txt
+    cleaned_txt = re.sub(r"[^\w\s]", "", str(cleaned_txt)).replace(" ", "_")[:256]
+    dirname = Path(base_path).joinpath(cleaned_txt)
+    dirname.mkdir(parents=True, exist_ok=True)
+    filename = dirname.joinpath(f"j_{batch_idx:04}_i_{current_step:04}.png")
     pil_image = tvf.to_pil_image(image.add(1).div(2).clamp(0, 1))
     pil_image.save('current.png')
     pil_image.save(filename)
-    return filename
+    return str(filename)
 
 
-def txt_to_dir(base_path, txt, txt_min=None):
-    dir_name = f"{txt}_MIN_{txt_min}" if txt_min else txt
-    dir_name = Path(
-        re.sub(r"[^\w\s]", "", f"{dir_name}").replace(" ", "_")[:256])
-    return Path(os.path.join(base_path, dir_name))
-
-
-def resize_image(image, out_size):
+def resize_image(image: th.Tensor, out_size: int):
     """Resize image"""
     ratio = image.size[0] / image.size[1]
     area = min(image.size[0] * image.size[1], out_size[0] * out_size[1])
@@ -206,14 +199,14 @@ def resize_image(image, out_size):
     return image.resize(size, Image.LANCZOS)
 
 
-def spherical_dist_loss(x, y):
+def spherical_dist_loss(x:th.Tensor, y: th.Tensor):
     """Spherical distance loss"""
     x = tf.normalize(x, dim=-1)
     y = tf.normalize(y, dim=-1)
     return (x - y).norm(dim=-1).div(2).arcsin().pow(2).mul(2)
 
 
-def tv_loss(input):
+def tv_loss(input: th.Tensor):
     """L2 total variation loss, as in Mahendran et al."""
     input = tf.pad(input, (0, 1, 0, 1), "replicate")
     x_diff = input[..., :-1, 1:] - input[..., :-1, :-1]
@@ -222,14 +215,14 @@ def tv_loss(input):
 
 
 class MakeCutouts(nn.Module):
-    def __init__(self, cut_size, num_cutouts, cutout_size_power=1.0, augment_list=[]):
+    def __init__(self, cut_size: int, num_cutouts: int, cutout_size_power: float=1.0, augment_list: list=[]):
         super().__init__()
         self.cut_size = cut_size
         self.cutn = num_cutouts
         self.cut_pow = cutout_size_power
         self.augs = nn.Sequential(*augment_list)
 
-    def forward(self, input):
+    def forward(self, input: th.Tensor):
         side_x, side_y = input.shape[2:4]
         max_size = min(side_y, side_x)
         min_size = min(side_y, side_x, self.cut_size)

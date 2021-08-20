@@ -13,17 +13,16 @@ See captions and more generations in the [Gallery](/images/README.md)
 See also - <a href="https://github.com/nerdyrodent/VQGAN-CLIP">VQGAN-CLIP</a>
 
 ---
-
-## Installation
+## Quick start
 ```sh
-git clone https://github.com/afiaka87/clip-guided-diffusion.git
-cd clip-guided-diffusion
-python3 -m venv cgd_venv
-source cgd_venv/bin/activate
-❯ (cgd_venv) pip install -r requirements.txt
-❯ (cgd_venv) git clone https://github.com/afiaka87/guided-diffusion.git
-❯ (cgd_venv) pip install -e guided-diffusion
+❯ git clone https://github.com/afiaka87/clip-guided-diffusion.git && cd clip-guided-diffusion
+❯ git clone https://github.com/afiaka87/guided-diffusion.git
+❯ pip3 install -e guided-diffusion
+❯ python3 setup.py install
+❯ cgd -txt "puddle"
+3%|██▉              | 28/1000 [00:07<04:08,  3.91it/s]
 ```
+
 ## Usage - Python
 
 ```python
@@ -72,7 +71,7 @@ for step, sample in enumerate(cgd_samples):
 - The most recent generation will also be stored in the file `current.png`
 
 ```sh
-❯ (cgd_venv) python cgd.py -size 256 -txt "32K HUHD Mushroom"
+❯ cgd -size 256 -txt "32K HUHD Mushroom"
 Step 999, output 0:
 00%|███████████████| 1000/1000 [00:00<12:30,  1.02it/s]
 ```
@@ -83,7 +82,7 @@ Step 999, output 0:
 - `--class_score` / `-score`
 - Scores are used to weight class selection.
 ```sh
-❯ (cgd_venv) python cgd.py -score -cgs 200 -cutn 64 -size 256 -respace 'ddim100' --prompt "cat painting"
+❯ cgd -score -cgs 200 -cutn 64 -size 256 -respace 'ddim100' --prompt "cat painting"
 ```
 
 ### Iterations/Steps (Timestep Respacing)
@@ -97,11 +96,11 @@ Step 999, output 0:
     - `25`, `50`, `150`, `250`, `500`, `1000`,
     - `ddim25`,`ddim50`,`ddim150`, `ddim250`,`ddim500`,`ddim1000`
 ```sh
-❯ (cgd_venv) python cgd.py -respace 'ddim50' -txt "cat painting"
+❯ cgd -respace 'ddim50' -txt "cat painting"
 ```
 - Smaller `-respace` values can benefit a lot from class scoring.
 ```sh
-❯ (cgd_venv) python cgd.py -score -respace 50 -txt "cat painting"
+❯ cgd -score -respace 50 -txt "cat painting"
 ```
 
 ### Penalize a text prompt as well
@@ -109,7 +108,7 @@ Step 999, output 0:
 - Loss for prompt_min is weighted 0.5, a value found in experimentation.
 - Also used to weight class selection with `-score`.
 ```sh
-❯ (cgd_venv) python cgd.py -txt "32K HUHD Mushroom" -min "green grass"
+❯ cgd -txt "32K HUHD Mushroom" -min "green grass"
 ```
 <img src="images/32K_HUHD_Mushroom_MIN_green_grass.png" width="200"></img>
 
@@ -120,10 +119,9 @@ Blend an image with the diffusion for a number of steps.
   - **Needs to be set in order to blend an image.**
   - Good range for `-respace=1000` is 350 to 650.
 ```sh
-❯ (cgd_venv) python cgd.py \
+❯ cgd -txt "A mushroom in the style of Vincent Van Gogh" \
   -init "images/32K_HUHD_Mushroom.png" \
-  -skip 500 \
-  -txt "A mushroom in the style of Vincent Van Gogh"
+  -skip 500
 ```
 <img src="images/a_mushroom_in_the_style_of_vangogh.png?raw=true" width="200"></img>
 
@@ -135,7 +133,7 @@ Blend an image with the diffusion for a number of steps.
 - the 64x64 diffusion checkpoint is challenging to work with and often results in an all-white or all-black image.
   - This is much less of an issue when using an existing image of some sort.
 ```sh
-❯ (cgd_venv) python cgd.py \
+❯ cgd \
     --init_image=images/32K_HUHD_Mushroom.png \
     --skip_timesteps=500 \
     --image_size 64 \
@@ -144,7 +142,7 @@ Blend an image with the diffusion for a number of steps.
 <img src="images/32K_HUHD_Mushroom_64.png?raw=true" width="128"></img>
 
 ```sh
-❯ (cgd_venv) $ python cgd.py --image_size 512 --prompt "8K HUHD Mushroom"
+❯ $ cgd --image_size 512 --prompt "8K HUHD Mushroom"
 ```
 <img src="images/32K_HUHD_Mushroom_512.png?raw=true" width="200"></img>
 
@@ -196,3 +194,20 @@ Blend an image with the diffusion for a number of steps.
 ```
 
 > This code is currently under active development and is subject to frequent changes. Please file an issue if you have any constructive feedback, questions, or issues with the code or colab notebook.
+
+
+# Development
+```sh
+git clone https://github.com/afiaka87/clip-guided-diffusion.git
+cd clip-guided-diffusion
+git clone https://github.com/afiaka87/guided-diffusion.git
+python3 -m venv cgd_venv
+source cgd_venv/bin/activate
+pip install -r requirements.txt
+pip install -e guided-diffusion
+```
+
+## Run tests
+```sh
+python -m unittest discover
+```
