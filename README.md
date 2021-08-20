@@ -30,6 +30,7 @@ source cgd_venv/bin/activate
 # Initialize diffusion generator
 from cgd import clip_guided_diffusion
 import cgd_util
+import kornia.augmentation as K
 
 prompt = "An image of a fox in a forest."
 
