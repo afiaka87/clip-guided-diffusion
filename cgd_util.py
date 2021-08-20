@@ -184,10 +184,10 @@ def fetch(url_or_path):
 
 
 def log_image(image, prefix_path, current_step, batch_idx):
-    filename = os.path.join(
-        prefix_path, f"{batch_idx:04}_iteration_{current_step:04}.png")
+    filename = os.path.join(prefix_path, f"{batch_idx:04}_iteration_{current_step:04}.png")
     pil_image = tvf.to_pil_image(image.add(1).div(2).clamp(0, 1))
     pil_image.save("current.png")
+    pil_image.save(filename)
     return filename
 
 
