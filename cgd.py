@@ -3,8 +3,6 @@ import sys
 import os
 from pathlib import Path
 
-from guided_diffusion.nn import checkpoint
-
 import clip
 import torch as th
 from PIL import Image
@@ -123,7 +121,6 @@ def clip_guided_diffusion(
     if class_score:
         print(f"Ranking top {top_n} ImageNet classes by their CLIP score.")
     else:
-        # model_kwargs["y"] = [0] * batch_size
         print("Ranking all ImageNet classes uniformly. Use --class_score/-score to enable CLIP guided class selection instead.")
     # Load guided diffusion
     gd_model, diffusion = cgd_util.load_guided_diffusion(
@@ -273,6 +270,11 @@ def main():
                 for j, image in enumerate(sample["pred_xstart"]):
                     cgd_util.log_image(image, prefix_path, step, j)
     except RuntimeError as runtime_ex:
+        for variable in variables:
+            try:
+                del variable
+            except Exception:
+                pass
         if "CUDA out of memory" in str(runtime_ex):
             print(f"CUDA OOM error occurred.")
             print(f"Try lowering --image_size/-size, --batch_size/-bs, --num_cutouts/-cutn")
