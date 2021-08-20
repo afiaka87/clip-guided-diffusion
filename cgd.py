@@ -13,6 +13,7 @@ from data.imagenet1000_clsidx_to_labels import IMAGENET_CLASSES
 import cgd_util
 
 sys.path.append(os.path.join(os.getcwd(), "guided-diffusion"))
+
 TIMESTEP_RESPACINGS = ("25", "50", "100", "250", "500", "1000", "ddim25", "ddim50", "ddim100", "ddim250", "ddim500", "ddim1000")
 DIFFUSION_SCHEDULES = (25, 50, 100, 250, 500, 1000)
 IMAGE_SIZES = (64, 128, 256, 512)

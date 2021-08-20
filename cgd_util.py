@@ -188,7 +188,7 @@ def log_image(image, prefix_path, current_step, batch_idx):
     pil_image = tvf.to_pil_image(image.add(1).div(2).clamp(0, 1))
     pil_image.save('current.png')
     pil_image.save(filename)
-    return pil_image
+    return filename
 
 
 def txt_to_dir(base_path, txt, txt_min=None):
