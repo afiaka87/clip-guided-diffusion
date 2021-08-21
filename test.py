@@ -1,29 +1,65 @@
 import unittest
+from cgd.cgd import clip_guided_diffusion
+from cgd import util as cgd_util
+import itertools
 import os
 from pathlib import Path
 
-import torch
-from cgd import util as cgd_util
+import torch as th
 
 # Integration tests; better than nothing at all.
 
-class TestUtil(unittest.TestCase):
-    def test_log_image_saves_image(self):
-        input_base_dir = 'test_output'
-        txt = "boilerplate"
-        txt_min = "minimized"
-        combined = "boilerplate_MIN_minimized"
-        image_tensor = torch.randn(3, 256, 256)
-        current_step = 25
-        batch_idx = 25
 
-        os.remove(f'current.png')
-        saved_output = cgd_util.log_image(image_tensor, input_base_dir, txt, txt_min, current_step, batch_idx)
-        saved_output_path = Path(saved_output)
-        self.assertTrue(saved_output_path.is_file())
-        self.assertEqual(saved_output_path.suffix, '.png')
-        self.assertEqual(saved_output_path.stem, f'j_0025_i_0025')
-        self.assertEqual(saved_output_path.parent.name, combined)
-        self.assertEqual(saved_output_path.parent.parent.name, input_base_dir)
-        self.assertTrue(saved_output_path.exists())
-        self.assertTrue(Path('current.png').exists())
+class TestUtil(unittest.TestCase):
+    def __init__(self, methodName: str) -> None:
+        super().__init__(methodName=methodName)
+
+    def test_log_image_txt_with_underscores_as_dir(self):
+        result = cgd_util.log_image(
+            image=th.randn(3, 256, 256), base_path=os.getcwd(), txt="some text", txt_min="", batch_idx=0, current_step=0
+        )
+        self.assertTrue(Path(result).parent.name == "some_text")
+
+    def test_log_image_txt_and_min_with_underscores_as_dir(self):
+        result = cgd_util.log_image(
+            image=th.randn(3, 256, 256), base_path=os.getcwd(), txt="some text", txt_min="txet emos", batch_idx=0, current_step=0
+        )
+        self.assertTrue(Path(result).parent.name == "some_text_MIN_txet_emos")
+
+    def test_download_returns_target_full_path(self):
+        photon_image_link_from_gh = 'https://github.com/afiaka87/clip-guided-diffusion/raw/main/images/photon.png'
+        result = cgd_util.download(
+            photon_image_link_from_gh, 'photon.png', root=os.getcwd())
+        full_target_path_should_be = os.path.join(os.getcwd(), 'photon.png')
+        self.assertEqual(result, full_target_path_should_be)
+
+    def test_download_target_is_downloaded(self):
+        photon_image_link_from_gh = 'https://github.com/afiaka87/clip-guided-diffusion/raw/main/images/photon.png'
+        cgd_util.download(photon_image_link_from_gh,
+                          "photon.png", root=os.getcwd())
+        self.assertTrue(os.path.exists("photon.png"))
+        os.remove("photon.png")
+
+
+class TestCGD(unittest.TestCase):
+    def __init__(self, methodName: str) -> None:
+        super().__init__(methodName=methodName)
+
+    def test_cgd_one_step_succeeds(self):
+        samples, _, _ = clip_guided_diffusion(prompt="Loose seal.")
+        first_sample = list(itertools.islice(samples, 1))[0]["pred_xstart"]
+        self.assertIsNotNone(first_sample)
+
+    def test_cgd_init_fails_with_default_params(self):
+        try:
+            _, _, _ = clip_guided_diffusion(
+                prompt="Loose seal.", init_image='images/photon.png')
+        except Exception as assertion_exception:
+            self.assertEquals(assertion_exception.__class__, AssertionError)
+        else:
+            self.fail("Expected an exception to be thrown.")
+
+    def test_cgd_init_succeeds_with_skip_timesteps(self):
+        _, _, _ = clip_guided_diffusion(
+            prompt="Loose seal.", init_image='images/photon.png', skip_timesteps=500)
+        self.assertTrue(True)
