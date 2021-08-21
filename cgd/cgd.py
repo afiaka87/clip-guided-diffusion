@@ -182,7 +182,7 @@ def main():
     p.add_argument("--prompt_min", "-min", type=str,
                    default=None, help="the prompt to penalize")
     p.add_argument("--min_weight", "-min_wt", type=float,
-                   default=0.25, help="the prompt to penalize")
+                   default=0.1, help="the prompt to penalize")
     p.add_argument("--image_size", "-size", type=int, default=128,
                    help="Diffusion image size. Must be one of [64, 128, 256, 512].")
     p.add_argument("--init_image", "-init", type=str,

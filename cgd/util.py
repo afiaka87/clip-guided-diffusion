@@ -1,4 +1,5 @@
 from urllib import request
+import subprocess
 import io
 import requests
 import os
@@ -12,7 +13,7 @@ from PIL import Image
 from torch import nn
 from torch.nn import functional as tf
 from torchvision.transforms import functional as tvf
-from tqdm import tqdm
+from tqdm.autonotebook import tqdm
 
 CACHE_PATH = os.path.expanduser("~/.cache/clip-guided-diffusion")
 UNCOND_512_URL = 'https://the-eye.eu/public/AI/models/512x512_diffusion_unconditional_ImageNet/512x512_diffusion_uncond_finetune_008100.pt'
@@ -80,24 +81,24 @@ DIFFUSION_512_MODEL_FLAGS = {
 }
 
 # modified from https://github.com/lucidrains/DALLE-pytorch/blob/d355100061911b13e1f1c22de8c2b5deb44e65f8/dalle_pytorch/vae.py
-def download(url: str, filename:str, root: str=CACHE_PATH):
+def download(url: str, filename:str, root: str=CACHE_PATH) -> str:
     os.makedirs(root, exist_ok=True)
     download_target = Path(os.path.join(root, filename))
     download_target_tmp = download_target.with_suffix('.tmp')
     if os.path.exists(download_target) and not os.path.isfile(download_target):
         raise RuntimeError(f"{download_target} exists and is not a regular file")
     if os.path.isfile(download_target):
-        return download_target
+        return str(download_target)
     with request.urlopen(url) as source, open(download_target_tmp, "wb") as output:
         with tqdm(total=int(source.info().get("Content-Length")), ncols=80) as loop:
             while True:
-                buffer = source.read(16384)
+                buffer = source.read(4096)
                 if not buffer:
                     break
                 output.write(buffer)
                 loop.update(len(buffer))
     os.rename(download_target_tmp, download_target)
-    return download_target
+    return str(download_target)
 
 
 def download_guided_diffusion(image_size: int, class_cond: bool=False, checkpoints_dir:str=CACHE_PATH, overwrite: bool=False):
@@ -168,6 +169,17 @@ def load_guided_diffusion(
         model.convert_to_fp16()
     return model, diffusion
 
+def create_video_from_image_dir(image_dir:str, target:str="current.mp4", fps:int=30) -> str:
+    assert Path(target).suffix == ".mp4", "target must be a .mp4 file"
+    result = subprocess.call([
+        "ffmpeg", 
+        "-hide_banner", "-loglevel", "error", "-y",
+        "-framerate", "", "-pattern_type", "glob",
+        "-i", f"{image_dir}/*.png", "-c:v", "libx264",
+        "-pix_fmt", "yuv420p", str(target)
+    ])
+    return target
+
 
 def fetch(url_or_path):
     if str(url_or_path).startswith('http://') or str(url_or_path).startswith('https://'):
@@ -190,8 +202,7 @@ def log_image(image: th.Tensor, base_path: str, txt: str, txt_min: str, current_
     pil_image.save(filename)
     return str(filename)
 
-
-def resize_image(image: th.Tensor, out_size: int):
+def resize_image(image:th.Tensor, out_size: int):
     """Resize image"""
     ratio = image.size[0] / image.size[1]
     area = min(image.size[0] * image.size[1], out_size[0] * out_size[1])
