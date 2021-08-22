@@ -46,7 +46,7 @@ outputs_path = cgd_util.txt_to_dir(base_path=prefix_path, txt=prompt)
 outputs_path.mkdir(exist_ok=True)
 
 # `cgd_samples` is a generator that yields the output images
-cgd_samples, _, diffusion = clip_guided_diffusion(prompt=prompt, prefix=outputs_path, augs=aug_list)
+cgd_samples = clip_guided_diffusion(prompt=prompt, prefix=outputs_path, augs=aug_list)
 
 # Image paths will all be in `all_images` for e.g. video generation at the end.
 all_images = []
