@@ -101,7 +101,7 @@ def download(url: str, filename:str, root: str=CACHE_PATH) -> str:
     return str(download_target)
 
 
-def download_guided_diffusion(image_size: int, class_cond: bool=False, checkpoints_dir:str=CACHE_PATH, overwrite: bool=False):
+def download_guided_diffusion(image_size: int, class_cond: bool=False, checkpoints_dir:str=CACHE_PATH, overwrite: bool=False) -> str:
     gd_path = None
     if class_cond:
         Path(checkpoints_dir).mkdir(parents=True, exist_ok=True)
@@ -122,7 +122,7 @@ def download_guided_diffusion(image_size: int, class_cond: bool=False, checkpoin
 
     print(f'Downloading {gd_url} to {gd_path}')
     download(gd_url, str(gd_path))
-    return gd_path
+    return str(gd_path)
 
 
 def load_guided_diffusion(
