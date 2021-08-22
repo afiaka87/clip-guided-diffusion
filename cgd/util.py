@@ -131,7 +131,10 @@ def load_guided_diffusion(
     class_cond: bool,
     diffusion_steps: int=None,
     timestep_respacing: str=None,
-    device:str=None,
+    use_fp16: bool=True,
+    device:str='',
+    noise_schedule: str='linear',
+    dropout: float=0.0,
 ):
     '''
     checkpoint_path: path to the checkpoint to load.
@@ -140,23 +143,27 @@ def load_guided_diffusion(
     diffusion_steps: number of diffusion steps
     timestep_respacing: whether to use timestep-respacing or not
     '''
-    assert device is not None, "device must be set"
-    model_config = model_and_diffusion_defaults()
+    assert len(device) > 0 , "device must be set"
+    assert noise_schedule in ["linear", "cosine"], "linear_or_cosine must be set"
+    model_config: dict = model_and_diffusion_defaults()
     if image_size == 64:
-        model_config.update(DIFFUSION_64_MODEL_FLAGS)
+        model_config.update(**DIFFUSION_64_MODEL_FLAGS)
     elif image_size == 128:
-        model_config.update(DIFFUSION_128_MODEL_FLAGS)
+        model_config.update(**DIFFUSION_128_MODEL_FLAGS)
     elif image_size == 256:
-        model_config.update(DIFFUSION_256_MODEL_FLAGS)
+        model_config.update(**DIFFUSION_256_MODEL_FLAGS)
     elif image_size == 512:
-        model_config.update(DIFFUSION_512_MODEL_FLAGS)
+        model_config.update(**DIFFUSION_512_MODEL_FLAGS)
     else:
         raise ValueError("Invalid image size")
 
-    model_config.update({
+    model_config.update(**{
         'class_cond': class_cond,
         'diffusion_steps': diffusion_steps,
         'timestep_respacing': timestep_respacing,
+        "use_fp16": use_fp16,
+        "noise_schedule": noise_schedule,
+        "dropout": dropout,
     })
 
     model, diffusion = create_model_and_diffusion(**model_config)
