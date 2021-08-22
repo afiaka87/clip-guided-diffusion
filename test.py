@@ -18,13 +18,17 @@ class TestUtil(unittest.TestCase):
         result = cgd_util.log_image(
             image=th.randn(3, 256, 256), base_path=os.getcwd(), txt="some text", txt_min="", batch_idx=0, current_step=0
         )
-        self.assertTrue(Path(result).parent.name == "some_text")
+        result_path = Path(result)
+        self.assertTrue(result_path.parent.name == "some_text")
+        self.assertTrue(result_path.exists())
 
     def test_log_image_txt_and_min_with_underscores_as_dir(self):
         result = cgd_util.log_image(
             image=th.randn(3, 256, 256), base_path=os.getcwd(), txt="some text", txt_min="txet emos", batch_idx=0, current_step=0
         )
-        self.assertTrue(Path(result).parent.name == "some_text_MIN_txet_emos")
+        result_path = Path(result)
+        self.assertTrue(result_path.parent.name == "some_text_MIN_txet_emos")
+        self.assertTrue(result_path.exists())
 
     def test_download_returns_target_full_path(self):
         photon_image_link_from_gh = 'https://github.com/afiaka87/clip-guided-diffusion/raw/main/images/photon.png'
@@ -64,3 +68,4 @@ class TestCGD(unittest.TestCase):
     def test_cgd_init_succeeds_with_skip_timesteps(self):
         samples = clip_guided_diffusion(prompt="Loose seal.", init_image='images/photon.png', skip_timesteps=500, image_size=64, num_cutouts=1, clip_model_name="RN50")
         first_yielded_sample = list(itertools.islice(samples, 1))[0]
+        self.assertIsNotNone(first_yielded_sample)
