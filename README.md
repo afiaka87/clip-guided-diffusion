@@ -50,11 +50,9 @@ cgd_samples = clip_guided_diffusion(prompt=prompt, prefix=outputs_path, augs=aug
 
 # Image paths will all be in `all_images` for e.g. video generation at the end.
 all_images = []
-
 for step, output_path in enumerate(cgd_samples):
-    progress_bar.update(save_frequency)
     if step % save_frequency == 0:
-        progress_bar.set_description(f"Saving image {step} to {output_path}")
+        print(f"Saving image {step} to {output_path}")
         all_images.append(output_path)
 ```
 
