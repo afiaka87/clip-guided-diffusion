@@ -61,10 +61,8 @@ def check_parameters(
     diffusion_steps: int,
     skip_timesteps: int,
     init_image: str,
-    checkpoints_dir: str,
     clip_model_name: str,
     randomize_class: bool,
-    prefix_path: str,
     save_frequency: int,
 ):
     assert randomize_class is True and class_cond is True, "randomize_class can only be used with class conditioned guidance."
@@ -80,9 +78,6 @@ def check_parameters(
     assert len(prompt) > 0, "prompt/-txt cant be empty"
     assert 0 < top_n <= len(IMAGENET_CLASSES), f"top_n must be less than or equal to the number of classes: {top_n} > {len(IMAGENET_CLASSES)}"
     assert 0.0 <= min_weight <= 1.0, f"min_weight must be between 0 and 1: {min_weight} not in [0, 1]"
-    assert Path(prefix_path).exists(), f"{prefix_path} does not exist. Check spelling or provide another path."
-    assert Path(prefix_path).is_dir(), f"prefix,-dir {prefix_path} is a file, not a directory. Please provide a directory."
-    assert Path(checkpoints_dir).exists(), f"{checkpoints_dir} does not exist. Check spelling or provide another path."
     assert 0 < batch_size, "batch_size/-bs must be greater than 0"
     assert 0 < num_cutouts, "num_cutouts/-cutn must be greater than 0"
     assert 0 < save_frequency <= int(timestep_respacing.replace('ddim', '')),"save_frequency/-freq must be greater than 0 and less than --timestep_respacing"
@@ -143,9 +138,12 @@ def clip_guided_diffusion(
     if seed:
         th.manual_seed(seed)
 
+    Path(prefix_path).mkdir(parents=True, exist_ok=True)
+
     # Download guided-diffusion checkpoint
     Path(checkpoints_dir).mkdir(parents=True, exist_ok=True)
     diffusion_path = cgd_util.download_guided_diffusion(image_size=image_size, checkpoints_dir=checkpoints_dir, class_cond=class_cond)
+
 
     # Load CLIP model/Encode text/Create `MakeCutouts`
     clip_model = clip.load(clip_model_name, jit=False)[0].eval().requires_grad_(False).to(device)
@@ -231,7 +229,7 @@ def clip_guided_diffusion(
                 for batch_idx, image_tensor in enumerate(sample["pred_xstart"]):
                     yield cgd_util.log_image(
                         image_tensor,
-                        str(prefix_path),
+                        prefix_path,
                         prompt,
                         prompt_min,
                         step,
@@ -240,7 +238,7 @@ def clip_guided_diffusion(
         if "CUDA out of memory" in str(runtime_ex):
             print(f"CUDA OOM error occurred.")
             print(f"Try lowering --image_size/-size, --batch_size/-bs, --num_cutouts/-cutn")
-            print(f"--clip_model/-clip (currently {args.clip_model}) can have a large impact on VRAM usage.")
+            print(f"--clip_model/-clip (currently {clip_model_name}) can have a large impact on VRAM usage.")
             print(f"'RN50' will use the least VRAM. 'ViT-B/32' the second least and is good for its memory/runtime constraints.")
         else:
             raise runtime_ex
