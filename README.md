@@ -50,15 +50,14 @@ cgd_samples, _, diffusion = clip_guided_diffusion(prompt=prompt, prefix=outputs_
 
 # Image paths will all be in `all_images` for e.g. video generation at the end.
 all_images = []
-current_timestep = diffusion.num_timesteps - 1
-for step, sample in enumerate(cgd_samples):
-    current_timestep -= 1
-    if step % save_frequency == 0 or current_timestep == -1:
-        for j, image in enumerate(sample["pred_xstart"]): # j is the index of the batch
-            image_path = Path(log_image(image, prefix_path, step, j))
-            print(f"Saved {image_path}")
-            all_images.append(image_path)
+
+for step, output_path in enumerate(cgd_samples):
+    progress_bar.update(save_frequency)
+    if step % save_frequency == 0:
+        progress_bar.set_description(f"Saving image {step} to {output_path}")
+        all_images.append(output_path)
 ```
+
 - Respective guided-diffusion checkpoints from OpenAI will be downloaded to `~/.cache/clip-guided-diffusion/` by default.
 - The file `current.png` can be refreshed to see the current image.
 
