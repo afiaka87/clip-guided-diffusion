@@ -175,7 +175,7 @@ Blend an image with the diffusion for a number of steps.
 --seed SEED, -seed SEED
                       Random number seed (default: 0)
 --save_frequency SAVE_FREQUENCY, -freq SAVE_FREQUENCY
-                      Save frequency (default: 5)
+                      Save frequency (default: 1)
 --device DEVICE       device to run on .e.g. cuda:0 or cpu (default: None)
 --diffusion_steps DIFFUSION_STEPS, -steps DIFFUSION_STEPS
                       Diffusion steps (default: 1000) --timestep_respacing TIMESTEP_RESPACING, -respace TIMESTEP_RESPACING
