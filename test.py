@@ -46,20 +46,21 @@ class TestCGD(unittest.TestCase):
         super().__init__(methodName=methodName)
 
     def test_cgd_one_step_succeeds(self):
-        samples, _, _ = clip_guided_diffusion(prompt="Loose seal.")
-        first_sample = list(itertools.islice(samples, 1))[0]["pred_xstart"]
-        self.assertIsNotNone(first_sample)
+        samples = clip_guided_diffusion(prompt="Loose seal.", image_size=64, num_cutouts=1, clip_model_name="RN50")
+        first_yielded_sample = list(itertools.islice(samples, 1))[0]
+        self.assertIsNotNone(first_yielded_sample)
+
 
     def test_cgd_init_fails_with_default_params(self):
         try:
-            _, _, _ = clip_guided_diffusion(
-                prompt="Loose seal.", init_image='images/photon.png')
+            samples = clip_guided_diffusion(prompt="Loose seal.", init_image='images/photon.png', skip_timesteps=0, image_size=64, num_cutouts=1, clip_model_name="RN50")
+            first_yielded_sample = list(itertools.islice(samples, 1))[0]
         except Exception as assertion_exception:
+            print(assertion_exception)
             self.assertEquals(assertion_exception.__class__, AssertionError)
         else:
-            self.fail("Expected an exception to be thrown.")
+            self.fail("Expected an exception of type AssertionError to be thrown.")
 
     def test_cgd_init_succeeds_with_skip_timesteps(self):
-        _, _, _ = clip_guided_diffusion(
-            prompt="Loose seal.", init_image='images/photon.png', skip_timesteps=500)
-        self.assertTrue(True)
+        samples = clip_guided_diffusion(prompt="Loose seal.", init_image='images/photon.png', skip_timesteps=500, image_size=64, num_cutouts=1, clip_model_name="RN50")
+        first_yielded_sample = list(itertools.islice(samples, 1))[0]
