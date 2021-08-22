@@ -1,4 +1,5 @@
 import argparse
+from torchvision.transforms.transforms import GaussianBlur, RandomAdjustSharpness, RandomApply
 from tqdm.auto import tqdm
 import sys
 import os
@@ -56,7 +57,6 @@ def check_parameters(
     class_score: bool,
     num_cutouts: int,
     timestep_respacing: str,
-    custom_device: str,
     seed: int,
     diffusion_steps: int,
     skip_timesteps: int,
@@ -64,11 +64,12 @@ def check_parameters(
     clip_model_name: str,
     randomize_class: bool,
     save_frequency: int,
+    noise_schedule:str,
 ):
+    assert noise_schedule in ['linear', 'cosine']
     assert randomize_class is True and class_cond is True, "randomize_class can only be used with class conditioned guidance."
     if class_score:
         assert class_cond is True, "class_score can only be used with class conditioned guidance."
-    assert custom_device is None or custom_device == "cpu" or custom_device == "cuda", "custom_device must be 'cpu' or 'cuda'"
     assert seed is None or isinstance(seed, int), "seed must be an integer"
     assert timestep_respacing in TIMESTEP_RESPACINGS, f"timestep_respacing should be one of {TIMESTEP_RESPACINGS}"
     assert diffusion_steps in DIFFUSION_SCHEDULES, f"Diffusion steps should be one of: {DIFFUSION_SCHEDULES}"
@@ -105,7 +106,6 @@ def clip_guided_diffusion(
     cutout_power: float = 1.0,
     num_cutouts: int = 16,
     timestep_respacing: str = "1000",
-    custom_device: str = "cuda",
     seed: int = 0,
     diffusion_steps: int = 1000,
     skip_timesteps: int = 0,
@@ -116,24 +116,22 @@ def clip_guided_diffusion(
     randomize_class: bool = True,
     prefix_path: str = 'outputs',
     save_frequency: int = 1,
-    *args,
-    **kwargs,
+    fp32_diffusion: bool = False,
+    noise_schedule: str = "linear",
+    dropout:float = 0.0,
 ):
     # Assertions
     check_parameters(prompt=prompt, min_weight=min_weight,
         batch_size=batch_size, top_n=top_n,
         image_size=image_size, class_cond=class_cond,
         class_score=class_score, num_cutouts=num_cutouts,
-        timestep_respacing=timestep_respacing,
-        custom_device=custom_device, seed=seed,
+        timestep_respacing=timestep_respacing, seed=seed,
         diffusion_steps=diffusion_steps, skip_timesteps=skip_timesteps,
         init_image=init_image, clip_model_name=clip_model_name, randomize_class=randomize_class,
-        save_frequency=save_frequency)
+        save_frequency=save_frequency, noise_schedule=noise_schedule)
 
     # Pytorch setup
     device = th.device("cuda:0") if th.cuda.is_available() else "cpu"
-    if custom_device:
-        device = th.device(custom_device)
     if seed:
         th.manual_seed(seed)
 
@@ -142,7 +140,6 @@ def clip_guided_diffusion(
     # Download guided-diffusion checkpoint
     Path(checkpoints_dir).mkdir(parents=True, exist_ok=True)
     diffusion_path = cgd_util.download_guided_diffusion(image_size=image_size, checkpoints_dir=checkpoints_dir, class_cond=class_cond)
-
 
     # Load CLIP model/Encode text/Create `MakeCutouts`
     clip_model = clip.load(clip_model_name, jit=False)[0].eval().requires_grad_(False).to(device)
@@ -173,8 +170,16 @@ def clip_guided_diffusion(
     
     # Load guided diffusion
     gd_model, diffusion = cgd_util.load_guided_diffusion(
-        checkpoint_path=diffusion_path, image_size=image_size, class_cond=class_cond, 
-        diffusion_steps=diffusion_steps, timestep_respacing=timestep_respacing, device=str(device),
+        checkpoint_path=diffusion_path,
+        image_size=image_size, 
+        class_cond=class_cond, 
+        diffusion_steps=diffusion_steps, 
+        timestep_respacing=timestep_respacing,
+        use_fp16=(not fp32_diffusion), 
+        device=str(device),
+        # linear_or_cosine="linear" if image_size in [512, 256, 128] else "cosine"
+        noise_schedule=noise_schedule,
+        dropout=dropout,
     )
 
     # Customize guided-diffusion model with function that uses CLIP guidance.
@@ -188,6 +193,7 @@ def clip_guided_diffusion(
             out = diffusion.p_mean_variance(gd_model, x, my_t, clip_denoised=False, model_kwargs={"y": y})
             fac = diffusion.sqrt_one_minus_alphas_cumprod[current_timestep]
             x_in = out["pred_xstart"] * fac + x * (1 - fac) # Blend denoised prediction with noisey sample
+            x_in = x_in.clamp(-10, 10)
             clip_in = CLIP_NORMALIZE(make_cutouts(x_in.add(1).div(2)))
             cutout_embeds = clip_model.encode_image(clip_in).float().view([num_cutouts, n, -1])
             max_dists = cgd_util.spherical_dist_loss(cutout_embeds, text_embed.unsqueeze(0))
@@ -199,7 +205,8 @@ def clip_guided_diffusion(
             losses = dists.mean(0)
             tv_losses = cgd_util.tv_loss(x_in)
             loss = losses.sum() * clip_guidance_scale + tv_losses.sum() * tv_scale
-            return -th.autograd.grad(loss, x)[0]
+            final_loss = -th.autograd.grad(loss, x)[0]
+            return final_loss
 
     # Choose between normal or DDIM
     if timestep_respacing.startswith("ddim"):
@@ -226,6 +233,8 @@ def clip_guided_diffusion(
             current_timestep -= 1
             if step % save_frequency == 0 or current_timestep == -1:
                 for batch_idx, image_tensor in enumerate(sample["pred_xstart"]):
+                    assert not th.isnan(image_tensor).any(), "NaN in generated image. Try a lower clip guidance scale or tv_scale"
+                    print(image_tensor)
                     yield cgd_util.log_image(
                         image_tensor,
                         prefix_path,
@@ -250,12 +259,12 @@ def main():
     p.add_argument("--prompt", "-txt", type=str,
                    default='', help="the prompt to reward")
     p.add_argument("--prompt_min", "-min", type=str,
-                   default=None, help="the prompt to penalize")
+                   default="", help="the prompt to penalize")
     p.add_argument("--min_weight", "-min_wt", type=float,
                    default=0.1, help="the prompt to penalize")
     p.add_argument("--image_size", "-size", type=int, default=128,
                    help="Diffusion image size. Must be one of [64, 128, 256, 512].")
-    p.add_argument("--init_image", "-init", type=str,
+    p.add_argument("--init_image", "-init", type=str, default='',
                    help="Blend an image with diffusion for n steps")
     p.add_argument("--skip_timesteps", "-skip", type=int, default=0,
                    help="Number of timesteps to blend image for. CLIP guidance occurs after this.")
@@ -277,19 +286,25 @@ def main():
                    default=0, help="Random number seed")
     p.add_argument("--save_frequency", "-freq", type=int,
                    default=1, help="Save frequency")
-    p.add_argument("--device", type=str,
-                   help="device to run on .e.g. cuda:0 or cpu")
     p.add_argument("--diffusion_steps", "-steps", type=int,
                    default=1000, help="Diffusion steps")
     p.add_argument("--timestep_respacing", "-respace", type=str,
                    default="1000", help="Timestep respacing")
-    p.add_argument("--num_cutouts", "-cutn", type=int, default=8,
+    p.add_argument("--num_cutouts", "-cutn", type=int, default=16,
                    help="Number of randomly cut patches to distort from diffusion.")
     p.add_argument("--cutout_power", "-cutpow", type=float,
-                   default=1., help="Cutout size power")
+                   default=0.5, help="Cutout size power")
     p.add_argument("--clip_model", "-clip", type=str, default="ViT-B/32",
                    help=f"clip model name. Should be one of: {CLIP_MODEL_NAMES}")
-    p.add_argument("--uncond", "-uncond", action="store_true")
+    p.add_argument("--uncond", "-uncond", action="store_true", 
+                   help='Use finetuned unconditional checkpoints from OpenAI (256px) and Katherine Crowson (512px)')
+    p.add_argument("--fp32_diffusion", "-fp32", action="store_true",
+                    help="Use fp32 for diffusion. Default is fp16 for speed/memory savings")
+    p.add_argument("--noise_schedule", "-sched", default='linear', type=str,
+                   help="Specify noise schedule. Either 'linear' or 'cosine'.")
+    p.add_argument("--dropout", "-drop", default=0.0, type=float,
+                   help="Specify noise schedule. Either 'linear' or 'cosine'.")
+            
 
     args = p.parse_args()
 
@@ -297,8 +312,6 @@ def main():
     prefix_path = args.prefix
 
     Path(prefix_path).mkdir(exist_ok=True)
-    if args.prompt_min is None:
-        args.prompt_min = ""
 
     all_images = clip_guided_diffusion(
         prompt=args.prompt,
@@ -314,7 +327,6 @@ def main():
         num_cutouts=args.num_cutouts,
         timestep_respacing=args.timestep_respacing,
         seed=args.seed,
-        custom_device=args.device,
         diffusion_steps=args.diffusion_steps,
         skip_timesteps=args.skip_timesteps,
         init_image=args.init_image,
@@ -322,12 +334,20 @@ def main():
         clip_model_name=args.clip_model,
         class_score=args.class_score,
         randomize_class=(_class_cond),
+        fp32_diffusion=args.fp32_diffusion,
+        noise_schedule=args.noise_schedule,
+        dropout=args.dropout,
+        augs=[
+            tvt.RandomVerticalFlip(p=0.7),
+            tvt.RandomHorizontalFlip(p=0.7),
+            tvt.RandomRotation(degrees=30),
+            tvt.RandomAdjustSharpness(sharpness_factor=2, p=0.5),
+        ]
+    
     )
     total_steps = int(args.timestep_respacing.replace("ddim","")) - args.skip_timesteps
     progress_bar = tqdm(total=total_steps, unit="Timesteps")
-    # Remove non-alphanumeric and white space characters from prompt and prompt_min for directory name
     prefix_path.mkdir(exist_ok=True)
-    # print(f"{len(all_images)} images saved to {prefix_path}")
     for step, output_path in enumerate(all_images):
         progress_bar.update(args.save_frequency)
         progress_bar.set_description(f"Saving image {step} to {output_path}")
