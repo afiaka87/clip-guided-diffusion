@@ -127,9 +127,8 @@ def clip_guided_diffusion(
         timestep_respacing=timestep_respacing,
         custom_device=custom_device, seed=seed,
         diffusion_steps=diffusion_steps, skip_timesteps=skip_timesteps,
-        init_image=init_image, checkpoints_dir=checkpoints_dir,
-        clip_model_name=clip_model_name, randomize_class=randomize_class,
-        prefix_path=prefix_path, save_frequency=save_frequency)
+        init_image=init_image, clip_model_name=clip_model_name, randomize_class=randomize_class,
+        save_frequency=save_frequency)
 
     # Pytorch setup
     device = th.device("cuda:0") if th.cuda.is_available() else "cpu"
