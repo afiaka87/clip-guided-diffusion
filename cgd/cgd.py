@@ -1,6 +1,7 @@
 import argparse
+import imageio
 from torchvision.transforms.transforms import GaussianBlur, RandomAdjustSharpness, RandomApply
-from tqdm.auto import tqdm
+from tqdm.auto import tqdm, trange
 import sys
 import os
 from pathlib import Path
@@ -49,15 +50,11 @@ def imagenet_top_n(prompt, prompt_min='', min_weight=0.1, clip_model=None, devic
 
 def check_parameters(
     prompt: str,
-    min_weight: float,
-    batch_size: int,
     top_n: int,
     image_size: int,
     class_cond: bool,
     class_score: bool,
-    num_cutouts: int,
     timestep_respacing: str,
-    seed: int,
     diffusion_steps: int,
     skip_timesteps: int,
     init_image: str,
@@ -67,26 +64,19 @@ def check_parameters(
 ):
     if diffusion_steps not in DIFFUSION_SCHEDULES:
         print('(warning) Diffusion steps should be one of:', DIFFUSION_SCHEDULES)
-
     assert noise_schedule in ['linear', 'cosine']
     if class_score:
         assert class_cond is True, "class_score can only be used with class conditioned guidance."
-    assert seed is None or isinstance(seed, int), "seed must be an integer"
-    assert timestep_respacing in TIMESTEP_RESPACINGS, f"timestep_respacing should be one of {TIMESTEP_RESPACINGS}"
+    if timestep_respacing not in TIMESTEP_RESPACINGS:
+        print(f"timestep_respacing should be one of {TIMESTEP_RESPACINGS}")
     assert clip_model_name in CLIP_MODEL_NAMES, f"clip model name should be one of: {CLIP_MODEL_NAMES}"
     assert image_size in IMAGE_SIZES, f"image size should be one of {IMAGE_SIZES}"
-    assert num_cutouts > 0, "num_cutouts/-cutn must greater than zero."
     assert len(prompt) > 0, "prompt/-txt cant be empty"
     assert 0 < top_n <= len(IMAGENET_CLASSES), f"top_n must be less than or equal to the number of classes: {top_n} > {len(IMAGENET_CLASSES)}"
-    assert 0.0 <= min_weight <= 1.0, f"min_weight must be between 0 and 1: {min_weight} not in [0, 1]"
-    assert 0 < batch_size, "batch_size/-bs must be greater than 0"
-    assert 0 < num_cutouts, "num_cutouts/-cutn must be greater than 0"
     assert 0 < save_frequency <= int(timestep_respacing.replace('ddim', '')),"save_frequency/-freq must be greater than 0 and less than --timestep_respacing"
     if len(init_image) > 0:
         # Check skip timesteps logic
         assert skip_timesteps != 0, "skip_timesteps/-skip must be greater than 0"
-            #  and skip_timesteps < int(timestep_respacing.replace("ddim", "")), \
-            # f"skip_timesteps/-skip (currently {skip_timesteps}) must be greater than 0 and less than timestep_respacing/-respace (currently {timestep_respacing}) when init_image/-init is not None."
         assert Path(init_image).exists(), f"{init_image} does not exist. Check spelling or provide another path."
     else:
         assert skip_timesteps == 0, f"--skip_timesteps/-skip must be 0 when --init_image/-init is None."
@@ -121,11 +111,9 @@ def clip_guided_diffusion(
     dropout:float = 0.0,
 ):
     # Assertions
-    check_parameters(prompt=prompt, min_weight=min_weight,
-        batch_size=batch_size, top_n=top_n,
-        image_size=image_size, class_cond=class_cond,
-        class_score=class_score, num_cutouts=num_cutouts,
-        timestep_respacing=timestep_respacing, seed=seed,
+    check_parameters(prompt=prompt, 
+        top_n=top_n, image_size=image_size, class_cond=class_cond,
+        class_score=class_score, timestep_respacing=timestep_respacing, 
         diffusion_steps=diffusion_steps, skip_timesteps=skip_timesteps,
         init_image=init_image, clip_model_name=clip_model_name, 
         save_frequency=save_frequency, noise_schedule=noise_schedule)
@@ -171,13 +159,11 @@ def clip_guided_diffusion(
     # Load guided diffusion
     gd_model, diffusion = cgd_util.load_guided_diffusion(
         checkpoint_path=diffusion_path,
-        image_size=image_size, 
-        class_cond=class_cond, 
+        image_size=image_size, class_cond=class_cond, 
         diffusion_steps=diffusion_steps, 
         timestep_respacing=timestep_respacing,
         use_fp16=(not fp32_diffusion), 
         device=str(device),
-        # linear_or_cosine="linear" if image_size in [512, 256, 128] else "cosine"
         noise_schedule=noise_schedule,
         dropout=dropout,
     )
@@ -233,14 +219,8 @@ def clip_guided_diffusion(
             current_timestep -= 1
             if step % save_frequency == 0 or current_timestep == -1:
                 for batch_idx, image_tensor in enumerate(sample["pred_xstart"]):
-                    assert not th.isnan(image_tensor).any(), "NaN in generated image. Try using a lower tv_scale or clip_guidance_scale"
-                    yield cgd_util.log_image(
-                        image_tensor,
-                        prefix_path,
-                        prompt,
-                        prompt_min,
-                        step,
-                        batch_idx)
+                    yield cgd_util.log_image(image_tensor, prefix_path, prompt, prompt_min, step, batch_idx)
+                
     except RuntimeError as runtime_ex:
         if "CUDA out of memory" in str(runtime_ex):
             print(f"CUDA OOM error occurred.")
@@ -312,7 +292,7 @@ def main():
 
     Path(prefix_path).mkdir(exist_ok=True)
 
-    all_images = clip_guided_diffusion(
+    cgd_generator = clip_guided_diffusion(
         prompt=args.prompt,
         prompt_min=args.prompt_min,
         min_weight=args.min_weight,
@@ -338,14 +318,16 @@ def main():
         dropout=args.dropout,
         augs=[]
     )
-    total_steps = int(args.timestep_respacing.replace("ddim","")) - args.skip_timesteps
-    progress_bar = tqdm(total=total_steps, unit="Timesteps")
     prefix_path.mkdir(exist_ok=True)
-    for step, output_path in enumerate(all_images):
-        progress_bar.update(args.save_frequency)
-        progress_bar.set_description(f"Saving image {step} to {output_path}")
+    all_images = {}
+    for current_step, batch_idx, img in tqdm(cgd_generator):
+        print(current_step, batch_idx, img)
+        # current_batch := { "current_step": current_step, "batch_idx": batch_idx, "img": img}
+        # all_images = {
+        #     **all_images,
 
-
+        # }
+        
 
 if __name__ == "__main__":
     main()
