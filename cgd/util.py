@@ -1,3 +1,4 @@
+from typing import Tuple, Union
 from urllib import request
 import subprocess
 import io
@@ -198,23 +199,33 @@ def fetch(url_or_path):
         return fd
     return open(url_or_path, 'rb')
 
-def log_image(image: th.Tensor, base_path: str, txt: str, txt_min: str, current_step: int, batch_idx: int) -> str:
-    cleaned_txt = f"{txt}_MIN_{txt_min}" if txt_min else txt
-    cleaned_txt = re.sub(r"[^\w\s]", "", str(cleaned_txt)).replace(" ", "_")[:256]
-    dirname = Path(base_path).joinpath(cleaned_txt)
-    dirname.mkdir(parents=True, exist_ok=True)
-    filename = dirname.joinpath(f"j_{batch_idx:04}_i_{current_step:04}.png")
-    pil_image = tvf.to_pil_image(image.add(1).div(2).clamp(0, 1))
-    pil_image.save('current.png')
-    pil_image.save(filename)
-    return str(filename)
+ALPHANUMERIC_REGEX = r"[^\w\s]"
 
-def resize_image(image:th.Tensor, out_size: int):
+def alphanumeric_dir_progress_stem(txt:str, txt_min:str, batch_idx, current_step, max_length:int=180) -> Tuple[str, str]:
+    combined = f"{txt}_MIN_{txt_min}" if len(txt_min)>0 else txt
+    alphanumeric_dirname = re.sub(ALPHANUMERIC_REGEX, "", combined).replace(" ", "_")[:max_length]
+    stem = f"j_{batch_idx:04}_i_{current_step:04}"
+    return alphanumeric_dirname, stem
+
+
+def log_image(image: th.Tensor, base_path: str, txt: str, txt_min: str, current_step: int, batch_idx: int) -> Tuple[int, int, str]:
+    dirname, stem = alphanumeric_dir_progress_stem(txt, txt_min, batch_idx, current_step)
+    dirname = os.path.join(base_path, dirname)
+    os.makedirs(dirname, exist_ok=True)
+    filename = os.path.join(dirname, name:=f'{stem}.png')
+    pil_image = tvf.to_pil_image(image.add(1).div(2).clamp(0, 1))
+    pil_image.save(os.path.join(os.getcwd(), f'current.png'))
+    pil_image.save(filename)
+    return (current_step, batch_idx, str(filename))
+
+def resize_image(image:th.Tensor, out_size: Union[int, Tuple[int, int]]) -> th.Tensor:
     """Resize image"""
-    ratio = image.size[0] / image.size[1]
-    area = min(image.size[0] * image.size[1], out_size[0] * out_size[1])
+    outsize_x = out_size if isinstance(out_size, int) else out_size[0]
+    outsize_y = out_size if isinstance(out_size, int) else out_size[1]
+    ratio = image.size(1) / image.size(1)
+    area = min(image.size(0) * image.size(1), outsize_x * outsize_y)
     size = round((area * ratio)**0.5), round((area / ratio)**0.5)
-    return image.resize(size, Image.LANCZOS)
+    return image.reshape(size)
 
 
 def spherical_dist_loss(x:th.Tensor, y: th.Tensor):
