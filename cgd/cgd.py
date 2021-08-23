@@ -62,17 +62,17 @@ def check_parameters(
     skip_timesteps: int,
     init_image: str,
     clip_model_name: str,
-    randomize_class: bool,
     save_frequency: int,
     noise_schedule:str,
 ):
+    if diffusion_steps not in DIFFUSION_SCHEDULES:
+        print('(warning) Diffusion steps should be one of:', DIFFUSION_SCHEDULES)
+
     assert noise_schedule in ['linear', 'cosine']
-    assert randomize_class is True and class_cond is True, "randomize_class can only be used with class conditioned guidance."
     if class_score:
         assert class_cond is True, "class_score can only be used with class conditioned guidance."
     assert seed is None or isinstance(seed, int), "seed must be an integer"
     assert timestep_respacing in TIMESTEP_RESPACINGS, f"timestep_respacing should be one of {TIMESTEP_RESPACINGS}"
-    assert diffusion_steps in DIFFUSION_SCHEDULES, f"Diffusion steps should be one of: {DIFFUSION_SCHEDULES}"
     assert clip_model_name in CLIP_MODEL_NAMES, f"clip model name should be one of: {CLIP_MODEL_NAMES}"
     assert image_size in IMAGE_SIZES, f"image size should be one of {IMAGE_SIZES}"
     assert num_cutouts > 0, "num_cutouts/-cutn must greater than zero."
@@ -127,7 +127,7 @@ def clip_guided_diffusion(
         class_score=class_score, num_cutouts=num_cutouts,
         timestep_respacing=timestep_respacing, seed=seed,
         diffusion_steps=diffusion_steps, skip_timesteps=skip_timesteps,
-        init_image=init_image, clip_model_name=clip_model_name, randomize_class=randomize_class,
+        init_image=init_image, clip_model_name=clip_model_name, 
         save_frequency=save_frequency, noise_schedule=noise_schedule)
 
     # Pytorch setup
@@ -145,7 +145,7 @@ def clip_guided_diffusion(
     clip_model = clip.load(clip_model_name, jit=False)[0].eval().requires_grad_(False).to(device)
     clip_size = clip_model.visual.input_resolution
     make_cutouts = cgd_util.MakeCutouts(clip_size, num_cutouts, cutout_size_power=cutout_power, augment_list=augs)
-    text_embed = clip_model.encode_text(clip.tokenize(prompt).to(device)).float()
+    text_embed = clip_model.encode_text(clip.tokenize(prompt, truncate=True).to(device)).float()
     if len(prompt_min) > 0:
         text_min_embed = clip_model.encode_text(clip.tokenize(prompt_min).to(device)).float()
 
@@ -233,8 +233,7 @@ def clip_guided_diffusion(
             current_timestep -= 1
             if step % save_frequency == 0 or current_timestep == -1:
                 for batch_idx, image_tensor in enumerate(sample["pred_xstart"]):
-                    assert not th.isnan(image_tensor).any(), "NaN in generated image. Try a lower clip guidance scale or tv_scale"
-                    print(image_tensor)
+                    assert not th.isnan(image_tensor).any(), "NaN in generated image. Try using a lower tv_scale or clip_guidance_scale"
                     yield cgd_util.log_image(
                         image_tensor,
                         prefix_path,
@@ -337,13 +336,7 @@ def main():
         fp32_diffusion=args.fp32_diffusion,
         noise_schedule=args.noise_schedule,
         dropout=args.dropout,
-        augs=[
-            tvt.RandomVerticalFlip(p=0.7),
-            tvt.RandomHorizontalFlip(p=0.7),
-            tvt.RandomRotation(degrees=30),
-            tvt.RandomAdjustSharpness(sharpness_factor=2, p=0.5),
-        ]
-    
+        augs=[]
     )
     total_steps = int(args.timestep_respacing.replace("ddim","")) - args.skip_timesteps
     progress_bar = tqdm(total=total_steps, unit="Timesteps")
