@@ -3,8 +3,6 @@ From [RiversHaveWings](https://twitter.com/RiversHaveWings).
 
 Generate vibrant and detailed images using only text.
 
-<a href="https://colab.research.google.com/github/afiaka87/clip-guided-diffusion/blob/main/cgd.ipynb"> <img src="https://colab.research.google.com/assets/colab-badge.svg"> </a>
-
 <img src="images/THX_sound_Spaceship.png" width="128px"></img><img src="images/Windows_XP_background_Mushroom.png" width="128px"></img><img src="images/a_red_ball_resting_on_top_of_a_mirror.png" width="128px"></img>
 <img src="images/dog_looking_at_the_camera.png" width="128px"></img><img src="images/goose_on_the_run.png" width="128px"></img><img src="/images/photon.png" width="128px"></img>
 
