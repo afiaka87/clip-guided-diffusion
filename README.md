@@ -1,6 +1,6 @@
 # CLIP Guided Diffusion
 
-[![Join the chat at https://gitter.im/clip-guided-diffusion/community](https://badges.gitter.im/clip-guided-diffusion/community.svg)](https://gitter.im/clip-guided-diffusion/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+[![https://gitter.im/clip-guided-diffusion/community](https://badges.gitter.im/clip-guided-diffusion/community.svg)](https://gitter.im/clip-guided-diffusion/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
 From [RiversHaveWings](https://twitter.com/RiversHaveWings).
 
