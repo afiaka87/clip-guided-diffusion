@@ -138,7 +138,7 @@ def log_image(image: th.Tensor, base_path: str, txt: str, txt_min: str, current_
     dirname = get_dir_for_prompt(base_path, txt, txt_min, batch_idx)
     os.makedirs(dirname, exist_ok=True)
     stem = f"{current_step:04}"
-    filename = os.path.join(dirname, name := f'{stem}.png')
+    filename = os.path.join(dirname, f'{stem}.png')
     pil_image = tvf.to_pil_image(image.add(1).div(2).clamp(0, 1))
     pil_image.save(os.path.join(os.getcwd(), f'current.png'))
     pil_image.save(filename)

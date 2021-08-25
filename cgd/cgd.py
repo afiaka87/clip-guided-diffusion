@@ -96,9 +96,7 @@ def clip_guided_diffusion(
 
     Path(prefix_path).mkdir(parents=True, exist_ok=True)
     Path(checkpoints_dir).mkdir(parents=True, exist_ok=True)
-    if (fp32_diffusion := device == 'cpu'):
-        print("Enabling FP32 mode for CPU compatibility.")
-
+    fp32_diffusion = (device == 'cpu')
     diffusion_path = download_guided_diffusion(image_size=image_size, checkpoints_dir=checkpoints_dir, class_cond=class_cond)
 
     # Load CLIP model/Encode text/Create `MakeCutouts`
