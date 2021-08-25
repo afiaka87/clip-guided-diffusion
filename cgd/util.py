@@ -1,8 +1,8 @@
+from functools import lru_cache
 import glob
 import io
 import os
 import re
-import subprocess
 from pathlib import Path
 from typing import Tuple, Union
 from urllib import request
@@ -22,8 +22,6 @@ CACHE_PATH = os.path.expanduser("~/.cache/clip-guided-diffusion")
 ALPHANUMERIC_REGEX = r"[^\w\s]"
 
 # modified from https://github.com/lucidrains/DALLE-pytorch/blob/d355100061911b13e1f1c22de8c2b5deb44e65f8/dalle_pytorch/vae.py
-
-
 def download(url: str, filename: str, root: str = CACHE_PATH) -> str:
     os.makedirs(root, exist_ok=True)
     download_target = Path(os.path.join(root, filename))
@@ -54,7 +52,7 @@ def download_guided_diffusion(image_size: int, class_cond: bool, checkpoints_dir
             return str(target_path)
     return download(diffusion_model_info["url"], diffusion_model_info["filename"], checkpoints_dir)
 
-
+@lru_cache(maxsize=1)
 def load_guided_diffusion(
     checkpoint_path: str,
     image_size: int,
@@ -96,19 +94,6 @@ def load_guided_diffusion(
     if model_config["use_fp16"]:
         model.convert_to_fp16()
     return model.to(device), diffusion
-
-
-def create_video_from_image_dir(image_dir: str, target: str = "current.mp4", fps: int = 30) -> str:
-    assert Path(target).suffix == ".mp4", "target must be a .mp4 file"
-    result = subprocess.call([
-        "ffmpeg",
-        "-hide_banner", "-loglevel", "error", "-y",
-        "-framerate", "", "-pattern_type", "glob",
-        "-i", f"{image_dir}/*.png", "-c:v", "libx264",
-        "-pix_fmt", "yuv420p", str(target)
-    ])
-    return target
-
 
 def fetch(url_or_path):
     if str(url_or_path).startswith('http://') or str(url_or_path).startswith('https://'):

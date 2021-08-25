@@ -15,19 +15,108 @@ See also - <a href="https://github.com/nerdyrodent/VQGAN-CLIP">VQGAN-CLIP</a>
 
 > This code is currently under active development and is subject to frequent changes. Please file an issue if you have any constructive feedback, questions, or issues with the code or colab notebook.
 
----
-## Quick start
+> Windows user? Please file an issue if you have any issues with the code. I have no way to test that platform currently but would like to try.
+
+## Install
 ```sh
-❯ git clone https://github.com/afiaka87/clip-guided-diffusion.git && cd clip-guided-diffusion
-❯ git clone https://github.com/afiaka87/guided-diffusion.git
-❯ pip3 install -e guided-diffusion
-❯ python3 setup.py install
-❯ cgd -txt "Alien friend by Odilon Redo"
-3%|██▉              | 28/1000 [00:07<04:08,  3.91it/s]
+git clone https://github.com/afiaka87/clip-guided-diffusion.git && cd clip-guided-diffusion
+git clone https://github.com/afiaka87/guided-diffusion.git
+pip3 install -e guided-diffusion
+python3 setup.py install
 ```
-- Intermediate samples and final gif will be saved automatically.
+
+## Run 
+`cgd -txt "Alien friend by Odilon Redo"`
+
+A gif of the full run will be saved to `./outputs/caption_{j}.gif` by default.
 
 ![Alien friend by Oidlon Redo](images/alien_friend_by_Odilon_Redo_00.gif)
+
+
+The file `current.png` can be refreshed to see the current image.
+Intermediate outputs are saved to `./outputs` by default in the format:
+Respective guided-diffusion checkpoints from OpenAI will be downloaded to `~/.cache/clip-guided-diffusion/` by default.
+
+## Usage - CLI
+
+### Text to image generation
+
+`--prompt` / `-txt`
+`--image_size` / `-size`
+
+`cgd --image_size 256 --prompt "32K HUHD Mushroom"`
+
+![](/images/32K_HUHD_Mushroom.png?raw=true)
+
+### Run on a CPU
+
+- **Using a CPU can take a very long time** compared to using cuda. In many cases it won't be feasible to complete a full generation.
+- If you have a relatively recent CPU, you can run the following command to generate a single image in 30 minutes to several hours, depending on your CPU.
+- Note: in order to decrease runtime significantly, this uses "ddim50", the "cosine" scheduler and the 64x64 checkpoint. Generations may be somewhat underwhelming. Increase `-respace` or `-size` at your own risk.
+
+`cgd --device cpu --prompt "You can use the short options too." -cutn 8 -size 64 -cgs 5 -tvs 0.00001 -respace "ddim50" -clip "ViT-B/32"`
+
+### CUDA GPU
+
+`cgd --prompt "Theres no need to specify a device, it will be chosen automatically" -cutn 32 -size 256`
+
+### Iterations/Steps (Timestep Respacing)
+
+`--timestep_respacing` or `-respace` (default: `1000`)
+- Use fewer timesteps over the same diffusion schedule. Sacrifices accuracy/alignment for improved speed.
+- options: - `25`, `50`, `150`, `250`, `500`, `1000`, `ddim25`,`ddim50`,`ddim150`, `ddim250`,`ddim500`,`ddim1000`
+
+`cgd -respace 'ddim50' -txt "cat painting"`
+
+### Penalize a text prompt as well
+
+- Loss for prompt_min is weighted 0.1
+
+`cgd -txt "32K HUHD Mushroom" -min "green grass"`
+
+<img src="images/32K_HUHD_Mushroom_MIN_green_grass.png" width="200"></img>
+
+### Existing image
+`--init_image`/`-init` and `--skip_timesteps`/`-skip`
+- Blend an image with the diffusion for a number of steps.
+
+`--skip_timesteps`/`-skip` is the number of timesteps to spend blending.
+- `-skip` should be about halfway through the diffusion schedule i.e. `-respace`
+- `-respace 1000 -skip 500`
+- `-respace 250 -skip 125`
+- etc.
+
+**You must supply both `--init_image` and `--skip_timesteps` when supplying an initial image.**
+```sh
+cgd -respace "250" -txt "A mushroom in the style of Vincent Van Gogh" \
+  --init_image "images/32K_HUHD_Mushroom.png" \
+  --skip_timesteps 125
+```
+
+<img src="images/a_mushroom_in_the_style_of_vangogh.png?raw=true" width="200"></img>
+
+### Image size
+Increase in `-size` has drastic impacts on performance. `128` is used by default.
+- options: `64, 128, 256, 512 pixels (square)`
+- `--clip_guidance_scale` and `--tv_scale` will require experimentation.
+- **Note about 64x64** when using the 64x64 checkpoint, the cosine noise scheduler is used. For unclear reasons, this noise scheduler requires different values for `--clip_guidance_scale` and `--tv_scale`. I recommend starting with `-cgs 5 -tvs 0.00001` and experimenting from around there.
+- For all other checkpoints, clip_guidance_scale seems to work well around 1000-2000 and tv_scale at 0, 100, 150 or 200
+```sh
+cgd --init_image=images/32K_HUHD_Mushroom.png \
+    --skip_timesteps=500 \
+    --image_size 64 \
+    --prompt "8K HUHD Mushroom"
+```
+
+<img src="images/32K_HUHD_Mushroom_64.png?raw=true" width="128"></img>
+_resized to 128 pixels for visibility_
+
+```sh
+cgd --image_size 512 --prompt "8K HUHD Mushroom"
+```
+
+<img src="images/32K_HUHD_Mushroom_512.png?raw=true" width="320"></img>
+_resized to 320 pixels for formatting_
 
 ## Usage - Python
 
@@ -62,87 +151,8 @@ for step, output_path in enumerate(cgd_samples):
         all_images.append(output_path)
 ```
 
-- Respective guided-diffusion checkpoints from OpenAI will be downloaded to `~/.cache/clip-guided-diffusion/` by default.
-- The file `current.png` can be refreshed to see the current image.
-
-## Usage - CLI
-### Text to image generation
-
-`--prompt` / `-txt`
-`--image_size` / `-size`
-- Filename format `f"{caption}/batch_idx_{j}_iteration_{i}.png"`
-- The most recent generation will also be stored in the file `current.png`
-
-```sh
-❯ cgd -size 256 -txt "32K HUHD Mushroom"
-Step 999, output 0:
-00%|███████████████| 1000/1000 [00:00<12:30,  1.02it/s]
-```
-![](/images/32K_HUHD_Mushroom.png?raw=true)
-
-
-### Iterations/Steps (Timestep Respacing)
-- `--diffusion_steps`, `-steps` (default: `1000`)
-  - `25`, `50`, `150`, `250`, `500`, `1000`,
-  - **The default of `1000` is the most accurate and is recommended.**
-- `--timestep_respacing` or `-respace`  (default: `1000`)
-  - Use fewer timesteps over the same diffusion schedule. 
-    - e.g. `-respace "ddim25"`
-  - `options`: 
-    - `25`, `50`, `150`, `250`, `500`, `1000`,
-    - `ddim25`,`ddim50`,`ddim150`, `ddim250`,`ddim500`,`ddim1000`
-```sh
-❯ cgd -respace 'ddim50' -txt "cat painting"
-```
-- Smaller `-respace` values can benefit a lot from class scoring.
-```sh
-❯ cgd -score -respace 50 -txt "cat painting"
-```
-
-### Penalize a text prompt as well
-- `--prompt_min`/`-min`
-- Loss for prompt_min is weighted 0.5, a value found in experimentation.
-- Also used to weight class selection with `-score`.
-```sh
-❯ cgd -txt "32K HUHD Mushroom" -min "green grass"
-```
-<img src="images/32K_HUHD_Mushroom_MIN_green_grass.png" width="200"></img>
-
-### Existing image 
-- `--init_image`/`-init` and  `--skip_timesteps`/`-skip`
-Blend an image with the diffusion for a number of steps. 
-- `--skip_timesteps`/`-skip` is the number of timesteps to spend blending.
-  - **Needs to be set in order to blend an image.**
-  - Good range for `-respace=1000` is 350 to 650.
-```sh
-❯ cgd -txt "A mushroom in the style of Vincent Van Gogh" \
-  -init "images/32K_HUHD_Mushroom.png" \
-  -skip 500
-```
-<img src="images/a_mushroom_in_the_style_of_vangogh.png?raw=true" width="200"></img>
-
-### Image size
-- Default is 128px
-- Available image sizes are `64, 128, 256, 512 pixels (square)`
-- The 512x512 pixel checkpoint **requires a GPU with at least 12GB of VRAM.**
-- `--clip_guidance_scale` and `--tv_scale` will require experimentation.
-- the 64x64 diffusion checkpoint is challenging to work with and often results in an all-white or all-black image.
-  - This is much less of an issue when using an existing image of some sort.
-```sh
-❯ cgd \
-    --init_image=images/32K_HUHD_Mushroom.png \
-    --skip_timesteps=500 \
-    --image_size 64 \
-    --prompt "8K HUHD Mushroom"
-```
-<img src="images/32K_HUHD_Mushroom_64.png?raw=true" width="128"></img>
-
-```sh
-❯ $ cgd --image_size 512 --prompt "8K HUHD Mushroom"
-```
-<img src="images/32K_HUHD_Mushroom_512.png?raw=true" width="200"></img>
-
 ## Full Usage:
+
 ```sh
   --prompt_min PROMPT_MIN, -min PROMPT_MIN
                         the prompt to penalize (default: )
@@ -182,9 +192,13 @@ Blend an image with the diffusion for a number of steps.
   --noise_schedule NOISE_SCHEDULE, -sched NOISE_SCHEDULE
                         Specify noise schedule. Either 'linear' or 'cosine'. (default: linear)
   --dropout DROPOUT, -drop DROPOUT
+                        Amount of dropout to apply. (default: 0.0)
+  --device DEVICE, -dev DEVICE
+                        Device to use. Either cpu or cuda. (default: )
 ```
 
 # Development
+
 ```sh
 git clone https://github.com/afiaka87/clip-guided-diffusion.git
 cd clip-guided-diffusion
@@ -195,7 +209,9 @@ pip install -r requirements.txt
 pip install -e guided-diffusion
 ```
 
-## Run tests
+## Run integration tests 
+- Some tests require a GPU; you may ignore them if you dont have one.
+
 ```sh
 python -m unittest discover
 ```

@@ -1,8 +1,10 @@
 import clip
+from functools import lru_cache
 import torch as th
 import torch.nn.functional as tf
 import torchvision.transforms as tvt
 from data.imagenet1000_clsidx_to_labels import IMAGENET_CLASSES
+
 
 def imagenet_top_n(prompt: str = '', prompt_min: str = '', min_weight: float = 0.1, device:str='cpu', n: int = len(IMAGENET_CLASSES), clip_model_name: str = "ViT-B/32"):
     """
@@ -43,18 +45,18 @@ CLIP_NORMALIZE = tvt.Normalize(mean=[0.48145466, 0.4578275, 0.40821073], std=[
                                0.26862954, 0.26130258, 0.27577711])
 
 
-# clip_model = clip.load(clip_model_name, jit=False)[0].eval().requires_grad_(False).to(device)
-def load_clip(model_name='ViT-B/32', device="cpu", jit=False):
+@lru_cache(maxsize=1)
+def load_clip(model_name='ViT-B/32', device="", jit=False):
     if device == "cpu":
         clip_model = clip.load(model_name, jit=False)[0].eval().to(device=device).float()
-        # raise ValueError("CPU not supported at the moment due to a bug.")
-    else:
+    elif device == "cuda":
         clip_model = clip.load(model_name, jit=False)[0].eval().requires_grad_(False).to(device=device)
+    else:
+        raise ValueError("Invalid or unspecified device: {}".format(device))
     clip_size = clip_model.visual.input_resolution
     return clip_model, clip_size
 
-
-def clip_encode_text(clip_model_name, text, device="cuda:0", truncate: bool = True):
+def clip_encode_text(clip_model_name, text, device, truncate: bool = True):
     clip_model, _ = load_clip(clip_model_name, device=device, jit=False)
     return clip_model.encode_text(clip.tokenize(text, truncate=truncate).to(device))
     

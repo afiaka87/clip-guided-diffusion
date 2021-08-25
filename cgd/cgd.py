@@ -1,6 +1,7 @@
 import argparse
 import time
 import glob
+from functools import lru_cache
 import re
 from pathlib import Path
 
@@ -11,9 +12,8 @@ from PIL import Image
 from torchvision.transforms.transforms import ToTensor
 from tqdm.auto import tqdm, trange
 
-from cgd.clip_util import (CLIP_NORMALIZE, MakeCutouts, clip_encode_text, imagenet_top_n,
-                           load_clip)
-from cgd.util import (ALPHANUMERIC_REGEX, CACHE_PATH, alphanumeric_filter, create_gif,
+from cgd.clip_util import (CLIP_NORMALIZE, MakeCutouts, clip_encode_text, load_clip)
+from cgd.util import (CACHE_PATH, create_gif,
                       download_guided_diffusion, fetch, load_guided_diffusion,
                       log_image, spherical_dist_loss, tv_loss)
 
@@ -31,7 +31,6 @@ CLIP_MODEL_NAMES = ("ViT-B/16", "ViT-B/32", "RN50",
 
 def check_parameters(
     prompt: str,
-    top_n: int,
     image_size: int,
     class_score: bool,
     timestep_respacing: str,
@@ -49,20 +48,19 @@ def check_parameters(
     if not (noise_schedule in ['linear', 'cosine']):
         raise ValueError('Noise schedule should be one of: linear, cosine')
     if not (clip_model_name in CLIP_MODEL_NAMES):
-        raise ValueError(f"clip model name should be one of: {CLIP_MODEL_NAMES}")
+        raise ValueError(f"--clip model name should be one of: {CLIP_MODEL_NAMES}")
     if not (image_size in IMAGE_SIZES):
-        raise ValueError(f"image size should be one of {IMAGE_SIZES}")
+        raise ValueError(f"--image size should be one of {IMAGE_SIZES}")
     if not (len(prompt) > 0):
-        raise ValueError("prompt/-txt cant be empty")
-    if not (0 < top_n <= len(IMAGENET_CLASSES)):
-        raise ValueError(f"top_n must be less than or equal to the number of classes: {top_n} > {len(IMAGENET_CLASSES)}")
+        raise ValueError("--prompt/-txt cant be empty")
     if not (0 < save_frequency <= int(timestep_respacing.replace('ddim', ''))):
-        raise ValueError("`save_frequency` must be greater than 0 and less than `timestep_respacing`")
+        raise ValueError("--save_frequency must be greater than 0 and less than `timestep_respacing`")
     if len(init_image) > 0 and skip_timesteps != 0:
         raise ValueError("skip_timesteps/-skip must be greater than 0 when using init_image")
     if not (timestep_respacing in TIMESTEP_RESPACINGS):
         print(f"Pausing run. `timestep_respacing` should be one of {TIMESTEP_RESPACINGS}. CTRL-C if this was a mistake.")
         time.sleep(5)
+        print("Resuming run.")
 
 
 def clip_guided_diffusion(
@@ -252,7 +250,7 @@ def main():
     p.add_argument("--noise_schedule", "-sched", default='linear', type=str,
                    help="Specify noise schedule. Either 'linear' or 'cosine'.")
     p.add_argument("--dropout", "-drop", default=0.0, type=float,
-                   help="Specify noise schedule. Either 'linear' or 'cosine'.")
+                   help="Amount of dropout to apply. ")
     p.add_argument("--device", "-dev", default='', type=str, help="Device to use. Either cpu or cuda.")
     args = p.parse_args()
 
