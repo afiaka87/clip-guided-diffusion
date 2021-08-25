@@ -22,9 +22,12 @@ See also - <a href="https://github.com/nerdyrodent/VQGAN-CLIP">VQGAN-CLIP</a>
 ❯ git clone https://github.com/afiaka87/guided-diffusion.git
 ❯ pip3 install -e guided-diffusion
 ❯ python3 setup.py install
-❯ cgd -txt "puddle"
+❯ cgd -txt "Alien friend by Odilon Redo"
 3%|██▉              | 28/1000 [00:07<04:08,  3.91it/s]
 ```
+- Intermediate samples and final gif will be saved automatically.
+
+![Alien friend by Oidlon Redo](images/alien_friend_by_Odilon_Redo_00.gif)
 
 ## Usage - Python
 
@@ -77,13 +80,6 @@ Step 999, output 0:
 ```
 ![](/images/32K_HUHD_Mushroom.png?raw=true)
 
-
-### CLIP Class Scoring
-- `--class_score` / `-score`
-- Scores are used to weight class selection.
-```sh
-❯ cgd -score -cgs 200 -cutn 64 -size 256 -respace 'ddim100' --prompt "cat painting"
-```
 
 ### Iterations/Steps (Timestep Respacing)
 - `--diffusion_steps`, `-steps` (default: `1000`)
@@ -148,51 +144,45 @@ Blend an image with the diffusion for a number of steps.
 
 ## Full Usage:
 ```sh
--h, --help            show this help message and exit
---prompt PROMPT, -txt PROMPT
-                      the prompt to reward (default: )
---prompt_min PROMPT_MIN, -min PROMPT_MIN
-                      the prompt to penalize (default: None)
---min_weight MIN_WEIGHT, -min_wt MIN_WEIGHT
-                      the prompt to penalize (default: 0.1)
---image_size IMAGE_SIZE, -size IMAGE_SIZE
-                      Diffusion image size. Must be one of [64, 128, 256, 512]. (default: 128)
---init_image INIT_IMAGE, -init INIT_IMAGE
-                      Blend an image with diffusion for n steps (default: None)
---skip_timesteps SKIP_TIMESTEPS, -skip SKIP_TIMESTEPS
-                      Number of timesteps to blend image for. CLIP guidance occurs after this. (default: 0)
---prefix PREFIX, -dir PREFIX
-                      output directory (default: outputs)
---checkpoints_dir CHECKPOINTS_DIR, -ckpts CHECKPOINTS_DIR
-                      Path subdirectory containing checkpoints. (default: checkpoints)
---batch_size BATCH_SIZE, -bs BATCH_SIZE
-                      the batch size (default: 1)
---clip_guidance_scale CLIP_GUIDANCE_SCALE, -cgs CLIP_GUIDANCE_SCALE
-                      Scale for CLIP spherical distance loss. Values will need tinkering for different settings. (default: 1000)
---tv_scale TV_SCALE, -tvs TV_SCALE
-                      Scale for denoising loss (default: 100)
---class_score, -score
-                      Enables CLIP guided class randomization. (default: False)
---top_n TOP_N, -top TOP_N
-                      Top n imagenet classes compared to phrase by CLIP (default: 1000)
---seed SEED, -seed SEED
-                      Random number seed (default: 0)
---save_frequency SAVE_FREQUENCY, -freq SAVE_FREQUENCY
-                      Save frequency (default: 1)
---diffusion_steps DIFFUSION_STEPS, -steps DIFFUSION_STEPS
-                      Diffusion steps (default: 1000) --timestep_respacing TIMESTEP_RESPACING, -respace TIMESTEP_RESPACING
-                      Timestep respacing (default: 1000)
---num_cutouts NUM_CUTOUTS, -cutn NUM_CUTOUTS
-                      Number of randomly cut patches to distort from diffusion. (default: 32)
---cutout_power CUTOUT_POWER, -cutpow CUTOUT_POWER
-                      Cutout size power (default: 0.5)
---clip_model CLIP_MODEL, -clip CLIP_MODEL
-                      clip model name. Should be one of: ('ViT-B/16', 'ViT-B/32', 'RN50', 'RN101', 'RN50x4', 'RN50x16') (default: ViT-B/32)
---class_cond CLASS_COND, -cond CLASS_COND
-                      Use class conditional. Required for image sizes other than 256 (default: True)
+  --prompt_min PROMPT_MIN, -min PROMPT_MIN
+                        the prompt to penalize (default: )
+  --min_weight MIN_WEIGHT, -min_wt MIN_WEIGHT
+                        the prompt to penalize (default: 0.1)
+  --image_size IMAGE_SIZE, -size IMAGE_SIZE
+                        Diffusion image size. Must be one of [64, 128, 256, 512]. (default: 128)
+  --init_image INIT_IMAGE, -init INIT_IMAGE
+                        Blend an image with diffusion for n steps (default: )
+  --skip_timesteps SKIP_TIMESTEPS, -skip SKIP_TIMESTEPS
+                        Number of timesteps to blend image for. CLIP guidance occurs after this. (default: 0)
+  --prefix PREFIX, -dir PREFIX
+                        output directory (default: outputs)
+  --checkpoints_dir CHECKPOINTS_DIR, -ckpts CHECKPOINTS_DIR
+                        Path subdirectory containing checkpoints. (default: /home/samsepiol/.cache/clip-guided-diffusion)
+  --batch_size BATCH_SIZE, -bs BATCH_SIZE
+                        the batch size (default: 1)
+  --clip_guidance_scale CLIP_GUIDANCE_SCALE, -cgs CLIP_GUIDANCE_SCALE
+                        Scale for CLIP spherical distance loss. Values will need tinkering for different settings. (default: 1000)
+  --tv_scale TV_SCALE, -tvs TV_SCALE
+                        Scale for denoising loss (default: 100)
+  --seed SEED, -seed SEED
+                        Random number seed (default: 0)
+  --save_frequency SAVE_FREQUENCY, -freq SAVE_FREQUENCY
+                        Save frequency (default: 1)
+  --diffusion_steps DIFFUSION_STEPS, -steps DIFFUSION_STEPS
+                        Diffusion steps (default: 1000)
+  --timestep_respacing TIMESTEP_RESPACING, -respace TIMESTEP_RESPACING
+                        Timestep respacing (default: 1000)
+  --num_cutouts NUM_CUTOUTS, -cutn NUM_CUTOUTS
+                        Number of randomly cut patches to distort from diffusion. (default: 16)
+  --cutout_power CUTOUT_POWER, -cutpow CUTOUT_POWER
+                        Cutout size power (default: 0.5)
+  --clip_model CLIP_MODEL, -clip CLIP_MODEL
+                        clip model name. Should be one of: ('ViT-B/16', 'ViT-B/32', 'RN50', 'RN101', 'RN50x4', 'RN50x16') (default: ViT-B/32)
+  --uncond, -uncond     Use finetuned unconditional checkpoints from OpenAI (256px) and Katherine Crowson (512px) (default: False)
+  --noise_schedule NOISE_SCHEDULE, -sched NOISE_SCHEDULE
+                        Specify noise schedule. Either 'linear' or 'cosine'. (default: linear)
+  --dropout DROPOUT, -drop DROPOUT
 ```
-
-
 
 # Development
 ```sh
