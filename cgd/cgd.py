@@ -89,14 +89,22 @@ def clip_guided_diffusion(
     save_frequency: int = 1,
     noise_schedule: str = "linear",
     dropout: float = 0.0,
-    device: str = 'cuda',
+    device: str = '',
 ):
+    print()
+    if len(device) == 0:
+        device = 'cuda' if th.cuda.is_available() else 'cpu'
+        print(f"Using device {device}. You can specify a device manually with `--device/-dev`")
+    else:
+        print(f"Using device {device}")
+    fp32_diffusion = (device == 'cpu')
+
     if seed:
         th.manual_seed(seed)
 
     Path(prefix_path).mkdir(parents=True, exist_ok=True)
     Path(checkpoints_dir).mkdir(parents=True, exist_ok=True)
-    fp32_diffusion = (device == 'cpu')
+
     diffusion_path = download_guided_diffusion(image_size=image_size, checkpoints_dir=checkpoints_dir, class_cond=class_cond)
 
     # Load CLIP model/Encode text/Create `MakeCutouts`
@@ -245,7 +253,7 @@ def main():
                    help="Specify noise schedule. Either 'linear' or 'cosine'.")
     p.add_argument("--dropout", "-drop", default=0.0, type=float,
                    help="Specify noise schedule. Either 'linear' or 'cosine'.")
-
+    p.add_argument("--device", "-dev", default='', type=str, help="Device to use. Either cpu or cuda.")
     args = p.parse_args()
 
     _class_cond = not args.uncond
@@ -274,6 +282,7 @@ def main():
         randomize_class=(_class_cond),
         noise_schedule=args.noise_schedule,
         dropout=args.dropout,
+        device=args.device,
         augs=[]
     )
     prefix_path.mkdir(exist_ok=True)
