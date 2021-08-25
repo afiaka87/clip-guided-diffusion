@@ -3,14 +3,14 @@ From [RiversHaveWings](https://twitter.com/RiversHaveWings).
 
 Generate vibrant and detailed images using only text.
 
-<a href="https://colab.research.google.com/github/afiaka87/clip-guided-diffusion/blob/main/cgd.ipynb"> <img src="https://colab.research.google.com/assets/colab-badge.svg"> </a>
-
 <img src="images/THX_sound_Spaceship.png" width="128px"></img><img src="images/Windows_XP_background_Mushroom.png" width="128px"></img><img src="images/a_red_ball_resting_on_top_of_a_mirror.png" width="128px"></img>
 <img src="images/dog_looking_at_the_camera.png" width="128px"></img><img src="images/goose_on_the_run.png" width="128px"></img><img src="/images/photon.png" width="128px"></img>
 
 See captions and more generations in the [Gallery](/images/README.md)
 
 See also - <a href="https://github.com/nerdyrodent/VQGAN-CLIP">VQGAN-CLIP</a>
+
+> This code is currently under active development and is subject to frequent changes. Please file an issue if you have any constructive feedback, questions, or issues with the code or colab notebook.
 
 ---
 ## Quick start
@@ -189,7 +189,6 @@ Blend an image with the diffusion for a number of steps.
                       Use class conditional. Required for image sizes other than 256 (default: True)
 ```
 
-> This code is currently under active development and is subject to frequent changes. Please file an issue if you have any constructive feedback, questions, or issues with the code or colab notebook.
 
 
 # Development
