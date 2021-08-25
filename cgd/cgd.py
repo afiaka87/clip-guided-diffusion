@@ -287,9 +287,8 @@ def main():
     )
     prefix_path.mkdir(exist_ok=True)
     list(enumerate(tqdm(cgd_generator))) # iterate over generator
-    if args.gif: # save gifs
-        for batch_idx in range(args.batch_size):
-            create_gif(base=prefix_path,prompt=args.prompt,prompt_min=args.prompt_min,batch_idx=batch_idx)
+    for batch_idx in range(args.batch_size):
+        create_gif(base=prefix_path,prompt=args.prompt,prompt_min=args.prompt_min,batch_idx=batch_idx)
 
 
 if __name__ == "__main__":

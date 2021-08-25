@@ -148,7 +148,9 @@ def create_gif(base, prompt, prompt_min, batch_idx):
     dirname = get_dir_for_prompt(base, prompt, prompt_min, batch_idx)
     images_glob = os.path.join(dirname, "*.png")
     imgs = [Image.open(f) for f in sorted(glob.glob(images_glob))]
-    return imgs[0].save(fp=f"{base}/{combine_txt(prompt, prompt_min)}_{batch_idx:02}.gif", format='GIF', append_images=imgs, save_all=True, duration=200, loop=0)
+    gif_filename = f"{base}/{combine_txt(prompt, prompt_min)}_{batch_idx:02}.gif"
+    imgs[0].save(fp=gif_filename, format='GIF', append_images=imgs, save_all=True, duration=200, loop=0)
+    return gif_filename
 
 def resize_image(image: th.Tensor, out_size: Union[int, Tuple[int, int]]) -> th.Tensor:
     """(Katherine Crowson) - Resize image"""
