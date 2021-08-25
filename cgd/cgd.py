@@ -227,10 +227,6 @@ def main():
                    help="Scale for CLIP spherical distance loss. Values will need tinkering for different settings.",)
     p.add_argument("--tv_scale", "-tvs", type=float,
                    default=100, help="Scale for denoising loss",)
-    p.add_argument("--class_score", "-score", action="store_true",
-                   help="Enables CLIP guided class randomization.",)
-    p.add_argument("--top_n", "-top", type=int, default=len(IMAGENET_CLASSES),
-                   help="Top n imagenet classes compared to phrase by CLIP",)
     p.add_argument("--seed", "-seed", type=int,
                    default=0, help="Random number seed")
     p.add_argument("--save_frequency", "-freq", type=int,
@@ -247,13 +243,10 @@ def main():
                    help=f"clip model name. Should be one of: {CLIP_MODEL_NAMES}")
     p.add_argument("--uncond", "-uncond", action="store_true",
                    help='Use finetuned unconditional checkpoints from OpenAI (256px) and Katherine Crowson (512px)')
-    p.add_argument("--fp32_diffusion", "-fp32", action="store_true",
-                   help="Use fp32 for diffusion. Default is fp16 for speed/memory savings")
     p.add_argument("--noise_schedule", "-sched", default='linear', type=str,
                    help="Specify noise schedule. Either 'linear' or 'cosine'.")
     p.add_argument("--dropout", "-drop", default=0.0, type=float,
                    help="Specify noise schedule. Either 'linear' or 'cosine'.")
-    p.add_argument("--gif", "-gif", action="store_true", help='create gifs')
 
     args = p.parse_args()
 
