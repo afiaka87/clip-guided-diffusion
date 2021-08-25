@@ -1,58 +1,38 @@
 import argparse
-import imageio
-from torchvision.transforms.transforms import GaussianBlur, RandomAdjustSharpness, RandomApply
-from tqdm.auto import tqdm, trange
-import sys
-import os
+import time
+import glob
+import re
 from pathlib import Path
 
-import clip
+from data.imagenet1000_clsidx_to_labels import IMAGENET_CLASSES
+
 import torch as th
 from PIL import Image
-from torchvision import transforms as tvt
-from torchvision.transforms import functional as tf
+from torchvision.transforms.transforms import ToTensor
+from tqdm.auto import tqdm, trange
 
-from data.imagenet1000_clsidx_to_labels import IMAGENET_CLASSES
-from cgd import util as cgd_util
+from cgd.clip_util import (CLIP_NORMALIZE, MakeCutouts, clip_encode_text, imagenet_top_n,
+                           load_clip)
+from cgd.util import (ALPHANUMERIC_REGEX, CACHE_PATH, alphanumeric_filter, create_gif,
+                      download_guided_diffusion, fetch, load_guided_diffusion,
+                      log_image, spherical_dist_loss, tv_loss)
 
+import sys
+import os
 sys.path.append(os.path.join(os.getcwd(), "guided-diffusion"))
 
-TIMESTEP_RESPACINGS = ("25", "50", "100", "250", "500", "1000", "ddim25", "ddim50", "ddim100", "ddim250", "ddim500", "ddim1000")
+TIMESTEP_RESPACINGS = ("25", "50", "100", "250", "500", "1000",
+                       "ddim25", "ddim50", "ddim100", "ddim250", "ddim500", "ddim1000")
 DIFFUSION_SCHEDULES = (25, 50, 100, 250, 500, 1000)
 IMAGE_SIZES = (64, 128, 256, 512)
-CLIP_MODEL_NAMES = ("ViT-B/16", "ViT-B/32", "RN50", "RN101", "RN50x4", "RN50x16")
-CLIP_NORMALIZE = tvt.Normalize(mean=[0.48145466, 0.4578275, 0.40821073], std=[0.26862954, 0.26130258, 0.27577711])
+CLIP_MODEL_NAMES = ("ViT-B/16", "ViT-B/32", "RN50",
+                    "RN101", "RN50x4", "RN50x16")
 
-
-def imagenet_top_n(prompt, prompt_min='', min_weight=0.1, clip_model=None, device=None, n: int = len(IMAGENET_CLASSES)):
-    imagenet_lbl_tokens = clip.tokenize(IMAGENET_CLASSES).to(device)
-    prompt_tokens = clip.tokenize(prompt).to(device)
-    prompt_min_features = None
-    prompt_min_tokens = None
-    if prompt_min is not None:
-        prompt_min_tokens = clip.tokenize(prompt_min).to(device)
-
-    with th.no_grad():
-        imagenet_features = clip_model.encode_text(imagenet_lbl_tokens).float()
-        prompt_features = clip_model.encode_text(prompt_tokens).float()
-        if prompt_min_tokens is not None:
-            prompt_min_features = clip_model.encode_text(prompt_min_tokens).float()
-            prompt_min_features /= prompt_min_features.norm(dim=-1, keepdim=True)
-
-    imagenet_features /= imagenet_features.norm(dim=-1, keepdim=True)
-    prompt_features /= prompt_features.norm(dim=-1, keepdim=True)
-    if prompt_min_features is not None:
-        prompt_features = prompt_features - (min_weight * prompt_min_features)
-    text_probs = (100.0 * prompt_features @ imagenet_features.T).softmax(dim=-1)
-    sorted_probs, sorted_classes = text_probs.cpu().topk(n, dim=-1, sorted=True)
-    categorical_clip_scores = th.distributions.Categorical(sorted_probs)
-    return (sorted_classes[0], categorical_clip_scores)
 
 def check_parameters(
     prompt: str,
     top_n: int,
     image_size: int,
-    class_cond: bool,
     class_score: bool,
     timestep_respacing: str,
     diffusion_steps: int,
@@ -60,26 +40,29 @@ def check_parameters(
     init_image: str,
     clip_model_name: str,
     save_frequency: int,
-    noise_schedule:str,
+    noise_schedule: str,
 ):
-    if diffusion_steps not in DIFFUSION_SCHEDULES:
+    if class_score: # TODO re-enable after class_score is fixed
+        raise ValueError('Class scoring is currently a work-in-progress feature. It is unclear if the current implementation is working. Sorry for the confusion; please disable for now.')
+    if not (diffusion_steps in DIFFUSION_SCHEDULES):
         print('(warning) Diffusion steps should be one of:', DIFFUSION_SCHEDULES)
-    assert noise_schedule in ['linear', 'cosine']
-    if class_score:
-        assert class_cond is True, "class_score can only be used with class conditioned guidance."
-    if timestep_respacing not in TIMESTEP_RESPACINGS:
-        print(f"timestep_respacing should be one of {TIMESTEP_RESPACINGS}")
-    assert clip_model_name in CLIP_MODEL_NAMES, f"clip model name should be one of: {CLIP_MODEL_NAMES}"
-    assert image_size in IMAGE_SIZES, f"image size should be one of {IMAGE_SIZES}"
-    assert len(prompt) > 0, "prompt/-txt cant be empty"
-    assert 0 < top_n <= len(IMAGENET_CLASSES), f"top_n must be less than or equal to the number of classes: {top_n} > {len(IMAGENET_CLASSES)}"
-    assert 0 < save_frequency <= int(timestep_respacing.replace('ddim', '')),"save_frequency/-freq must be greater than 0 and less than --timestep_respacing"
-    if len(init_image) > 0:
-        # Check skip timesteps logic
-        assert skip_timesteps != 0, "skip_timesteps/-skip must be greater than 0"
-        assert Path(init_image).exists(), f"{init_image} does not exist. Check spelling or provide another path."
-    else:
-        assert skip_timesteps == 0, f"--skip_timesteps/-skip must be 0 when --init_image/-init is None."
+    if not (noise_schedule in ['linear', 'cosine']):
+        raise ValueError('Noise schedule should be one of: linear, cosine')
+    if not (clip_model_name in CLIP_MODEL_NAMES):
+        raise ValueError(f"clip model name should be one of: {CLIP_MODEL_NAMES}")
+    if not (image_size in IMAGE_SIZES):
+        raise ValueError(f"image size should be one of {IMAGE_SIZES}")
+    if not (len(prompt) > 0):
+        raise ValueError("prompt/-txt cant be empty")
+    if not (0 < top_n <= len(IMAGENET_CLASSES)):
+        raise ValueError(f"top_n must be less than or equal to the number of classes: {top_n} > {len(IMAGENET_CLASSES)}")
+    if not (0 < save_frequency <= int(timestep_respacing.replace('ddim', ''))):
+        raise ValueError("`save_frequency` must be greater than 0 and less than `timestep_respacing`")
+    if len(init_image) > 0 and skip_timesteps != 0:
+        raise ValueError("skip_timesteps/-skip must be greater than 0 when using init_image")
+    if not (timestep_respacing in TIMESTEP_RESPACINGS):
+        print(f"Pausing run. `timestep_respacing` should be one of {TIMESTEP_RESPACINGS}. CTRL-C if this was a mistake.")
+        time.sleep(5)
 
 
 def clip_guided_diffusion(
@@ -88,10 +71,8 @@ def clip_guided_diffusion(
     min_weight: float = 0.1,
     batch_size: int = 1,
     tv_scale: float = 100,
-    top_n: int = len(IMAGENET_CLASSES),
     image_size: int = 128,
     class_cond: bool = True,
-    class_score: bool = False,
     clip_guidance_scale: int = 1000,
     cutout_power: float = 1.0,
     num_cutouts: int = 16,
@@ -100,96 +81,81 @@ def clip_guided_diffusion(
     diffusion_steps: int = 1000,
     skip_timesteps: int = 0,
     init_image: str = "",
-    checkpoints_dir: str = cgd_util.CACHE_PATH,
+    checkpoints_dir: str = CACHE_PATH,
     clip_model_name: str = "ViT-B/32",
     augs: list = [],
     randomize_class: bool = True,
     prefix_path: str = 'outputs',
     save_frequency: int = 1,
-    fp32_diffusion: bool = False,
     noise_schedule: str = "linear",
-    dropout:float = 0.0,
+    dropout: float = 0.0,
+    device: str = 'cuda',
 ):
-    # Assertions
-    check_parameters(prompt=prompt, 
-        top_n=top_n, image_size=image_size, class_cond=class_cond,
-        class_score=class_score, timestep_respacing=timestep_respacing, 
-        diffusion_steps=diffusion_steps, skip_timesteps=skip_timesteps,
-        init_image=init_image, clip_model_name=clip_model_name, 
-        save_frequency=save_frequency, noise_schedule=noise_schedule)
-
-    # Pytorch setup
-    device = th.device("cuda:0") if th.cuda.is_available() else "cpu"
     if seed:
         th.manual_seed(seed)
 
     Path(prefix_path).mkdir(parents=True, exist_ok=True)
-
-    # Download guided-diffusion checkpoint
     Path(checkpoints_dir).mkdir(parents=True, exist_ok=True)
-    diffusion_path = cgd_util.download_guided_diffusion(image_size=image_size, checkpoints_dir=checkpoints_dir, class_cond=class_cond)
+    if (fp32_diffusion := device == 'cpu'):
+        print("Enabling FP32 mode for CPU compatibility.")
+
+    diffusion_path = download_guided_diffusion(image_size=image_size, checkpoints_dir=checkpoints_dir, class_cond=class_cond)
 
     # Load CLIP model/Encode text/Create `MakeCutouts`
-    clip_model = clip.load(clip_model_name, jit=False)[0].eval().requires_grad_(False).to(device)
-    clip_size = clip_model.visual.input_resolution
-    make_cutouts = cgd_util.MakeCutouts(clip_size, num_cutouts, cutout_size_power=cutout_power, augment_list=augs)
-    text_embed = clip_model.encode_text(clip.tokenize(prompt, truncate=True).to(device)).float()
-    if len(prompt_min) > 0:
-        text_min_embed = clip_model.encode_text(clip.tokenize(prompt_min).to(device)).float()
+    clip_model, clip_size = load_clip(clip_model_name, device)
+    make_cutouts = MakeCutouts(cut_size=clip_size, num_cutouts=num_cutouts, cutout_size_power=cutout_power, augment_list=augs)
+    text_embed = clip_encode_text(clip_model_name, prompt, device)
+    penalty_text_embed = clip_encode_text(clip_model_name, prompt_min, device)
 
     # Load initial image (if provided)
     init_tensor = None
     if len(init_image) > 0:
-        pil_image = Image.open(cgd_util.fetch(init_image)).convert("RGB").resize((image_size, image_size), Image.LANCZOS)
-        init_tensor = tf.to_tensor(pil_image).to(device).unsqueeze(0).mul(2).sub(1)
-    
-    # Use CLIP scores as weights for random class selection.
+        pil_image = Image.open(fetch(init_image)).convert(
+            "RGB").resize((image_size, image_size), Image.LANCZOS)
+        init_tensor = ToTensor()(pil_image).to(device).unsqueeze(0).mul(2).sub(1)
+
+   # Class randomization requires a starting class index `y`
     model_kwargs = {}
     if class_cond:
         model_kwargs["y"] = th.zeros([batch_size], device=device, dtype=th.long)
 
-    # Rank the classes by their CLIP score
-    if class_score:
-        imagenet_clip_scores = imagenet_top_n(prompt, prompt_min, min_weight, clip_model, device, top_n)
-        print(f"Ranking top {top_n} ImageNet classes by their CLIP score.")
-    else:
-        print("Ranking all ImageNet classes uniformly. Use --class_score/-score to enable CLIP guided class selection instead.")
-        imagenet_clip_scores = None
-    
     # Load guided diffusion
-    gd_model, diffusion = cgd_util.load_guided_diffusion(
+    gd_model, diffusion = load_guided_diffusion(
         checkpoint_path=diffusion_path,
-        image_size=image_size, class_cond=class_cond, 
-        diffusion_steps=diffusion_steps, 
+        image_size=image_size, class_cond=class_cond,
+        diffusion_steps=diffusion_steps,
         timestep_respacing=timestep_respacing,
-        use_fp16=(not fp32_diffusion), 
-        device=str(device),
+        use_fp16=(not fp32_diffusion),
+        device=device,
         noise_schedule=noise_schedule,
         dropout=dropout,
     )
 
-    # Customize guided-diffusion model with function that uses CLIP guidance.
-    # `clip_scores` should be of type `Tuple(indices, torch.distributions.Categorical)
     current_timestep = None
     def cond_fn(x, t, y=None):
         with th.enable_grad():
             x = x.detach().requires_grad_()
             n = x.shape[0]
-            my_t = th.ones([n], device=device, dtype=th.long) * current_timestep
-            out = diffusion.p_mean_variance(gd_model, x, my_t, clip_denoised=False, model_kwargs={"y": y})
+            my_t = th.ones([n], device=device, dtype=th.long) * \
+                current_timestep
+            out = diffusion.p_mean_variance(
+                gd_model, x, my_t, clip_denoised=False, model_kwargs={"y": y})
             fac = diffusion.sqrt_one_minus_alphas_cumprod[current_timestep]
-            x_in = out["pred_xstart"] * fac + x * (1 - fac) # Blend denoised prediction with noisey sample
-            x_in = x_in.clamp(-10, 10)
+            # Blend denoised prediction with noisey sample
+            x_in = out["pred_xstart"] * fac + x * (1 - fac)
             clip_in = CLIP_NORMALIZE(make_cutouts(x_in.add(1).div(2)))
-            cutout_embeds = clip_model.encode_image(clip_in).float().view([num_cutouts, n, -1])
-            max_dists = cgd_util.spherical_dist_loss(cutout_embeds, text_embed.unsqueeze(0))
+            cutout_embeds = clip_model.encode_image(
+                clip_in).float().view([num_cutouts, n, -1])
+            max_dists = spherical_dist_loss(
+                cutout_embeds, text_embed.unsqueeze(0))
             if len(prompt_min) > 0:  # Implicit comparison to None is not supported by pytorch tensors
-                min_dists = cgd_util.spherical_dist_loss(cutout_embeds, text_min_embed.unsqueeze(0))
+                min_dists = spherical_dist_loss(
+                    cutout_embeds, penalty_text_embed.unsqueeze(0))
                 dists = max_dists - (min_weight * min_dists)
             else:
                 dists = max_dists
             losses = dists.mean(0)
-            tv_losses = cgd_util.tv_loss(x_in)
+            tv_losses = tv_loss(x_in)
             loss = losses.sum() * clip_guidance_scale + tv_losses.sum() * tv_scale
             final_loss = -th.autograd.grad(loss, x)[0]
             return final_loss
@@ -207,10 +173,10 @@ def clip_guided_diffusion(
             clip_denoised=False,
             model_kwargs=model_kwargs,
             cond_fn=cond_fn,
-            progress=False, 
+            progress=False,
             skip_timesteps=skip_timesteps,
             init_image=init_tensor,
-            clip_scores=imagenet_clip_scores,
+            clip_scores=None,
             randomize_class=randomize_class,
         )
         # Gather generator for diffusion
@@ -219,13 +185,17 @@ def clip_guided_diffusion(
             current_timestep -= 1
             if step % save_frequency == 0 or current_timestep == -1:
                 for batch_idx, image_tensor in enumerate(sample["pred_xstart"]):
-                    yield cgd_util.log_image(image_tensor, prefix_path, prompt, prompt_min, step, batch_idx)
-                
-    except RuntimeError as runtime_ex:
+                    yield batch_idx, log_image(image_tensor, prefix_path, prompt, prompt_min, step, batch_idx)
+        for batch_idx in range(batch_size):
+            create_gif(prefix_path, prompt, prompt_min, batch_idx)
+
+    except (RuntimeError, KeyboardInterrupt) as runtime_ex:
         if "CUDA out of memory" in str(runtime_ex):
             print(f"CUDA OOM error occurred.")
-            print(f"Try lowering --image_size/-size, --batch_size/-bs, --num_cutouts/-cutn")
-            print(f"--clip_model/-clip (currently {clip_model_name}) can have a large impact on VRAM usage.")
+            print(
+                f"Try lowering --image_size/-size, --batch_size/-bs, --num_cutouts/-cutn")
+            print(
+                f"--clip_model/-clip (currently {clip_model_name}) can have a large impact on VRAM usage.")
             print(f"'RN50' will use the least VRAM. 'ViT-B/32' the second least and is good for its memory/runtime constraints.")
         else:
             raise runtime_ex
@@ -249,7 +219,7 @@ def main():
                    help="Number of timesteps to blend image for. CLIP guidance occurs after this.")
     p.add_argument("--prefix", "-dir", default="outputs",
                    type=Path, help="output directory")
-    p.add_argument("--checkpoints_dir", "-ckpts", default=cgd_util.CACHE_PATH,
+    p.add_argument("--checkpoints_dir", "-ckpts", default=CACHE_PATH,
                    type=Path, help="Path subdirectory containing checkpoints.")
     p.add_argument("--batch_size", "-bs", type=int,
                    default=1, help="the batch size")
@@ -275,15 +245,15 @@ def main():
                    default=0.5, help="Cutout size power")
     p.add_argument("--clip_model", "-clip", type=str, default="ViT-B/32",
                    help=f"clip model name. Should be one of: {CLIP_MODEL_NAMES}")
-    p.add_argument("--uncond", "-uncond", action="store_true", 
+    p.add_argument("--uncond", "-uncond", action="store_true",
                    help='Use finetuned unconditional checkpoints from OpenAI (256px) and Katherine Crowson (512px)')
     p.add_argument("--fp32_diffusion", "-fp32", action="store_true",
-                    help="Use fp32 for diffusion. Default is fp16 for speed/memory savings")
+                   help="Use fp32 for diffusion. Default is fp16 for speed/memory savings")
     p.add_argument("--noise_schedule", "-sched", default='linear', type=str,
                    help="Specify noise schedule. Either 'linear' or 'cosine'.")
     p.add_argument("--dropout", "-drop", default=0.0, type=float,
                    help="Specify noise schedule. Either 'linear' or 'cosine'.")
-            
+    p.add_argument("--gif", "-gif", action="store_true", help='create gifs')
 
     args = p.parse_args()
 
@@ -298,7 +268,6 @@ def main():
         min_weight=args.min_weight,
         batch_size=args.batch_size,
         tv_scale=args.tv_scale,
-        top_n=args.top_n,
         image_size=args.image_size,
         class_cond=_class_cond,
         clip_guidance_scale=args.clip_guidance_scale,
@@ -311,23 +280,17 @@ def main():
         init_image=args.init_image,
         checkpoints_dir=args.checkpoints_dir,
         clip_model_name=args.clip_model,
-        class_score=args.class_score,
         randomize_class=(_class_cond),
-        fp32_diffusion=args.fp32_diffusion,
         noise_schedule=args.noise_schedule,
         dropout=args.dropout,
         augs=[]
     )
     prefix_path.mkdir(exist_ok=True)
-    all_images = {}
-    for current_step, batch_idx, img in tqdm(cgd_generator):
-        print(current_step, batch_idx, img)
-        # current_batch := { "current_step": current_step, "batch_idx": batch_idx, "img": img}
-        # all_images = {
-        #     **all_images,
+    list(enumerate(tqdm(cgd_generator))) # iterate over generator
+    if args.gif: # save gifs
+        for batch_idx in range(args.batch_size):
+            create_gif(base=prefix_path,prompt=args.prompt,prompt_min=args.prompt_min,batch_idx=batch_idx)
 
-        # }
-        
 
 if __name__ == "__main__":
     main()

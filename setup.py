@@ -24,7 +24,7 @@ if __name__ == "__main__":
             'pytorch'
         ],
         py_modules=["cgd"],
-        version="0.1.1",
+        version="0.1.2",
         author="Katherine Crowson, Clay Mullis",
         entry_points={
             'console_scripts': ['cgd = cgd.cgd:main', ],
@@ -44,5 +44,5 @@ if __name__ == "__main__":
             'Programming Language :: Python :: 3.8',
         ],
         include_package_data=True,
-        extras_require={'dev': ['pytest']},
+        # extras_require={'dev': ['']},
     )
