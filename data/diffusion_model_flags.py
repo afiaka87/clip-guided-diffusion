@@ -80,6 +80,7 @@ DIFFUSION_LOOKUP = {
     'uncond': {
         256: {
             "url": "https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt",
+            "filename": '256x256_diffusion_uncond.pt',
             "model_flags": {
                 "attention_resolutions": "32,16,8",
                 "class_cond": False,
@@ -97,6 +98,7 @@ DIFFUSION_LOOKUP = {
         },
         512: {
             "url": 'https://the-eye.eu/public/AI/models/512x512_diffusion_unconditional_ImageNet/512x512_diffusion_uncond_finetune_008100.pt',
+            "filename": '512x512_diffusion_uncond_finetune_008100.pt',
             "model_flags": {
                 'attention_resolutions': '32, 16, 8',
                 'class_cond': False,
