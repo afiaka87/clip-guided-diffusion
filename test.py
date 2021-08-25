@@ -166,16 +166,6 @@ class TestCGD(unittest.TestCase):
         self.assertEqual(first_sample[0], first_expected_returned_batch_idx)
         self.assertEqual(second_sample[0], second_expected_returned_batch_idx)
 
-    def test_full_run_with_gif_creation_enabled_for_two_batches(self):
-        prompt = "Loose seal."
-        batch_size = 2
-        samples = clip_guided_diffusion(prompt=prompt, batch_size=batch_size, image_size=64,
-                                        num_cutouts=1, clip_model_name="RN50", prefix_path=self.test_dir_path, gif=True, timestep_respacing="25")
-        list(samples)  # iterate over the generator to ensure it is fully exhausted
-        expected_gif_path = os.path.join(self.test_dir.name, alphanumeric_filter(prompt) + ".gif")
-        self.assertTrue(os.path.exists(expected_gif_path))
-        self.assertTrue(os.path.getsize(expected_gif_path) > 0)
-
 
 class TestClipUtil(unittest.TestCase):
     def __init__(self, methodName: str) -> None:
