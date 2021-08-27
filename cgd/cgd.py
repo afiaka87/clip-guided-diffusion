@@ -1,8 +1,6 @@
 import argparse
 import time
-import glob
 from functools import lru_cache
-import re
 from pathlib import Path
 
 from data.imagenet1000_clsidx_to_labels import IMAGENET_CLASSES
@@ -12,7 +10,7 @@ from PIL import Image
 from torchvision.transforms.transforms import ToTensor
 from tqdm.auto import tqdm, trange
 
-from cgd.clip_util import (CLIP_NORMALIZE, MakeCutouts, clip_encode_text, load_clip)
+from cgd.clip_util import (CLIP_NORMALIZE, MakeCutouts, clip_encode_text, imagenet_top_n, load_clip)
 from cgd.util import (CACHE_PATH, create_gif,
                       download_guided_diffusion, fetch, load_guided_diffusion,
                       log_image, spherical_dist_loss, tv_loss)
@@ -41,8 +39,6 @@ def check_parameters(
     save_frequency: int,
     noise_schedule: str,
 ):
-    if class_score: # TODO re-enable after class_score is fixed
-        raise ValueError('Class scoring is currently a work-in-progress feature. It is unclear if the current implementation is working. Sorry for the confusion; please disable for now.')
     if not (diffusion_steps in DIFFUSION_SCHEDULES):
         print('(warning) Diffusion steps should be one of:', DIFFUSION_SCHEDULES)
     if not (noise_schedule in ['linear', 'cosine']):
@@ -83,6 +79,7 @@ def clip_guided_diffusion(
     clip_model_name: str = "ViT-B/32",
     augs: list = [],
     randomize_class: bool = True,
+    num_classes: int = 0, # If 0, use all classes
     prefix_path: str = 'outputs',
     save_frequency: int = 1,
     noise_schedule: str = "linear",
@@ -134,9 +131,13 @@ def clip_guided_diffusion(
         noise_schedule=noise_schedule,
         dropout=dropout,
     )
+    custom_classes = [] # guided-diffusion will use all imagenet classes if this is empty
+    if num_classes > 0:
+        custom_classes = imagenet_top_n(prompt[0], prompt_min, min_weight, device, num_classes, clip_model_name).to(device)
 
     current_timestep = None
     def cond_fn(x, t, y=None):
+        print(f"Class '{IMAGENET_CLASSES[y[0].to(int)]}'" if class_cond else '')
         with th.enable_grad():
             x = x.detach().requires_grad_()
             n = x.shape[0]
@@ -180,8 +181,8 @@ def clip_guided_diffusion(
             progress=False,
             skip_timesteps=skip_timesteps,
             init_image=init_tensor,
-            clip_scores=None,
             randomize_class=randomize_class,
+            custom_classes=custom_classes,
         )
         # Gather generator for diffusion
         current_timestep = diffusion.num_timesteps - 1
@@ -251,6 +252,7 @@ def main():
                    help="Specify noise schedule. Either 'linear' or 'cosine'.")
     p.add_argument("--dropout", "-drop", default=0.0, type=float,
                    help="Amount of dropout to apply. ")
+    p.add_argument("--max_classes", "-top", default=0, type=int)
     p.add_argument("--device", "-dev", default='', type=str, help="Device to use. Either cpu or cuda.")
     args = p.parse_args()
 
@@ -281,7 +283,8 @@ def main():
         noise_schedule=args.noise_schedule,
         dropout=args.dropout,
         device=args.device,
-        augs=[]
+        augs=[],
+        num_classes=args.max_classes,
     )
     prefix_path.mkdir(exist_ok=True)
     list(enumerate(tqdm(cgd_generator))) # iterate over generator
