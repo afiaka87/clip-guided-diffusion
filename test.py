@@ -1,3 +1,4 @@
+from cgd.clip_util import MakeCutouts, imagenet_top_n, load_clip
 from sys import prefix
 from clip.model import ModifiedResNet, VisionTransformer
 from cgd.util import CACHE_PATH, alphanumeric_filter, download, load_guided_diffusion, log_image, spherical_dist_loss
@@ -11,8 +12,7 @@ import torch as th
 from guided_diffusion import respace
 from torch.nn import functional as tf
 
-from cgd.cgd import CLIP_NORMALIZE, clip_guided_diffusion
-from clip_util import MakeCutouts, clip_encode_text, imagenet_top_n, load_clip
+from cgd.cgd import CLIP_NORMALIZE, clip_guided_diffusion, encode_text_prompt, parse_prompt
 
 # Integration tests; better than nothing at all.
 
@@ -103,15 +103,14 @@ class TestTorchUtil(unittest.TestCase):
 
     def test_log_image(self):
         image = th.rand(3, 3, 3)
-        txt = "A"
-        txt_min = "B"
+        txts = ['a', 'b', 'c']
         batch_idx = 4
         current_step = 1
         expected_filename = os.path.join(
-            self.test_dir.name, "A_MIN_B/04/0001.png")
+            self.test_dir.name, "a_b_c/04/0001.png")
         result_filename = log_image(
             image=image, base_path=self.test_dir.name,
-            txt=txt, txt_min=txt_min,
+            txts=txts,
             current_step=current_step,
             batch_idx=batch_idx,
         )
@@ -136,27 +135,27 @@ class TestCGD(unittest.TestCase):
         self.test_dir_path = str(Path(self.test_dir.name))
 
     def test_cgd_one_step_succeeds(self):
-        samples = clip_guided_diffusion(prompt="Loose seal.", image_size=64,
+        samples = clip_guided_diffusion(prompts="Loose seal.", image_size=64,
                                         num_cutouts=1, clip_model_name="RN50", prefix_path=self.test_dir_path)
         first_yielded_sample = list(itertools.islice(samples, 1))[0]
         self.assertIsNotNone(first_yielded_sample)
 
     def test_cgd_init_fails_with_default_params(self):
         try:
-            samples = clip_guided_diffusion(prompt="Loose seal.", init_image='images/photon.png',
+            samples = clip_guided_diffusion(prompts="Loose seal.", init_image='images/photon.png',
                                             skip_timesteps=0, image_size=64, num_cutouts=1, clip_model_name="RN50", prefix_path=self.test_dir_path)
         except Exception as assertion_exception:
             self.assertEquals(assertion_exception.__class__, ValueError)
 
     def test_cgd_init_succeeds_with_skip_timesteps(self):
-        samples = clip_guided_diffusion(prompt="Loose seal.", init_image='images/photon.png',
+        samples = clip_guided_diffusion(prompts="Loose seal.", init_image='images/photon.png',
                                         skip_timesteps=500, image_size=64, num_cutouts=1,
                                         clip_model_name="RN50", prefix_path=self.test_dir_path)
         first_yielded_sample = list(itertools.islice(samples, 1))[0]
         self.assertIsNotNone(first_yielded_sample)
 
     def test_clip_guided_diffusion_yields_batch_idx_path_tuple(self):
-        samples = clip_guided_diffusion(prompt="Loose seal.", image_size=64, batch_size=2,
+        samples = clip_guided_diffusion(prompts="Loose seal.", image_size=64, batch_size=2,
                                         num_cutouts=1, num_classes=125, clip_model_name="RN50", prefix_path=self.test_dir_path, device='cpu')
         first_two_samples = list(itertools.islice(samples, 2))
         first_sample = first_two_samples[0]
@@ -170,8 +169,24 @@ class TestClipUtil(unittest.TestCase):
     def __init__(self, methodName: str) -> None:
         super().__init__(methodName=methodName)
 
+    def setUp(self) -> None:
+        self.test_dir = tempfile.TemporaryDirectory()
+        self.test_dir_path = str(Path(self.test_dir.name))
+    
+    def test_parse_prompt_returns_prompt_weight_tuple(self):
+        prompt = "Loose seal.:0.4"
+        expected_prompt_weight_tuple = ("Loose seal.", 0.4)
+        result = parse_prompt(prompt)
+        self.assertEqual(result, expected_prompt_weight_tuple)
+
+
     def test_imagenet_top_n_runs_on_cuda(self, top_n=100):
-        result_scores = imagenet_top_n(prompt="A", prompt_min="B", device="cuda", n=100, clip_model_name="ViT-B/32")
+        device = "cuda"
+        clip_model_name = "RN50"
+        text = "Loose seal."
+        text, weight = parse_prompt(text)
+        text, _ = encode_text_prompt(text, weight, clip_model_name, device)
+        result_scores = imagenet_top_n(text_encodes=text, device="cuda", n=100, clip_model_name="ViT-B/32")
         print(result_scores)
 
     def test_load_clip_rn50_cpu(self):
@@ -254,7 +269,15 @@ class TestClipUtil(unittest.TestCase):
         clip_model_name = "RN50"
         text = "A"
         device = "cuda:0"
-        result = clip_encode_text(
-            clip_model_name, text, device=device, truncate=False)
+        result, weight = encode_text_prompt(clip_model_name, text, device=device)
         self.assertEqual(str(result.device), device)
         self.assertIsNotNone(result)
+
+    def test_clip_encode_text_cuda_with_weights(self):
+        clip_model_name = "RN50"
+        text = "A"
+        weight = 0.5
+        device = "cuda:0"
+        result_encode, result_weight = encode_text_prompt(clip_model_name=clip_model_name, txt=text, weight=weight, device=device)
+        self.assertEqual(str(result_encode.device), device)
+        self.assertEqual(result_weight, weight)
