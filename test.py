@@ -157,7 +157,7 @@ class TestCGD(unittest.TestCase):
 
     def test_clip_guided_diffusion_yields_batch_idx_path_tuple(self):
         samples = clip_guided_diffusion(prompt="Loose seal.", image_size=64, batch_size=2,
-                                        num_cutouts=1, clip_model_name="RN50", prefix_path=self.test_dir_path, device='cpu')
+                                        num_cutouts=1, num_classes=125, clip_model_name="RN50", prefix_path=self.test_dir_path, device='cpu')
         first_two_samples = list(itertools.islice(samples, 2))
         first_sample = first_two_samples[0]
         second_sample = first_two_samples[1]
@@ -166,14 +166,13 @@ class TestCGD(unittest.TestCase):
         self.assertEqual(first_sample[0], first_expected_returned_batch_idx)
         self.assertEqual(second_sample[0], second_expected_returned_batch_idx)
 
-
 class TestClipUtil(unittest.TestCase):
     def __init__(self, methodName: str) -> None:
         super().__init__(methodName=methodName)
 
-    def test_imagenet_top_n_runs_on_cuda(self):
-        result_scores = imagenet_top_n(
-            prompt="A", prompt_min="B", device="cuda", n=2, clip_model_name="RN50")
+    def test_imagenet_top_n_runs_on_cuda(self, top_n=100):
+        result_scores = imagenet_top_n(prompt="A", prompt_min="B", device="cuda", n=100, clip_model_name="ViT-B/32")
+        print(result_scores)
 
     def test_load_clip_rn50_cpu(self):
         model_name = "RN50"
