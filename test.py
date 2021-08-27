@@ -155,7 +155,7 @@ class TestCGD(unittest.TestCase):
         self.assertIsNotNone(first_yielded_sample)
 
     def test_clip_guided_diffusion_yields_batch_idx_path_tuple(self):
-        samples = clip_guided_diffusion(prompts="Loose seal.", image_size=64, batch_size=2,
+        samples = clip_guided_diffusion(prompts=["Loose seal."], image_size=64, batch_size=2,
                                         num_cutouts=1, num_classes=125, clip_model_name="RN50", prefix_path=self.test_dir_path, device='cpu')
         first_two_samples = list(itertools.islice(samples, 2))
         first_sample = first_two_samples[0]
