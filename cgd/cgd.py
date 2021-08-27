@@ -112,8 +112,8 @@ def range_loss(input):
     return (input - input.clamp(-1, 1)).pow(2).mean([1, 2, 3])
 
 def clip_guided_diffusion(
-    prompts: list[str] = [],
-    image_prompts: list[str] = [],
+    prompts: "list[str]" = [],
+    image_prompts: "list[str]" = [],
     batch_size: int = 1,
     tv_scale: float = 150,
     range_scale: float = 50,
