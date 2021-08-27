@@ -179,6 +179,17 @@ class TestClipUtil(unittest.TestCase):
         result = parse_prompt(prompt)
         self.assertEqual(result, expected_prompt_weight_tuple)
 
+    def test_parse_prompt_negative_weight(self):
+        prompt = "Loose seal.:-0.4"
+        expected_prompt_weight_tuple = ("Loose seal.", -0.4)
+        result = parse_prompt(prompt)
+        self.assertEqual(result, expected_prompt_weight_tuple)
+
+    def test_parse_prompt_no_weight_returns_one(self):
+        prompt = "Loose seal."
+        expected_prompt_weight_tuple = ("Loose seal.", 1.0)
+        result = parse_prompt(prompt)
+        self.assertEqual(result, expected_prompt_weight_tuple)
 
     def test_imagenet_top_n_runs_on_cuda(self, top_n=100):
         device = "cuda"
