@@ -109,18 +109,12 @@ def fetch(url_or_path):
 def alphanumeric_filter(s: str) -> str:
     return re.sub(ALPHANUMERIC_REGEX, "", s).replace(" ", "_")
 
-def combine_txt(txt, txt_min):
-    txt_clean = alphanumeric_filter(txt)
-    txt_min_clean = alphanumeric_filter(txt_min)
-    if len(txt_min) > 0:
-        return f"{txt_clean}_MIN_{txt_min_clean}"
-    return txt_clean
+def clean_and_combine_prompts(base_path, txts, batch_idx, max_length=255) -> str:
+    clean_txt = "_".join([alphanumeric_filter(txt) for txt in txts])[:max_length]
+    return os.path.join(base_path, clean_txt, f"{batch_idx:02}")
 
-def get_dir_for_prompt(base_path, txt, txt_min, batch_idx) -> str:
-    return os.path.join(base_path, combine_txt(txt, txt_min), f"{batch_idx:02}")
-
-def log_image(image: th.Tensor, base_path: str, txt: str, txt_min: str, current_step: int, batch_idx: int) -> str:
-    dirname = get_dir_for_prompt(base_path, txt, txt_min, batch_idx)
+def log_image(image: th.Tensor, base_path: str, txts: list, current_step: int, batch_idx: int) -> str:
+    dirname = clean_and_combine_prompts(base_path, txts, batch_idx)
     os.makedirs(dirname, exist_ok=True)
     stem = f"{current_step:04}"
     filename = os.path.join(dirname, f'{stem}.png')
@@ -129,11 +123,11 @@ def log_image(image: th.Tensor, base_path: str, txt: str, txt_min: str, current_
     pil_image.save(filename)
     return str(filename)
 
-def create_gif(base, prompt, prompt_min, batch_idx):
-    dirname = get_dir_for_prompt(base, prompt, prompt_min, batch_idx)
-    images_glob = os.path.join(dirname, "*.png")
+def create_gif(base, prompts, batch_idx):
+    io_safe_prompts = clean_and_combine_prompts(base, prompts, batch_idx)
+    images_glob = os.path.join(io_safe_prompts, "*.png")
     imgs = [Image.open(f) for f in sorted(glob.glob(images_glob))]
-    gif_filename = f"{base}/{combine_txt(prompt, prompt_min)}_{batch_idx:02}.gif"
+    gif_filename = f"{io_safe_prompts}_{batch_idx:02}.gif"
     imgs[0].save(fp=gif_filename, format='GIF', append_images=imgs, save_all=True, duration=200, loop=0)
     return gif_filename
 
