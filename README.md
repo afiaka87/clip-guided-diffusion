@@ -181,6 +181,31 @@ for batch_idx in range(args.batch_size):
     cgd_util.create_gif(base=prefix_path,prompts=prompts, batch_idx=batch_idx) # create gifs for each gen in batch
 ```
 
+(WIP) - Generate an image for each prompt in a line-separated text file.
+
+```python
+def vis_prompts_from_file(prompts_filename, **kwargs):
+    """
+    Run the generator for multiple prompts provided as a txt file
+    """
+    prompts_path = Path(prompts_filename)
+    if not prompts_path.exists():
+        print(f"{prompts_path} does not exist.")
+        return
+    with open(prompts_path, "r") as f:
+        prompts = f.readlines()
+
+    for prompt in prompts:
+        prompt = prompt.strip()
+        if prompt == "":
+            continue
+        print(f"Running for prompt '{prompt}'")
+        cgd_generator = clip_guided_diffusion(prompts=prompt, **kwargs)
+        list(enumerate(tqdm(cgd_generator))) # iterate over generator
+```
+
+
+
 ## Full Usage
 
 ```sh
