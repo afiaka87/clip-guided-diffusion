@@ -192,12 +192,12 @@ class TestClipUtil(unittest.TestCase):
         self.assertEqual(result, expected_prompt_weight_tuple)
 
     def test_imagenet_top_n_runs_on_cuda(self, top_n=100):
-        device = "cuda"
+        device = "cpu"
         clip_model_name = "RN50"
         text = "Loose seal."
         text, weight = parse_prompt(text)
         text, _ = encode_text_prompt(text, weight, clip_model_name, device)
-        result_scores = imagenet_top_n(text_encodes=text, device="cuda", n=100, clip_model_name="ViT-B/32")
+        result_scores = imagenet_top_n(text_encodes=text, device=device, n=100, clip_model_name=clip_model_name)
         print(result_scores)
 
     def test_load_clip_rn50_cpu(self):
