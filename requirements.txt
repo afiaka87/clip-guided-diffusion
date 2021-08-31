@@ -4,3 +4,4 @@ kornia
 tqdm
 clip-anytorch
 requests
+lpips
