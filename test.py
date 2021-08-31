@@ -135,20 +135,20 @@ class TestCGD(unittest.TestCase):
         self.test_dir_path = str(Path(self.test_dir.name))
 
     def test_cgd_one_step_succeeds(self):
-        samples = clip_guided_diffusion(prompts="Loose seal.", image_size=64,
+        samples = clip_guided_diffusion(prompts=["Loose seal."], image_size=64,
                                         num_cutouts=1, clip_model_name="RN50", prefix_path=self.test_dir_path)
         first_yielded_sample = list(itertools.islice(samples, 1))[0]
         self.assertIsNotNone(first_yielded_sample)
 
     def test_cgd_init_fails_with_default_params(self):
         try:
-            samples = clip_guided_diffusion(prompts="Loose seal.", init_image='images/photon.png',
+            samples = clip_guided_diffusion(prompts=["Loose seal."], init_image='images/photon.png',
                                             skip_timesteps=0, image_size=64, num_cutouts=1, clip_model_name="RN50", prefix_path=self.test_dir_path)
         except Exception as assertion_exception:
             self.assertEquals(assertion_exception.__class__, ValueError)
 
     def test_cgd_init_succeeds_with_skip_timesteps(self):
-        samples = clip_guided_diffusion(prompts="Loose seal.", init_image='images/photon.png',
+        samples = clip_guided_diffusion(prompts=["Loose seal."], init_image='images/photon.png',
                                         skip_timesteps=500, image_size=64, num_cutouts=1,
                                         clip_model_name="RN50", prefix_path=self.test_dir_path)
         first_yielded_sample = list(itertools.islice(samples, 1))[0]
