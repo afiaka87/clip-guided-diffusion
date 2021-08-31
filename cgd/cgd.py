@@ -1,3 +1,4 @@
+from typing import Union
 from PIL.Image import Image as PILImage
 from PIL import Image
 import clip
@@ -5,7 +6,6 @@ import io
 import requests
 import argparse
 import time
-from functools import lru_cache
 from pathlib import Path
 
 from torch.nn.functional import normalize
@@ -15,8 +15,7 @@ from data.imagenet1000_clsidx_to_labels import IMAGENET_CLASSES
 import torch as th
 from torchvision.transforms import functional as tvf
 from torchvision.transforms.transforms import ToTensor
-from tqdm.auto import tqdm, trange
-
+from tqdm.auto import tqdm
 from cgd.clip_util import (CLIP_NORMALIZE, MakeCutouts, imagenet_top_n, load_clip)
 from cgd.util import (CACHE_PATH, create_gif,
                       download_guided_diffusion, fetch, load_guided_diffusion,
@@ -33,6 +32,7 @@ IMAGE_SIZES = (64, 128, 256, 512)
 CLIP_MODEL_NAMES = ("ViT-B/16", "ViT-B/32", "RN50",
                     "RN101", "RN50x4", "RN50x16")
 
+import lpips
 import torch as th
 import torchvision as tv
 from torch.nn import functional as tnf
@@ -59,13 +59,11 @@ def check_parameters(
         raise ValueError(f"--image size should be one of {IMAGE_SIZES}")
     if not (0 < save_frequency <= int(timestep_respacing.replace('ddim', ''))):
         raise ValueError("--save_frequency must be greater than 0 and less than `timestep_respacing`")
-    # TODO check that timestep_respacing is valid
-    # if len(init_image) > 0 and skip_timesteps != 0:
-    #     raise ValueError("skip_timesteps/-skip must be greater than 0 when using init_image")
     if not (timestep_respacing in TIMESTEP_RESPACINGS):
         print(f"Pausing run. `timestep_respacing` should be one of {TIMESTEP_RESPACINGS}. CTRL-C if this was a mistake.")
         time.sleep(5)
         print("Resuming run.")
+
 
 # Define necessary functions
 
@@ -112,11 +110,13 @@ def range_loss(input):
     return (input - input.clamp(-1, 1)).pow(2).mean([1, 2, 3])
 
 def clip_guided_diffusion(
-    prompts: "list[str]" = [],
-    image_prompts: "list[str]" = [],
+    prompts: "Union[list[str], str]",
+    image_prompts: "Union[list[str], str]",
     batch_size: int = 1,
     tv_scale: float = 150,
+    init_image: str = "",
     range_scale: float = 50,
+    init_scale: float = 0,
     image_size: int = 128,
     class_cond: bool = True,
     clip_guidance_scale: int = 1000,
@@ -126,8 +126,6 @@ def clip_guided_diffusion(
     seed: int = 0,
     diffusion_steps: int = 1000,
     skip_timesteps: int = 0,
-    init_image: str = "",
-    # init_weight: float = 1.0,
     checkpoints_dir: str = CACHE_PATH,
     clip_model_name: str = "ViT-B/32",
     augs: list = [],
@@ -184,7 +182,6 @@ def clip_guided_diffusion(
     # Load initial image (if provided)
     init_tensor = None
     if len(init_image) > 0:
-        # vgg_perceptual_loss = VGGPerceptualLoss(resize=True).to(device)
         pil_image = Image.open(fetch(init_image)).convert(
             "RGB").resize((image_size, image_size), Image.LANCZOS)
         init_tensor = ToTensor()(pil_image).to(device).unsqueeze(0).mul(2).sub(1)
@@ -208,9 +205,9 @@ def clip_guided_diffusion(
     custom_classes = [] # guided-diffusion will use all imagenet classes if this is empty
     if num_classes > 0:
         print(f"Using {num_classes} custom classes discovered by CLIP.")
-        # TODO use more than just the first prompt
         custom_classes = imagenet_top_n(target_embeds, device, num_classes, clip_model_name=clip_model_name)
 
+    lpips_vgg = lpips.LPIPS(net='vgg').to(device)
     current_timestep = None
     def cond_fn(x, t, y=None):
         print(f"Class '{IMAGENET_CLASSES[y[0].to(int)]}'" if class_cond else '')
@@ -229,10 +226,12 @@ def clip_guided_diffusion(
             dists = spherical_dist_loss(cutout_embeds.unsqueeze(0), target_embeds.unsqueeze(0))
             dists = dists.view([num_cutouts, n, -1])
             losses = dists.mul(weights).sum(2).mean(0)
-            # vgg_loss = vgg_perceptual_loss(x_in, init_tensor)
             tv_losses = tv_loss(x_in)
             range_losses = range_loss(out['pred_xstart'])
             loss = losses.sum() * clip_guidance_scale + tv_losses.sum() * tv_scale + range_losses.sum() * range_scale
+            if init_tensor is not None and init_scale != 0:
+                init_losses = lpips_vgg(x_in, init_tensor)
+                loss = loss + init_losses.sum() * init_scale
             final_loss = -th.autograd.grad(loss, x)[0]
             return final_loss
 
@@ -276,7 +275,6 @@ def clip_guided_diffusion(
         else:
             raise runtime_ex
 
-
 def main():
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter
@@ -287,10 +285,9 @@ def main():
                    help="the image prompt/s to reward paired with weights. e.g. 'img1.png:0.5,img2.png:-0.5'")
     p.add_argument("--image_size", "-size", type=int, default=128,
                    help="Diffusion image size. Must be one of [64, 128, 256, 512].")
-    p.add_argument("--init_image", "-blend", type=str, default='',
+    p.add_argument("--init_image", "-init", type=str, default='',
                    help="Blend an image with diffusion for n steps")
-    # p.add_argument("--init_weight", "-init_wt", type=float, default=1.0,
-    #                help="Blend an image with diffusion for n steps")
+    p.add_argument("--init_scale", "-is", type=int, default=0, help="Perceptual loss scale")
     p.add_argument("--skip_timesteps", "-skip", type=int, default=0,
                    help="Number of timesteps to blend image for. CLIP guidance occurs after this.")
     p.add_argument("--prefix", "-dir", default="outputs",
@@ -327,23 +324,21 @@ def main():
                    help="Amount of dropout to apply. ")
     p.add_argument("--max_classes", "-top", default=0, type=int)
     p.add_argument("--device", "-dev", default='', type=str, help="Device to use. Either cpu or cuda.")
+    p.add_argument("--random_affine", "-affine", action="store_true")
+    p.add_argument("--random_motion_blur", "-mblur", action="store_true")
+    p.add_argument("--random_horizontal_flip", "-hflip", action="store_true")
     args = p.parse_args()
+    augs = []
+    import kornia.augmentation as kaugs
+    if args.random_affine: augs.append(kaugs.RandomAffine(degrees=15, translate=(0.1, 0.1), scale=(0.9, 1.1), shear=0.1))
+    if args.random_motion_blur: augs.append(kaugs.RandomMotionBlur(kernel_size=(3, 5), angle=15, direction=0.5))
+    if args.random_horizontal_flip: augs.append(kaugs.RandomHorizontalFlip(p=0.5))
 
     _class_cond = not args.uncond
     prefix_path = args.prefix
 
     Path(prefix_path).mkdir(exist_ok=True)
 
-    prompts = []
-    if len(args.prompts) > 0:
-        prompts = args.prompts.split('|')
-
-    image_prompts = []
-    if len(args.image_prompts) > 0:
-        image_prompts = args.image_prompts.split(',')
-
-    print(f"Given text prompts: {prompts}")
-    print(f"Given image prompts: {image_prompts}")
     print(f'Given initial image: {args.init_image}')
     print("Using:")
     print("===")
@@ -352,11 +347,22 @@ def main():
     print(f"Range scale: {args.range_scale}")
     print(f"Dropout: {args.dropout}.")
     print(f"Number of cutouts: {args.num_cutouts} number of cutouts.")
+    if len(args.prompts) > 0:
+        prompts = args.prompts.split('|')
+    else:
+        prompts = []
+        
+    if len(args.image_prompts) > 0:
+        image_prompts = args.prompts.split('|')
+    else:
+        image_prompts = []
+    
     cgd_generator = clip_guided_diffusion(
         prompts=prompts,
         image_prompts=image_prompts,
         batch_size=args.batch_size,
         tv_scale=args.tv_scale,
+        init_scale=args.init_scale,
         range_scale=args.range_scale,
         image_size=args.image_size,
         class_cond=_class_cond,
