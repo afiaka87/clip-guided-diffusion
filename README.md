@@ -145,11 +145,9 @@ from cgd import clip_guided_diffusion
 import cgd_util
 import kornia.augmentation as K
 
-prompt = "An image of a fox in a forest."
-
 cgd_generator = clip_guided_diffusion(
-    prompts="an image of a fox in a forest",
-    image_prompts="image_to_compare_with_clip.png",
+    prompts=["an image of a fox in a forest"],
+    image_prompts=["image_to_compare_with_clip.png"],
     batch_size=1,
     clip_guidance_scale=1500,
     tv_scale=150,
@@ -177,8 +175,6 @@ cgd_generator = clip_guided_diffusion(
 )
 prefix_path.mkdir(exist_ok=True)
 list(enumerate(tqdm(cgd_generator))) # iterate over generator
-for batch_idx in range(args.batch_size):
-    cgd_util.create_gif(base=prefix_path,prompts=prompts, batch_idx=batch_idx) # create gifs for each gen in batch
 ```
 
 (WIP) - Generate an image for each prompt in a line-separated text file.
