@@ -16,7 +16,7 @@ import torch as th
 from torchvision.transforms import functional as tvf
 from torchvision.transforms.transforms import ToTensor
 from tqdm.auto import tqdm
-from cgd.clip_util import (CLIP_NORMALIZE, MakeCutouts, imagenet_top_n, load_clip)
+from cgd.clip_util import (CLIP_NORMALIZE, CLIP_MODEL_NAMES, MakeCutouts, imagenet_top_n, load_clip)
 from cgd.util import (CACHE_PATH, create_gif,
                       download_guided_diffusion, fetch, load_guided_diffusion,
                       log_image, spherical_dist_loss, tv_loss)
@@ -29,8 +29,7 @@ TIMESTEP_RESPACINGS = ("25", "50", "100", "250", "500", "1000",
                        "ddim25", "ddim50", "ddim100", "ddim250", "ddim500", "ddim1000")
 DIFFUSION_SCHEDULES = (25, 50, 100, 250, 500, 1000)
 IMAGE_SIZES = (64, 128, 256, 512)
-CLIP_MODEL_NAMES = ("ViT-B/16", "ViT-B/32", "RN50",
-                    "RN101", "RN50x4", "RN50x16")
+
 
 import lpips
 import torch as th
@@ -49,16 +48,16 @@ def check_parameters(
 ):
     if not (len(prompts) > 0 or len(image_prompts) > 0):
         raise ValueError("Must provide at least one prompt, text or image.")
-    if not (diffusion_steps in DIFFUSION_SCHEDULES):
-        print('(warning) Diffusion steps should be one of:', DIFFUSION_SCHEDULES)
     if not (noise_schedule in ['linear', 'cosine']):
         raise ValueError('Noise schedule should be one of: linear, cosine')
-    if not (clip_model_name in CLIP_MODEL_NAMES):
-        raise ValueError(f"--clip model name should be one of: {CLIP_MODEL_NAMES}")
     if not (image_size in IMAGE_SIZES):
         raise ValueError(f"--image size should be one of {IMAGE_SIZES}")
     if not (0 < save_frequency <= int(timestep_respacing.replace('ddim', ''))):
         raise ValueError("--save_frequency must be greater than 0 and less than `timestep_respacing`")
+    if not (diffusion_steps in DIFFUSION_SCHEDULES):
+        print('(warning) Diffusion steps should be one of:', DIFFUSION_SCHEDULES)
+    if not (clip_model_name in CLIP_MODEL_NAMES):
+        print(f"--clip model name should be one of: {CLIP_MODEL_NAMES} unless you are trying to use your own checkpoint.")
     if not (timestep_respacing in TIMESTEP_RESPACINGS):
         print(f"Pausing run. `timestep_respacing` should be one of {TIMESTEP_RESPACINGS}. CTRL-C if this was a mistake.")
         time.sleep(5)
