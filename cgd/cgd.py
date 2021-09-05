@@ -53,8 +53,6 @@ def check_parameters(
         print('(warning) Diffusion steps should be one of:', DIFFUSION_SCHEDULES)
     if not (noise_schedule in ['linear', 'cosine']):
         raise ValueError('Noise schedule should be one of: linear, cosine')
-    if not (clip_model_name in CLIP_MODEL_NAMES):
-        raise ValueError(f"--clip model name should be one of: {CLIP_MODEL_NAMES}")
     if not (image_size in IMAGE_SIZES):
         raise ValueError(f"--image size should be one of {IMAGE_SIZES}")
     if not (0 < save_frequency <= int(timestep_respacing.replace('ddim', ''))):
@@ -385,8 +383,6 @@ def main():
     )
     prefix_path.mkdir(exist_ok=True)
     list(enumerate(tqdm(cgd_generator))) # iterate over generator
-    for batch_idx in range(args.batch_size):
-        create_gif(base=prefix_path,prompts=prompts, batch_idx=batch_idx)
 
 if __name__ == "__main__":
     main()
