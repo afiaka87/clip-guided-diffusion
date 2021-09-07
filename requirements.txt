@@ -5,3 +5,4 @@ tqdm
 clip-anytorch
 requests
 lpips
+wandb
