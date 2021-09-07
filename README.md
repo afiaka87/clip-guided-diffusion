@@ -9,7 +9,7 @@ Generate vibrant and detailed images using only text.
 <img src="images/THX_sound_Spaceship.png" width="128px"></img><img src="images/Windows_XP_background_Mushroom.png" width="128px"></img><img src="images/a_red_ball_resting_on_top_of_a_mirror.png" width="128px"></img>
 <img src="images/dog_looking_at_the_camera.png" width="128px"></img><img src="images/goose_on_the_run.png" width="128px"></img><img src="/images/photon.png" width="128px"></img>
 
-See captions and more generations in the [Gallery](/images/README.md)
+See captions and more generations in the [Gallery](/images/README.md).
 
 See also - <a href="https://github.com/nerdyrodent/VQGAN-CLIP">VQGAN-CLIP</a>
 
@@ -35,7 +35,7 @@ A gif of the full run will be saved to `./outputs/caption_{j}.gif` by default.
 
 - `./outputs` will contain all intermediate outputs
 - `current.png` will contain the current generation.
-- (optional) Provide **`--wandb_project <project_name>`** to enable logging intermediate outputs to wandb.
+- (optional) Provide **`--wandb_project <project_name>`** to enable logging intermediate outputs to wandb. Requires free account. URL to run will be provided in CLI - [example run](https://wandb.ai/dalle-pytorch-replicate/%22bandw%22)
 - `~/.cache/clip-guided-diffusion/` will contain downloaded checkpoints from OpenAI/Katherine Crowson.
 
 ## Usage - CLI
