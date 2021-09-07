@@ -344,7 +344,7 @@ def main():
     p.add_argument("--max_classes", "-top", default=0, type=int)
     p.add_argument("--device", "-dev", default='', type=str, help="Device to use. Either cpu or cuda.")
     p.add_argument("--random_translate", "-rt", action="store_true", help="Randoml affine images.")
-    p.add_argument('--wandb_project', '-proj', default=None, help='Name W&B will use when saving results.\ne.g. `--wandb_name "coco2017-full-sparse"`')
+    p.add_argument('--wandb_project', '-proj', default=None, help='Name W&B will use when saving results.\ne.g. `--wandb_name "my_project"`')
     p.add_argument('--wandb_entity', '-ent', default=None, help='(optional) Name of W&B team/entity to log to.')
     args = p.parse_args()
 
