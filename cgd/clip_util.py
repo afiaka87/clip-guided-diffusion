@@ -9,22 +9,12 @@ import torchvision.transforms as tvt
 from data.imagenet1000_clsidx_to_labels import IMAGENET_CLASSES
 
 
-CLIP_FINETUNED_NOISY_BLOG = "ViT-B/32-noisyblog"
-NOISY_BLOG_CKPT_URL = "https://www.dropbox.com/s/1rc3t6k9su6fmym/ViT-B32_finetuned_dalleblog.zip" # TODO host on github
-
-CLIP_MODEL_NAMES = ("ViT-B/16", "ViT-B/32", "RN50", "RN101", "RN50x4", "RN50x16", "ViT-B/32-noisyblog")
+CLIP_MODEL_NAMES = ("ViT-B/16", "ViT-B/32", "RN50", "RN101", "RN50x4", "RN50x16")
 CLIP_NORMALIZE = tvt.Normalize(mean=[0.48145466, 0.4578275, 0.40821073], std=[0.26862954, 0.26130258, 0.27577711])
 
 @lru_cache(maxsize=1)
 def load_clip(model_name='ViT-B/32', device="cpu"):
-
-    if model_name.startswith('http'):
-        if model_name == CLIP_FINETUNED_NOISY_BLOG:
-            model_name = download(NOISY_BLOG_CKPT_URL, CLIP_FINETUNED_NOISY_BLOG)
-        else:
-            url = model_name
-            model_name = download(url=url, location=model_name.split('/')[:-1])
-            assert os.path.exists(model_name), f"download failed. could not find model {model_name}"
+    print(f"Loading clip model\t{model_name}\ton device\t{device}.")
     if device == "cpu":
         clip_model = clip.load(model_name, jit=False)[0].eval().to(device=device).float()
         clip_size = clip_model.visual.input_resolution
