@@ -1,7 +1,6 @@
 from cgd.clip_util import MakeCutouts, imagenet_top_n, load_clip
-from sys import prefix
 from clip.model import ModifiedResNet, VisionTransformer
-from cgd.util import CACHE_PATH, alphanumeric_filter, download, load_guided_diffusion, log_image, spherical_dist_loss
+from cgd.util import CACHE_PATH, download, load_guided_diffusion, log_image, spherical_dist_loss
 import itertools
 import os
 import tempfile
@@ -9,6 +8,8 @@ import unittest
 from pathlib import Path
 
 import torch as th
+import sys
+sys.path.append("guided-diffusion")
 from guided_diffusion import respace
 from torch.nn import functional as tf
 
@@ -266,15 +267,6 @@ class TestClipUtil(unittest.TestCase):
         self.assertEqual(result.shape[1], 3)
         self.assertEqual(result.shape[2], cut_size)
         self.assertEqual(result.shape[3], cut_size)
-
-# def clip_encode_text(clip_model_name, text, device="", truncate: bool = True):
-    # def test_clip_encode_text_cpu(self):
-    #     clip_model_name = "RN50"
-    #     text = "A"
-    #     device = "cpu"
-    #     result = clip_encode_text(clip_model_name, text, device=device, truncate=False)
-    #     self.assertEqual(str(result.device), device)
-    #     self.assertIsNotNone(result)
 
     def test_clip_encode_text_cuda(self):
         clip_model_name = "RN50"
