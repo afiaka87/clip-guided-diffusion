@@ -37,7 +37,7 @@ def check_parameters(
     timestep_respacing: str,
     diffusion_steps: int,
     clip_model_name: str,
-    save_frequency:aint,
+    save_frequency:int,
     noise_schedule: str,
 ):
     if not (len(prompts) > 0 or len(image_prompts) > 0):
