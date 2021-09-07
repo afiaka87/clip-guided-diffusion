@@ -1,3 +1,4 @@
+import wandb
 import argparse
 import io
 import os
@@ -106,6 +107,7 @@ def encode_image_prompt(image:str, weight: float, diffusion_size:int, num_cutout
 def range_loss(input):
     return (input - input.clamp(-1, 1)).pow(2).mean([1, 2, 3])
 
+
 def clip_guided_diffusion(
     prompts: "list[str]"=[],
     image_prompts: "list[str]"=[],
@@ -134,6 +136,8 @@ def clip_guided_diffusion(
     dropout: float = 0.0,
     device: str = '',
     random_translate: bool = False,
+    wandb_project: str = None,
+    wandb_entity: str = None, 
 ):
     print (f"""
     Will do {diffusion_steps} diffusion steps and will let CLIP change over the span of {timestep_respacing.replace("ddim", "")} timesteps.
@@ -263,6 +267,9 @@ def clip_guided_diffusion(
             randomize_class=randomize_class,
             custom_classes=custom_classes,
         )
+        if wandb_project is not None:
+            wandb.init(project=wandb_project, entity=wandb_entity)
+
         # Gather generator for diffusion
         current_timestep = diffusion.num_timesteps - 1
         for step, sample in enumerate(cgd_samples):
@@ -270,6 +277,9 @@ def clip_guided_diffusion(
             if step % save_frequency == 0 or current_timestep == -1:
                 for batch_idx, image_tensor in enumerate(sample["pred_xstart"]):
                     yield batch_idx, log_image(image_tensor, prefix_path, prompts, step, batch_idx)
+                    if wandb_project is not None:
+                        wandb.log({"image": wandb.Image(image_tensor, caption="|".join(prompts))})
+
         for batch_idx in range(batch_size):
             create_gif(prefix_path, prompts, batch_idx)
 
@@ -314,7 +324,7 @@ def main():
     p.add_argument("--seed", "-seed", type=int,
                    default=0, help="Random number seed")
     p.add_argument("--save_frequency", "-freq", type=int,
-                   default=25, help="Save frequency")
+                   default=1, help="Save frequency")
     p.add_argument("--diffusion_steps", "-steps", type=int,
                    default=1000, help="Diffusion steps")
     p.add_argument("--timestep_respacing", "-respace", type=str,
@@ -334,6 +344,8 @@ def main():
     p.add_argument("--max_classes", "-top", default=0, type=int)
     p.add_argument("--device", "-dev", default='', type=str, help="Device to use. Either cpu or cuda.")
     p.add_argument("--random_translate", "-rt", action="store_true", help="Randoml affine images.")
+    p.add_argument('--wandb_project', '-proj', default=None, help='Name W&B will use when saving results.\ne.g. `--wandb_name "coco2017-full-sparse"`')
+    p.add_argument('--wandb_entity', '-ent', default=None, help='(optional) Name of W&B team/entity to log to.')
     args = p.parse_args()
 
     _class_cond = not args.uncond
@@ -379,6 +391,8 @@ def main():
         augs=[],
         random_translate=args.random_translate,
         prefix_path=prefix_path,
+        wandb_project=args.wandb_project,
+        wandb_entity=args.wandb_entity,
     )
     list(enumerate(tqdm(cgd_generator))) # iterate over generator
 
