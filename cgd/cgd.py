@@ -1,28 +1,27 @@
-from typing import Union
-from PIL.Image import Image as PILImage
-from PIL import Image
-import clip
-import io
-import requests
 import argparse
+import io
+import os
+import sys
 import time
 from pathlib import Path
 
-from torch.nn.functional import normalize
-
-from data.imagenet1000_clsidx_to_labels import IMAGENET_CLASSES
-
+import clip
+import kornia
+import lpips
+import requests
 import torch as th
+from PIL import Image
+from torch.nn.functional import normalize
 from torchvision.transforms import functional as tvf
 from torchvision.transforms.transforms import ToTensor
 from tqdm.auto import tqdm
-from cgd.clip_util import (CLIP_NORMALIZE, CLIP_MODEL_NAMES, MakeCutouts, imagenet_top_n, load_clip)
-from cgd.util import (CACHE_PATH, create_gif,
-                      download_guided_diffusion, fetch, load_guided_diffusion,
-                      log_image, spherical_dist_loss, tv_loss)
 
-import sys
-import os
+from cgd.clip_util import (CLIP_MODEL_NAMES, CLIP_NORMALIZE, MakeCutouts,
+                           imagenet_top_n, load_clip)
+from cgd.util import (CACHE_PATH, create_gif, download_guided_diffusion, fetch,
+                      load_guided_diffusion, log_image, spherical_dist_loss,
+                      tv_loss)
+
 sys.path.append(os.path.join(os.getcwd(), "guided-diffusion"))
 
 TIMESTEP_RESPACINGS = ("25", "50", "100", "250", "500", "1000",
@@ -31,11 +30,6 @@ DIFFUSION_SCHEDULES = (25, 50, 100, 250, 500, 1000)
 IMAGE_SIZES = (64, 128, 256, 512)
 
 
-import lpips
-import torch as th
-import torchvision as tv
-from torch.nn import functional as tnf
-
 def check_parameters(
     prompts: list,
     image_prompts: list,
@@ -43,7 +37,7 @@ def check_parameters(
     timestep_respacing: str,
     diffusion_steps: int,
     clip_model_name: str,
-    save_frequency: int,
+    save_frequency:aint,
     noise_schedule: str,
 ):
     if not (len(prompts) > 0 or len(image_prompts) > 0):
@@ -56,12 +50,16 @@ def check_parameters(
         raise ValueError("--save_frequency must be greater than 0 and less than `timestep_respacing`")
     if not (diffusion_steps in DIFFUSION_SCHEDULES):
         print('(warning) Diffusion steps should be one of:', DIFFUSION_SCHEDULES)
-    if not (clip_model_name in CLIP_MODEL_NAMES):
-        print(f"--clip model name should be one of: {CLIP_MODEL_NAMES} unless you are trying to use your own checkpoint.")
     if not (timestep_respacing in TIMESTEP_RESPACINGS):
         print(f"Pausing run. `timestep_respacing` should be one of {TIMESTEP_RESPACINGS}. CTRL-C if this was a mistake.")
         time.sleep(5)
         print("Resuming run.")
+    if clip_model_name.endswith('.pt') or clip_model_name.endswith('.pth'):
+        assert os.path.isfile(clip_model_name), f"{clip_model_name} does not exist"
+        print(f"Loading custom model from {clip_model_name}")
+    elif not (clip_model_name in CLIP_MODEL_NAMES):
+        print(f"--clip model name should be one of: {CLIP_MODEL_NAMES} unless you are trying to use your own checkpoint.")
+        print(f"Loading OpenAI CLIP - {clip_model_name}")
 
 
 # Define necessary functions
@@ -135,8 +133,13 @@ def clip_guided_diffusion(
     noise_schedule: str = "linear",
     dropout: float = 0.0,
     device: str = '',
+    random_translate: bool = False,
 ):
-    print()
+    print (f"""
+    Will do {diffusion_steps} diffusion steps and will let CLIP change over the span of {timestep_respacing.replace("ddim", "")} timesteps.
+    by {clip_guidance_scale}, and will create {num_cutouts} cutouts for CLIP. 
+    """)
+
     if len(device) == 0:
         device = 'cuda' if th.cuda.is_available() else 'cpu'
         print(f"Using device {device}. You can specify a device manually with `--device/-dev`")
@@ -149,13 +152,18 @@ def clip_guided_diffusion(
 
     Path(prefix_path).mkdir(parents=True, exist_ok=True)
     Path(checkpoints_dir).mkdir(parents=True, exist_ok=True)
-
+    
     diffusion_path = download_guided_diffusion(image_size=image_size, checkpoints_dir=checkpoints_dir, class_cond=class_cond)
 
     # Load CLIP model/Encode text/Create `MakeCutouts`
     embeds_list = []
     weights_list = []
     clip_model, clip_size = load_clip(clip_model_name, device)
+
+    if random_translate:
+        translate_by = 8 / clip_size
+        random_affine = kornia.augmentation.RandomAffine(0, (translate_by, translate_by), padding_mode='border', p=1)
+        augs.append(random_affine)
 
     for prompt in prompts:
         text, weight = parse_prompt(prompt)
@@ -201,24 +209,23 @@ def clip_guided_diffusion(
         noise_schedule=noise_schedule,
         dropout=dropout,
     )
-    custom_classes = [] # guided-diffusion will use all imagenet classes if this is empty
+    custom_classes = None if "ddim" in timestep_respacing else [] # guided-diffusion will use all imagenet classes if this is empty
     if num_classes > 0:
         print(f"Using {num_classes} custom classes discovered by CLIP.")
         custom_classes = imagenet_top_n(target_embeds, device, num_classes, clip_model_name=clip_model_name)
 
-    lpips_vgg = lpips.LPIPS(net='vgg').to(device)
+    if init_tensor is not None and init_scale != 0:
+        lpips_vgg = lpips.LPIPS(net='vgg').to(device)
+
     current_timestep = None
     def cond_fn(x, t, y=None):
-        print(f"Class '{IMAGENET_CLASSES[y[0].to(int)]}'" if class_cond else '')
         with th.enable_grad():
             x = x.detach().requires_grad_()
             n = x.shape[0]
-            my_t = th.ones([n], device=device, dtype=th.long) * \
-                current_timestep
-            out = diffusion.p_mean_variance(
-                gd_model, x, my_t, clip_denoised=False, model_kwargs={"y": y})
+            my_t = th.ones([n], device=device, dtype=th.long) *  current_timestep
+            out = diffusion.p_mean_variance(gd_model, x, my_t, clip_denoised=False, model_kwargs={"y": y})
             fac = diffusion.sqrt_one_minus_alphas_cumprod[current_timestep]
-            # Blend denoised prediction with noisey sample
+            # Blend denoised prediction with noisey sample, using `fac` to scale importances of the two (less noise over time)
             x_in = out["pred_xstart"] * fac + x * (1 - fac)
             clip_in = CLIP_NORMALIZE(make_cutouts(x_in.add(1).div(2)))
             cutout_embeds = clip_model.encode_image(clip_in).float().view([num_cutouts, n, -1])
@@ -227,9 +234,12 @@ def clip_guided_diffusion(
             losses = dists.mul(weights).sum(2).mean(0)
             tv_losses = tv_loss(x_in)
             range_losses = range_loss(out['pred_xstart'])
+            # Print all losses
+            # print(f"clip Losses: {losses.item():.3f}, tv losses {tv_losses.item():.3f}, range_losses: {range_losses.item():.3f}", end='\t')
             loss = losses.sum() * clip_guidance_scale + tv_losses.sum() * tv_scale + range_losses.sum() * range_scale
             if init_tensor is not None and init_scale != 0:
                 init_losses = lpips_vgg(x_in, init_tensor)
+                # print(f"init Losses: {init_losses.item():.3f}", end='\n')
                 loss = loss + init_losses.sum() * init_scale
             final_loss = -th.autograd.grad(loss, x)[0]
             return final_loss
@@ -286,7 +296,7 @@ def main():
                    help="Diffusion image size. Must be one of [64, 128, 256, 512].")
     p.add_argument("--init_image", "-init", type=str, default='',
                    help="Blend an image with diffusion for n steps")
-    p.add_argument("--init_scale", "-is", type=int, default=0, help="Perceptual loss scale")
+    p.add_argument("--init_scale", "-is", type=int, default=0, help="(optional) Perceptual loss scale for init image. ")
     p.add_argument("--skip_timesteps", "-skip", type=int, default=0,
                    help="Number of timesteps to blend image for. CLIP guidance occurs after this.")
     p.add_argument("--prefix", "-dir", default="outputs",
@@ -298,13 +308,13 @@ def main():
     p.add_argument("--clip_guidance_scale", "-cgs", type=float, default=1000,
                    help="Scale for CLIP spherical distance loss. Values will need tinkering for different settings.",)
     p.add_argument("--tv_scale", "-tvs", type=float,
-                   default=100., help="Scale for denoising loss",)
+                   default=150., help="Scale for denoising loss",)
     p.add_argument("--range_scale", "-rs", type=float,
-                   default=50., help="Scale for denoising loss",)
+                   default=50., help="Controls how far out of RGB range values may get.",)
     p.add_argument("--seed", "-seed", type=int,
                    default=0, help="Random number seed")
     p.add_argument("--save_frequency", "-freq", type=int,
-                   default=1, help="Save frequency")
+                   default=25, help="Save frequency")
     p.add_argument("--diffusion_steps", "-steps", type=int,
                    default=1000, help="Diffusion steps")
     p.add_argument("--timestep_respacing", "-respace", type=str,
@@ -314,7 +324,7 @@ def main():
     p.add_argument("--cutout_power", "-cutpow", type=float,
                    default=0.5, help="Cutout size power")
     p.add_argument("--clip_model", "-clip", type=str, default="ViT-B/32",
-                   help=f"clip model name. Should be one of: {CLIP_MODEL_NAMES}")
+                   help=f"clip model name. Should be one of: {CLIP_MODEL_NAMES} or a checkpoint filename ending in `.pt`")
     p.add_argument("--uncond", "-uncond", action="store_true",
                    help='Use finetuned unconditional checkpoints from OpenAI (256px) and Katherine Crowson (512px)')
     p.add_argument("--noise_schedule", "-sched", default='linear', type=str,
@@ -323,29 +333,14 @@ def main():
                    help="Amount of dropout to apply. ")
     p.add_argument("--max_classes", "-top", default=0, type=int)
     p.add_argument("--device", "-dev", default='', type=str, help="Device to use. Either cpu or cuda.")
-    p.add_argument("--random_affine", "-affine", action="store_true")
-    p.add_argument("--random_motion_blur", "-mblur", action="store_true")
-    p.add_argument("--random_horizontal_flip", "-hflip", action="store_true")
+    p.add_argument("--random_translate", "-rt", action="store_true", help="Randoml affine images.")
     args = p.parse_args()
-    augs = []
-    import kornia.augmentation as kaugs
-    if args.random_affine: augs.append(kaugs.RandomAffine(degrees=15, translate=(0.1, 0.1), scale=(0.9, 1.1), shear=0.1))
-    if args.random_motion_blur: augs.append(kaugs.RandomMotionBlur(kernel_size=(3, 5), angle=15, direction=0.5))
-    if args.random_horizontal_flip: augs.append(kaugs.RandomHorizontalFlip(p=0.5))
 
     _class_cond = not args.uncond
     prefix_path = args.prefix
 
     Path(prefix_path).mkdir(exist_ok=True)
 
-    print(f'Given initial image: {args.init_image}')
-    print("Using:")
-    print("===")
-    print(f"CLIP guidance scale: {args.clip_guidance_scale} ")
-    print(f"TV Scale: {args.tv_scale}")
-    print(f"Range scale: {args.range_scale}")
-    print(f"Dropout: {args.dropout}.")
-    print(f"Number of cutouts: {args.num_cutouts} number of cutouts.")
     if len(args.prompts) > 0:
         prompts = args.prompts.split('|')
     else:
@@ -365,6 +360,9 @@ def main():
         range_scale=args.range_scale,
         image_size=args.image_size,
         class_cond=_class_cond,
+        randomize_class=(_class_cond),
+        save_frequency=args.save_frequency,
+        num_classes=args.max_classes,
         clip_guidance_scale=args.clip_guidance_scale,
         cutout_power=args.cutout_power,
         num_cutouts=args.num_cutouts,
@@ -375,14 +373,13 @@ def main():
         init_image=args.init_image,
         checkpoints_dir=args.checkpoints_dir,
         clip_model_name=args.clip_model,
-        randomize_class=(_class_cond),
         noise_schedule=args.noise_schedule,
         dropout=args.dropout,
         device=args.device,
         augs=[],
-        num_classes=args.max_classes,
+        random_translate=args.random_translate,
+        prefix_path=prefix_path,
     )
-    prefix_path.mkdir(exist_ok=True)
     list(enumerate(tqdm(cgd_generator))) # iterate over generator
 
 if __name__ == "__main__":
