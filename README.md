@@ -33,8 +33,9 @@ A gif of the full run will be saved to `./outputs/caption_{j}.gif` by default.
 
 ![Alien friend by Oidlon Redo](images/alien_friend_by_Odilon_Redo_00.gif)
 
-- `current.png` will contain the current generation.
 - `./outputs` will contain all intermediate outputs
+- `current.png` will contain the current generation.
+- (optional) Provide **`--wandb_project <project_name>`** to enable logging intermediate outputs to wandb.
 - `~/.cache/clip-guided-diffusion/` will contain downloaded checkpoints from OpenAI/Katherine Crowson.
 
 ## Usage - CLI
@@ -73,16 +74,12 @@ A gif of the full run will be saved to `./outputs/caption_{j}.gif` by default.
 
 `--timestep_respacing` or `-respace` (default: `1000`)
 
-- Uses fewer timesteps over the same diffusion schedule. Sacrifices accuracy/alignment for improved speed.
+- Uses fewer timesteps over the same diffusion schedule. Sacrifices accuracy/alignment for improved quicker runtime.
 - options: - `25`, `50`, `150`, `250`, `500`, `1000`, `ddim25`,`ddim50`,`ddim150`, `ddim250`,`ddim500`,`ddim1000`
-  - (default: `1000`)
-  - prepending a number with `ddim` will use the ddim scheduler. e.g. `ddim25` will use the 25 timstep ddim scheduler. This method may be better at shorter timestep_respacing values.
+- (default: `1000`)
+- prepending a number with `ddim` will use the ddim scheduler. e.g. `ddim25` will use the 25 timstep ddim scheduler. This method may be better at shorter timestep_respacing values.
 
 ### Existing image
-
-The following three parameters are required to generate an image using an existing image:
-
-**You must supply at least `--init_image` and `--skip_timesteps` when supplying an initial image.**
 
 #### `--init_image`/`-init`
 
