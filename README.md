@@ -255,6 +255,13 @@ optional arguments:
                         Device to use. Either cpu or cuda. (default: )
   --random_translate, -rt
                         Randoml affine images. (default: False)
+  --wandb_project WANDB_PROJECT, -proj WANDB_PROJECT
+                        Name W&B will use when saving results. e.g.
+                        `--wandb_name my_project` (default: None)
+  --wandb_entity WANDB_ENTITY, -ent WANDB_ENTITY
+                        (optional) Name of W&B team/entity to log to.
+                        (default: None)
+
 
 ```
 
