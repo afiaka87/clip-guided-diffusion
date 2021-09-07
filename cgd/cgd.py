@@ -351,7 +351,7 @@ def main():
         prompts = []
         
     if len(args.image_prompts) > 0:
-        image_prompts = args.prompts.split('|')
+        image_prompts = args.image_prompts.split('|')
     else:
         image_prompts = []
     
