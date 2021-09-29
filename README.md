@@ -144,13 +144,13 @@ cgd_generator = clip_guided_diffusion(
     image_prompts=["image_to_compare_with_clip.png"],
     batch_size=1,
     clip_guidance_scale=1500,
+    sat_scale=0,
     tv_scale=150,
     init_scale=1000,
     range_scale=50,
     image_size=256,
     class_cond=False,
     randomize_class=False, # only works with class conditioned checkpoints
-    num_classes=0, # 0 uses all 1000 classes; only works with class conditioned checkpoints
     cutout_power=0.5,
     num_cutouts=64,
     timestep_respacing="1000",
@@ -164,11 +164,13 @@ cgd_generator = clip_guided_diffusion(
     augs=[],
     random_translate=False,
     prefix_path="store_images/",
+    wandb_project="cgd",
+    wandb_entity=None,
+    progress=True,
 )
 prefix_path.mkdir(exist_ok=True)
 list(enumerate(tqdm(cgd_generator))) # iterate over generator
 ```
-
 
 ## Full Usage
 
@@ -179,14 +181,15 @@ usage: cgd [-h] [--prompts PROMPTS] [--image_prompts IMAGE_PROMPTS]
            [--prefix PREFIX] [--checkpoints_dir CHECKPOINTS_DIR]
            [--batch_size BATCH_SIZE]
            [--clip_guidance_scale CLIP_GUIDANCE_SCALE] [--tv_scale TV_SCALE]
-           [--range_scale RANGE_SCALE] [--seed SEED]
+           [--range_scale RANGE_SCALE] [--sat_scale SAT_SCALE] [--seed SEED]
            [--save_frequency SAVE_FREQUENCY]
            [--diffusion_steps DIFFUSION_STEPS]
            [--timestep_respacing TIMESTEP_RESPACING]
            [--num_cutouts NUM_CUTOUTS] [--cutout_power CUTOUT_POWER]
            [--clip_model CLIP_MODEL] [--uncond]
            [--noise_schedule NOISE_SCHEDULE] [--dropout DROPOUT]
-           [--max_classes MAX_CLASSES] [--device DEVICE] [--random_translate]
+           [--device DEVICE] [--wandb_project WANDB_PROJECT]
+           [--wandb_entity WANDB_ENTITY] [--quiet]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -218,23 +221,27 @@ optional arguments:
                         Scale for CLIP spherical distance loss. Values will
                         need tinkering for different settings. (default: 1000)
   --tv_scale TV_SCALE, -tvs TV_SCALE
-                        Scale for denoising loss (default: 150.0)
+                        Controls the smoothness of the final output. (default:
+                        150.0)
   --range_scale RANGE_SCALE, -rs RANGE_SCALE
                         Controls how far out of RGB range values may get.
                         (default: 50.0)
+  --sat_scale SAT_SCALE, -sats SAT_SCALE
+                        Controls how much saturation is allowed. Used for
+                        ddim. From @nshepperd. (default: 0.0)
   --seed SEED, -seed SEED
                         Random number seed (default: 0)
   --save_frequency SAVE_FREQUENCY, -freq SAVE_FREQUENCY
-                        Save frequency (default: 25)
+                        Save frequency (default: 1)
   --diffusion_steps DIFFUSION_STEPS, -steps DIFFUSION_STEPS
                         Diffusion steps (default: 1000)
   --timestep_respacing TIMESTEP_RESPACING, -respace TIMESTEP_RESPACING
                         Timestep respacing (default: 1000)
   --num_cutouts NUM_CUTOUTS, -cutn NUM_CUTOUTS
                         Number of randomly cut patches to distort from
-                        diffusion. (default: 48)
+                        diffusion. (default: 16)
   --cutout_power CUTOUT_POWER, -cutpow CUTOUT_POWER
-                        Cutout size power (default: 0.5)
+                        Cutout size power (default: 1.0)
   --clip_model CLIP_MODEL, -clip CLIP_MODEL
                         clip model name. Should be one of: ('ViT-B/16',
                         'ViT-B/32', 'RN50', 'RN101', 'RN50x4', 'RN50x16') or a
@@ -247,19 +254,15 @@ optional arguments:
                         (default: linear)
   --dropout DROPOUT, -drop DROPOUT
                         Amount of dropout to apply. (default: 0.0)
-  --max_classes MAX_CLASSES, -top MAX_CLASSES
   --device DEVICE, -dev DEVICE
                         Device to use. Either cpu or cuda. (default: )
-  --random_translate, -rt
-                        Randoml affine images. (default: False)
   --wandb_project WANDB_PROJECT, -proj WANDB_PROJECT
                         Name W&B will use when saving results. e.g.
-                        `--wandb_name my_project` (default: None)
+                        `--wandb_name "my_project"` (default: None)
   --wandb_entity WANDB_ENTITY, -ent WANDB_ENTITY
                         (optional) Name of W&B team/entity to log to.
                         (default: None)
-
-
+  --quiet, -q           Suppress output. (default: False)
 ```
 
 ## Development
