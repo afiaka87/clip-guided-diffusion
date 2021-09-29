@@ -67,18 +67,6 @@ def check_parameters(
 
 # Define necessary functions
 
-def get_ddpm_schedule(t):
-    """(Katherine Crowson) Returns log SNRs for the noise schedule from the DDPM paper."""
-    return -th.special.expm1(1e-4 + 10 * t**2).log()
-
-
-def get_alphas_sigmas(log_snrs):
-    """(Katherine Crowson) Returns the scaling factors for the clean image and for the noise, given
-    the log SNR for a timestep."""
-    alphas_squared = log_snrs.sigmoid()
-    return alphas_squared.sqrt(), (1 - alphas_squared).sqrt()
-
-
 def parse_prompt(prompt):  # parse a single prompt in the form "<text||img_url>:<weight>"
     if prompt.startswith('http://') or prompt.startswith('https://'):
         vals = prompt.rsplit(':', 2)  # theres two colons, so we grab the 2nd
