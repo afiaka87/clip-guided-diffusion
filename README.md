@@ -74,7 +74,7 @@ A gif of the full run will be saved to `./outputs/caption_{j}.gif` by default.
 
 `--timestep_respacing` or `-respace` (default: `1000`)
 
-- Uses fewer timesteps over the same diffusion schedule. Sacrifices accuracy/alignment for improved quicker runtime.
+- Uses fewer timesteps over the same diffusion schedule. Sacrifices accuracy/alignment for quicker runtime.
 - options: - `25`, `50`, `150`, `250`, `500`, `1000`, `ddim25`,`ddim50`,`ddim150`, `ddim250`,`ddim500`,`ddim1000`
 - (default: `1000`)
 - prepending a number with `ddim` will use the ddim scheduler. e.g. `ddim25` will use the 25 timstep ddim scheduler. This method may be better at shorter timestep_respacing values.
