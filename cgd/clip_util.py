@@ -27,12 +27,26 @@ def load_clip(model_name='ViT-B/32', device="cpu"):
         raise ValueError("Invalid or unspecified device: {}".format(device))
 
 class MakeCutouts(th.nn.Module):
-    def __init__(self, cut_size: int, num_cutouts: int, cutout_size_power: float = 1.0, augment_list: list = []):
+    def __init__(self, cut_size: int, num_cutouts: int, cutout_size_power: float = 1.0, use_augs: bool = True):
         super().__init__()
         self.cut_size = cut_size
         self.cutn = num_cutouts
         self.cut_pow = cutout_size_power
-        self.augs = th.nn.Sequential(*augment_list)
+        custom_augs = []
+        if use_augs:
+            custom_augs = [
+                tvt.RandomHorizontalFlip(p=0.5),
+                tvt.Lambda(lambda x: x + th.randn_like(x) * 0.01),
+                tvt.RandomAffine(degrees=15, translate=(0.1, 0.1)),
+                tvt.Lambda(lambda x: x + th.randn_like(x) * 0.01),
+                tvt.RandomPerspective(distortion_scale=0.4, p=0.7),
+                tvt.Lambda(lambda x: x + th.randn_like(x) * 0.01),
+                tvt.RandomGrayscale(p=0.15),
+                tvt.Lambda(lambda x: x + th.randn_like(x) * 0.01),
+                tvt.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.1),
+                tvt.Lambda(lambda x: x + th.randn_like(x) * 0.01),
+            ] # TODO: test color jitter specifically
+        self.augs = tvt.Compose(custom_augs)
 
     def forward(self, input: th.Tensor):
         side_x, side_y = input.shape[2:4]
@@ -40,20 +54,12 @@ class MakeCutouts(th.nn.Module):
         min_size = min(side_y, side_x, self.cut_size)
         cutouts = []
         for _ in range(self.cutn):
-            size = int(th.rand([]) ** self.cut_pow *
-                       (max_size - min_size) + min_size)
-            offsetx = th.randint(0, side_y - size + 1, ())
-            offsety = th.randint(0, side_x - size + 1, ())
-            cutout = input[:, :, offsety: offsety +
-                           size, offsetx: offsetx + size]
-            cutout = tf.interpolate(
-                cutout,
-                (self.cut_size, self.cut_size),
-                mode="bilinear",
-                align_corners=False,
-            )
-            cutouts.append(cutout)
-        return self.augs(th.cat(cutouts))
+            size = int(th.rand([])**self.cut_pow * (max_size - min_size) + min_size)
+            offsetx = th.randint(0, side_x - size + 1, ())
+            offsety = th.randint(0, side_y - size + 1, ())
+            cutout = input[:, :, offsety:offsety + size, offsetx:offsetx + size]
+            cutouts.append(tf.adaptive_avg_pool2d(cutout, self.cut_size))
+        return th.cat(cutouts)
 
 
 def imagenet_top_n(text_encodes, device: str = 'cuda', n: int = len(IMAGENET_CLASSES), clip_model_name: str = "ViT-B/32"):
@@ -62,7 +68,8 @@ def imagenet_top_n(text_encodes, device: str = 'cuda', n: int = len(IMAGENET_CLA
     """
     clip_model, _ = load_clip(model_name=clip_model_name, device=device)
     with th.no_grad():
-        imagenet_lbl_tokens = clip.tokenize(IMAGENET_CLASSES).to(device)
+        engineered_pronmpts = [f"an image of a {img_cls}" for img_cls in IMAGENET_CLASSES]
+        imagenet_lbl_tokens = clip.tokenize(engineered_pronmpts).to(device)
         imagenet_features = clip_model.encode_text(imagenet_lbl_tokens).float()
         imagenet_features /= imagenet_features.norm(dim=-1, keepdim=True)
         prompt_features = text_encodes / text_encodes.norm(dim=-1, keepdim=True)
