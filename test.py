@@ -1,6 +1,7 @@
+from cgd.loss_util import spherical_dist_loss
 from cgd.clip_util import MakeCutouts, imagenet_top_n, load_clip
 from clip.model import ModifiedResNet, VisionTransformer
-from cgd.util import CACHE_PATH, download, load_guided_diffusion, log_image, spherical_dist_loss
+from cgd.util import CACHE_PATH, download, load_guided_diffusion, log_image
 import itertools
 import os
 import tempfile
@@ -157,7 +158,7 @@ class TestCGD(unittest.TestCase):
 
     def test_clip_guided_diffusion_yields_batch_idx_path_tuple(self):
         samples = clip_guided_diffusion(prompts=["Loose seal."], image_size=64, batch_size=2,
-                                        num_cutouts=1, num_classes=125, clip_model_name="RN50", prefix_path=self.test_dir_path, device='cpu')
+                                        num_cutouts=1, clip_model_name="RN50", prefix_path=self.test_dir_path, device='cpu')
         first_two_samples = list(itertools.islice(samples, 2))
         first_sample = first_two_samples[0]
         second_sample = first_two_samples[1]
@@ -233,14 +234,12 @@ class TestClipUtil(unittest.TestCase):
         cut_size = 224
         num_cutouts = 8
         cutout_size_power = 0.5
-        augment_list = []
         input = th.rand(1, 3, 512, 512)
         input = CLIP_NORMALIZE(input)
         make_cutouts = MakeCutouts(
             cut_size=cut_size,
             num_cutouts=num_cutouts,
             cutout_size_power=cutout_size_power,
-            augment_list=augment_list,
         ).to('cpu')
         result = make_cutouts(input)
         print(result.shape)
@@ -253,14 +252,12 @@ class TestClipUtil(unittest.TestCase):
         cut_size = 224
         num_cutouts = 8
         cutout_size_power = 0.5
-        augment_list = []
         input = th.rand(1, 3, 512, 512)
         input = CLIP_NORMALIZE(input)
         make_cutouts = MakeCutouts(
             cut_size=cut_size,
             num_cutouts=num_cutouts,
             cutout_size_power=cutout_size_power,
-            augment_list=augment_list,
         ).to(th.device('cuda'))
         result = make_cutouts(input)
         self.assertEqual(result.shape[0], num_cutouts)
