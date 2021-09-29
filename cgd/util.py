@@ -139,18 +139,3 @@ def resize_image(image: th.Tensor, out_size: Union[int, Tuple[int, int]]) -> th.
     area = min(image.size(0) * image.size(1), outsize_x * outsize_y)
     size = round((area * ratio)**0.5), round((area / ratio)**0.5)
     return image.reshape(size)
-
-
-def spherical_dist_loss(x: th.Tensor, y: th.Tensor):
-    """(Katherine Crowson) - Spherical distance loss"""
-    x = tf.normalize(x, dim=-1)
-    y = tf.normalize(y, dim=-1)
-    return (x - y).norm(dim=-1).div(2).arcsin().pow(2).mul(2)
-
-
-def tv_loss(input: th.Tensor):
-    """(Katherine Crowson) - L2 total variation loss, as in Mahendran et al."""
-    input = tf.pad(input, (0, 1, 0, 1), "replicate")
-    x_diff = input[..., :-1, 1:] - input[..., :-1, :-1]
-    y_diff = input[..., 1:, :-1] - input[..., :-1, :-1]
-    return (x_diff ** 2 + y_diff ** 2).mean([1, 2, 3])
