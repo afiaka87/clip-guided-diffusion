@@ -7,14 +7,17 @@ From [RiversHaveWings](https://twitter.com/RiversHaveWings).
 Generate vibrant and detailed images using only text.
 
 <img src="images/THX_sound_Spaceship.png" width="128px"></img><img src="images/Windows_XP_background_Mushroom.png" width="128px"></img><img src="images/a_red_ball_resting_on_top_of_a_mirror.png" width="128px"></img>
-<img src="images/dog_looking_at_the_camera.png" width="128px"></img><img src="images/goose_on_the_run.png" width="128px"></img><img src="/images/photon.png" width="128px"></img>
+
 
 See captions and more generations in the [Gallery](/images/README.md).
 
-See also - <a href="https://github.com/nerdyrodent/VQGAN-CLIP">VQGAN-CLIP</a>
+**NEW** All losses, the current noisy, denoised and blended generations are now logged to Weights & Biases if enabled using:
 
-> This code is currently under active development and is subject to frequent changes. Please file an issue if you have any constructive feedback, questions, or issues with the code or colab notebook.
-> Windows user? Please file an issue if you have any issues with the code. I have no way to test that platform currently but would like to try.
+`--wandb_project project_name_here`.
+
+[Have a look!](https://wandb.ai/dalle-pytorch-replicate/red_ball_cgd/reports/CLIP-Guided-Diffusion--VmlldzoxMDc1MjMz)
+
+<img src="images/weights_and_biases_screen.png" width="512"></img>
 
 ## Install
 
@@ -35,7 +38,7 @@ A gif of the full run will be saved to `./outputs/caption_{j}.gif` by default.
 
 - `./outputs` will contain all intermediate outputs
 - `current.png` will contain the current generation.
-- (optional) Provide **`--wandb_project <project_name>`** to enable logging intermediate outputs to wandb. Requires free account. URL to run will be provided in CLI - [example run](https://wandb.ai/dalle-pytorch-replicate/%22bandw%22)
+- (optional) Provide **`--wandb_project <project_name>`** to enable logging intermediate outputs to wandb. Requires free account. URL to run will be provided in CLI - [example run](https://wandb.ai/dalle-pytorch-replicate/red_ball_cgd/reports/CLIP-Guided-Diffusion--VmlldzoxMDc1MjMz)
 - `~/.cache/clip-guided-diffusion/` will contain downloaded checkpoints from OpenAI/Katherine Crowson.
 
 ## Usage - CLI
