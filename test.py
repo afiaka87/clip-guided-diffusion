@@ -1,20 +1,20 @@
-from cgd.loss_util import spherical_dist_loss
-from cgd.clip_util import MakeCutouts, imagenet_top_n, load_clip
 from clip.model import ModifiedResNet, VisionTransformer
-from cgd.util import CACHE_PATH, download, load_guided_diffusion, log_image
 import itertools
 import os
 import tempfile
 import unittest
 from pathlib import Path
 
+from cgd import script_util
+from cgd import clip_util
+from cgd import losses
+
 import torch as th
-import sys
-sys.path.append("guided-diffusion")
+from cgd import modules
+from cgd.cgd import clip_guided_diffusion
 from guided_diffusion import respace
 from torch.nn import functional as tf
 
-from cgd.cgd import CLIP_NORMALIZE, clip_guided_diffusion, encode_text_prompt, parse_prompt
 
 # Integration tests; better than nothing at all.
 
@@ -35,7 +35,7 @@ class TestUtil(unittest.TestCase):
 
     def test_download_returns_target_full_path(self):
         url = 'https://github.com/afiaka87/clip-guided-diffusion/raw/main/images/photon.png'
-        result = download(url, 'photon.png', root=self.test_dir.name)
+        result = script_util.download(url, 'photon.png', root=self.test_dir.name)
         expected = self.test_dir_path.joinpath('photon.png')
         self.assertEqual(result, str(expected))
         self.assertTrue(expected.exists())
@@ -53,7 +53,7 @@ class TestTorchUtil(unittest.TestCase):
 
     def test_load_guided_diffusion_cpu(self):
         image_size = 64
-        checkpoint_path = Path(CACHE_PATH).joinpath(
+        checkpoint_path = Path(script_util.CACHE_PATH).joinpath(
             f"{image_size}x{image_size}_diffusion.pt")
         class_cond = True
         diffusion_steps = 1000
@@ -62,7 +62,7 @@ class TestTorchUtil(unittest.TestCase):
         device = 'cpu'
         noise_schedule = "linear"
         dropout = 0.0
-        model, diffusion = load_guided_diffusion(
+        model, diffusion = script_util.load_guided_diffusion(
             checkpoint_path=str(checkpoint_path),
             image_size=image_size,
             class_cond=class_cond,
@@ -78,7 +78,7 @@ class TestTorchUtil(unittest.TestCase):
 
     def test_load_guided_diffusion_cuda(self):
         image_size = 64
-        checkpoint_path = Path(CACHE_PATH).joinpath(
+        checkpoint_path = Path(script_util.CACHE_PATH).joinpath(
             f"{image_size}x{image_size}_diffusion.pt")
         class_cond = True
         diffusion_steps = 1000
@@ -87,7 +87,7 @@ class TestTorchUtil(unittest.TestCase):
         device = 'cuda'
         noise_schedule = "linear"
         dropout = 0.0
-        model, diffusion = load_guided_diffusion(
+        model, diffusion = script_util.load_guided_diffusion(
             checkpoint_path=str(checkpoint_path),
             image_size=image_size,
             class_cond=class_cond,
@@ -110,7 +110,7 @@ class TestTorchUtil(unittest.TestCase):
         current_step = 1
         expected_filename = os.path.join(
             self.test_dir.name, "a_b_c/04/0001.png")
-        result_filename = log_image(
+        result_filename = script_util.log_image(
             image=image, base_path=self.test_dir.name,
             txts=txts,
             current_step=current_step,
@@ -121,7 +121,7 @@ class TestTorchUtil(unittest.TestCase):
     def test_spherical_dist_loss(self):
         x = th.rand(1, 3)
         y = th.rand(1, 3)
-        result = spherical_dist_loss(x, y)
+        result = losses.spherical_dist_loss(x, y)
         x_norm = tf.normalize(x, dim=-1)
         y_norm = tf.normalize(y, dim=-1)
         expected = (x_norm - y_norm).norm(dim=-1).div(2).arcsin().pow(2).mul(2)
@@ -178,54 +178,54 @@ class TestClipUtil(unittest.TestCase):
     def test_parse_prompt_returns_prompt_weight_tuple(self):
         prompt = "Loose seal.:0.4"
         expected_prompt_weight_tuple = ("Loose seal.", 0.4)
-        result = parse_prompt(prompt)
+        result = script_util.parse_prompt(prompt)
         self.assertEqual(result, expected_prompt_weight_tuple)
 
     def test_parse_prompt_negative_weight(self):
         prompt = "Loose seal.:-0.4"
         expected_prompt_weight_tuple = ("Loose seal.", -0.4)
-        result = parse_prompt(prompt)
+        result = script_util.parse_prompt(prompt)
         self.assertEqual(result, expected_prompt_weight_tuple)
 
     def test_parse_prompt_no_weight_returns_one(self):
         prompt = "Loose seal."
         expected_prompt_weight_tuple = ("Loose seal.", 1.0)
-        result = parse_prompt(prompt)
+        result = script_util.parse_prompt(prompt)
         self.assertEqual(result, expected_prompt_weight_tuple)
 
     def test_imagenet_top_n_runs_on_cuda(self, top_n=100):
         device = "cpu"
         clip_model_name = "RN50"
         text = "Loose seal."
-        text, weight = parse_prompt(text)
-        text, _ = encode_text_prompt(text, weight, clip_model_name, device)
-        result_scores = imagenet_top_n(text_encodes=text, device=device, n=100, clip_model_name=clip_model_name)
+        text, weight = script_util.parse_prompt(text)
+        text, _ = clip_util.encode_text_prompt(text, weight, clip_model_name, device)
+        result_scores = clip_util.imagenet_top_n(text_encodes=text, device=device, n=100, clip_model_name=clip_model_name)
         print(result_scores)
 
     def test_load_clip_rn50_cpu(self):
         model_name = "RN50"
-        clip_model, clip_size = load_clip(model_name=model_name, device="cpu")
+        clip_model, clip_size = clip_util.load_clip(model_name=model_name, device="cpu")
         self.assertIsInstance(clip_model.visual, ModifiedResNet)
         self.assertEqual(clip_size, clip_model.visual.input_resolution)
         self.assertEqual(clip_size, 224)
 
     def test_load_clip_vit_b_16_cpu(self):
         model_name = "ViT-B/16"
-        clip_model, clip_size = load_clip(model_name=model_name, device="cpu")
+        clip_model, clip_size = clip_util.load_clip(model_name=model_name, device="cpu")
         self.assertIsInstance(clip_model.visual, VisionTransformer)
         self.assertEqual(clip_size, clip_model.visual.input_resolution)
         self.assertEqual(clip_size, 224)
 
     def test_load_clip_rn50_cuda(self):
         model_name = "RN50"
-        clip_model, clip_size = load_clip(model_name=model_name, device="cuda")
+        clip_model, clip_size = clip_util.load_clip(model_name=model_name, device="cuda")
         self.assertIsInstance(clip_model.visual, ModifiedResNet)
         self.assertEqual(clip_size, clip_model.visual.input_resolution)
         self.assertEqual(clip_size, 224)
 
     def test_load_clip_vit_b_16_cuda(self):
         model_name = "ViT-B/16"
-        clip_model, clip_size = load_clip(model_name=model_name, device="cuda")
+        clip_model, clip_size = clip_util.load_clip(model_name=model_name, device="cuda")
         self.assertIsInstance(clip_model.visual, VisionTransformer)
         self.assertEqual(clip_size, clip_model.visual.input_resolution)
         self.assertEqual(clip_size, 224)
@@ -235,8 +235,8 @@ class TestClipUtil(unittest.TestCase):
         num_cutouts = 8
         cutout_size_power = 0.5
         input = th.rand(1, 3, 512, 512)
-        input = CLIP_NORMALIZE(input)
-        make_cutouts = MakeCutouts(
+        input = clip_util.CLIP_NORMALIZE(input)
+        make_cutouts = modules.MakeCutouts(
             cut_size=cut_size,
             num_cutouts=num_cutouts,
             cutout_size_power=cutout_size_power,
@@ -253,8 +253,8 @@ class TestClipUtil(unittest.TestCase):
         num_cutouts = 8
         cutout_size_power = 0.5
         input = th.rand(1, 3, 512, 512)
-        input = CLIP_NORMALIZE(input)
-        make_cutouts = MakeCutouts(
+        input = clip_util.CLIP_NORMALIZE(input)
+        make_cutouts = clip_util.MakeCutouts(
             cut_size=cut_size,
             num_cutouts=num_cutouts,
             cutout_size_power=cutout_size_power,
@@ -269,7 +269,7 @@ class TestClipUtil(unittest.TestCase):
         clip_model_name = "RN50"
         text = "A"
         device = "cuda:0"
-        result, weight = encode_text_prompt(clip_model_name, text, device=device)
+        result, weight = clip_util.encode_text_prompt(clip_model_name, text, device=device)
         self.assertEqual(str(result.device), device)
         self.assertIsNotNone(result)
 
@@ -278,6 +278,6 @@ class TestClipUtil(unittest.TestCase):
         text = "A"
         weight = 0.5
         device = "cuda:0"
-        result_encode, result_weight = encode_text_prompt(clip_model_name=clip_model_name, txt=text, weight=weight, device=device)
+        result_encode, result_weight = clip_util.encode_text_prompt(clip_model_name=clip_model_name, txt=text, weight=weight, device=device)
         self.assertEqual(str(result_encode.device), device)
         self.assertEqual(result_weight, weight)
