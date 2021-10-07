@@ -1,5 +1,6 @@
 # Configuration for Cog ⚙️
 # Reference: https://github.com/replicate/cog/blob/main/docs/yaml.md
+image: clip-guided-diffusion
 
 build:
   # set to true if your model requires a GPU
@@ -33,18 +34,18 @@ build:
      - "wandb==0.12"
 
   run:
+    - mkdir -p ~/.cache/clip
+    - mkdir -p ~/.cache/clip-guided-diffusion/
+    - wget --continue https://openaipublic.blob.core.windows.net/diffusion/jul-2021/128x128_diffusion.pt --output-document ~/.cache/clip-guided-diffusion/128x128_diffusion.pt
+    - wget --continue https://openaipublic.azureedge.net/clip/models/40d365715913c9da98579312b702a82c18be219cc2a73407c4526f58eba950af/ViT-B-32.pt --output-document ~/.cache/clip/ViT-B-32.pt
     - git clone https://github.com/afiaka87/clip-guided-diffusion
     - python3 clip-guided-diffusion/setup.py install
     - git clone https://github.com/crowsonkb/guided-diffusion
     - python3 -m pip install -e guided-diffusion
-    - mkdir -p ~/.cache/clip
-    - mkdir -p ~/.cache/clip-guided-diffusion/
-    - wget --continue https://openaipublic.blob.core.windows.net/diffusion/jul-2021/128x128_diffusion.pt --output-document "/root/.cache/clip-guided-diffusion/128x128_diffusion.pt"
-    - wget --continue https://openaipublic.azureedge.net/clip/models/40d365715913c9da98579312b702a82c18be219cc2a73407c4526f58eba950af/ViT-B-32.pt --output-document "/root/.cache/clip/ViT-B-32.pt"
-# - curl -O -L -C - 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/64x64_diffusion.pt' > ~/.cache/clip-guided-diffusion/64x64_diffusion.pt
-# - curl -O -L -C - 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion.pt' > ~/.cache/clip-guided-diffusion/256x256_diffusion.pt
-# - curl -O -L -C - 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/512x512_diffusion.pt' > ~/.cache/clip-guided-diffusion/512x512_diffusion.pt
-# - curl -O -L -C - 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt' > ~/.cache/clip-guided-diffusion/256x256_diffusion_uncond.pt
-# - curl -O -L -C - 'https://the-eye.eu/public/AI/models/512x512_diffusion_unconditional_ImageNet/512x512_diffusion_uncond_finetune_008100.pt' > ~/.cache/clip-guided-diffusion/512x512_diffusion_uncond_finetune_008100.pt
-# predict.py defines how predictions are run on your model
+    # - curl -O -L -C - 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/64x64_diffusion.pt' > ~/.cache/clip-guided-diffusion/64x64_diffusion.pt
+    # - curl -O -L -C - 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion.pt' > ~/.cache/clip-guided-diffusion/256x256_diffusion.pt
+    # - curl -O -L -C - 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/512x512_diffusion.pt' > ~/.cache/clip-guided-diffusion/512x512_diffusion.pt
+    # - curl -O -L -C - 'https://openaipublic.blob.core.windows.net/diffusion/jul-2021/256x256_diffusion_uncond.pt' > ~/.cache/clip-guided-diffusion/256x256_diffusion_uncond.pt
+    # - curl -O -L -C - 'https://the-eye.eu/public/AI/models/512x512_diffusion_unconditional_ImageNet/512x512_diffusion_uncond_finetune_008100.pt' > ~/.cache/clip-guided-diffusion/512x512_diffusion_uncond_finetune_008100.pt
+    # predict.py defines how predictions are run on your model
 predict: "cog_predict.py:ClipGuidedDiffusionPredictor"
