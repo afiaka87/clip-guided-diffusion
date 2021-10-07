@@ -23,9 +23,9 @@ class ClipGuidedDiffusionPredictor(cog.Predictor):
     @cog.input("init_image", type=cog.Path, help="an image to blend with diffusion before clip guidance begins. Uses half as many timesteps.", default=None)
     def predict(self, prompt: str, respace: str, init_image: cog.Path = None):
         # this could feasibly be a parameter, but it's a highly confusing one. Using half works well enough.
-        timesteps_to_skip = int(respace.replace("ddim", "")) // 2 if len(str(init_image)) > 0 else 0
-        use_magnitude = True if int(respace.replace("ddim", "")) < 50 else False
-        use_augmentations = True if int(respace.replace("ddim", "")) < 50 else False
+        timesteps_to_skip = int(respace.replace("ddim", "")) // 2 if init_image else 0
+        use_magnitude = False if int(respace.replace("ddim", "")) <= 50 else False
+        use_augmentations = False if int(respace.replace("ddim", "")) <= 50 else False
         cgd_generator = clip_guided_diffusion(
             prompts=[prompt],
             init_image=init_image,
@@ -37,15 +37,15 @@ class ClipGuidedDiffusionPredictor(cog.Predictor):
             class_cond=True, # fixed to checkpoint
             clip_model_name="ViT-B/32", # changing works, but will break the cache
             randomize_class=True, # only works with class conditioned checkpoints
-            cutout_power=1.0,
-            num_cutouts=32,
+            cutout_power=0.5,
+            num_cutouts=50,
             device="cuda",
             prefix_path=self.prefix_path,
             progress=True,
             use_augs=use_augmentations,
             use_magnitude=use_magnitude,
             sat_scale=0,
-            init_scale=0 if init_image is None else 1000,
+            init_scale=1000 if init_image else 0,
         )
         for _, batch in enumerate(cgd_generator):
             yield cog.Path(batch[1]) # second element is the image path, first is the batch index if batch_size > 1
