@@ -13,11 +13,8 @@ from cgd.modules import MakeCutouts
 from cgd.ResizeRight import resize_right
 from cgd.ResizeRight.interp_methods import lanczos3
 
-CLIP_MODEL_NAMES = ("ViT-B/16", "ViT-B/32", "RN50",
-                    "RN101", "RN50x4", "RN50x16")
-CLIP_NORMALIZE = tvt.Normalize(mean=[0.48145466, 0.4578275, 0.40821073], std=[
-                               0.26862954, 0.26130258, 0.27577711])
-
+CLIP_MODEL_NAMES = ("ViT-B/16", "ViT-B/32", "RN50", "RN101", "RN50x4", "RN50x16")
+CLIP_NORMALIZE = tvt.Normalize(mean=[0.48145466, 0.4578275, 0.40821073], std=[0.26862954, 0.26130258, 0.27577711])
 
 @lru_cache(maxsize=1)
 def load_clip(model_name='ViT-B/32', device="cpu"):
@@ -59,11 +56,9 @@ def encode_image_prompt(image: str, weight: float, diffusion_size: int, num_cuto
     make_cutouts = MakeCutouts(cut_size=clip_size, num_cutouts=num_cutouts)
     pil_img = Image.open(script_util.fetch(image)).convert('RGB')
     smallest_side = min(diffusion_size, *pil_img.size)
-    pil_img = resize_right.resize(input, scale_factors=None, out_shape=[smallest_side],
+    pil_img = resize_right.resize(input, out_shape=[smallest_side],
                                   interp_method=lanczos3, support_sz=None,
-                                  antialiasing=True, by_convs=False, scale_tolerance=None,
-                                  max_denominator=10, pad_mode='constant')
-
+                                  antialiasing=True, by_convs=False, scale_tolerance=None)
     batch = make_cutouts(tvf.to_tensor(pil_img).unsqueeze(0).to(device))
     batch_embed = clip_model.encode_image(tf.normalize(batch)).float()
     batch_weight = [weight / make_cutouts.cutn] * make_cutouts.cutn
