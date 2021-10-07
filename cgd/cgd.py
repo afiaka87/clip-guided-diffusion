@@ -26,7 +26,7 @@ def clip_guided_diffusion(
     sat_scale: float = 0,
     init_scale: float = 0,
     batch_size: int = 1,
-    init_image: str = "",
+    init_image: Path = None,
     class_cond: bool = True,
     cutout_power: float = 1.0,
     timestep_respacing: str = "1000",
@@ -36,7 +36,7 @@ def clip_guided_diffusion(
     checkpoints_dir: str = script_util.CACHE_PATH,
     clip_model_name: str = "ViT-B/32",
     randomize_class: bool = True,
-    prefix_path: str = 'outputs',
+    prefix_path: Path = Path('./outputs'),
     save_frequency: int = 25,
     noise_schedule: str = "linear",
     dropout: float = 0.0,
@@ -105,7 +105,7 @@ def clip_guided_diffusion(
 
     # Load initial image (if provided)
     init_tensor = None
-    if len(init_image) > 0:
+    if init_image:
         pil_image = Image.open(script_util.fetch(init_image)).convert('RGB').resize((image_size, image_size))
         init_tensor = tvt.ToTensor()(pil_image)
         init_tensor = init_tensor.to(device).unsqueeze(0).mul(2).sub(1)
@@ -317,7 +317,6 @@ def main():
         image_prompts = args.image_prompts.split('|')
     else:
         image_prompts = []
-
     cgd_generator = clip_guided_diffusion(
         prompts=prompts,
         image_prompts=image_prompts,
