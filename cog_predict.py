@@ -19,12 +19,12 @@ class ClipGuidedDiffusionPredictor(cog.Predictor):
             _, _ = clip_util.load_clip("ViT-B/32", "cuda")
 
     @cog.input("prompt", type=str, help="a caption to visualize")
-    @cog.input("size", type=int, options=[128, 256, 512], help="image size", default=256)
+    @cog.input("size", type=int, options=[128, 256], help="image size", default=256)
     @cog.input("clip_guidance_scale", type=int, default=1000, min=0, max=2500, help="Scale for CLIP spherical distance loss. Values will need tinkering for different settings.",)
-    @cog.input("tv_scale", type=float, default=100., min=0., max=250., help="Scale for TV loss. 0, 100, 150 and 200")
+    @cog.input("tv_scale", type=float, default=150., min=0., max=250., help="Scale for TV loss. 0, 100, 150 and 200")
     @cog.input("range_scale", type=float, default=50., min=0., max=250., help="Controls how far out of RGB range values may get.")
     @cog.input("sat_scale", type=float, default=0., min=0.0, max=128.0, help="Controls how much saturation is allowed. Use for ddim. From @nshepperd.",)
-    @cog.input("respace", type=str, help="Number of timesteps", default="250", options=["25", "50", "100", "200", "250", "500", "1000", "ddim25", "ddim50", "ddim100", "ddim200", "ddim250", "ddim500", "ddim1000"])
+    @cog.input("respace", type=str, help="Number of timesteps", default="250", options=["25", "50", "100", "200", "250"])
     @cog.input("init_image", type=cog.Path, help="an image to blend with diffusion before clip guidance begins. Uses half as many timesteps.", default=None)
     def predict(self, prompt: str,  respace: str, init_image: cog.Path = None, size: int=256, clip_guidance_scale: int = 1000, tv_scale: float = 150., range_scale: float = 50., sat_scale: float = 0.):
         # this could feasibly be a parameter, but it's a highly confusing one. Using half works well enough.
@@ -45,8 +45,8 @@ class ClipGuidedDiffusionPredictor(cog.Predictor):
             class_cond=class_conditional,
             clip_model_name="ViT-B/32", # changing works, but will break the cache
             randomize_class=class_conditional,
-            cutout_power=1.0,
-            num_cutouts=32,
+            cutout_power=0.5,
+            num_cutouts=48,
             device="cuda",
             prefix_path=self.prefix_path,
             progress=True,
