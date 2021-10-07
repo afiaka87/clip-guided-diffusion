@@ -98,8 +98,7 @@ def clip_guided_diffusion(
         raise RuntimeError('The weights must not sum to 0.')
     weights /= weights.sum().abs()
 
-    # Add noise, translation, affine, etc. if under 100 diffusion steps
-    if use_augs: tqdm.write( f"Augmentations enabled, {diffusion_steps} steps")
+    if use_augs: tqdm.write( f"Augmentations enabled." )
     make_cutouts = clip_util.MakeCutouts(cut_size=clip_size, num_cutouts=num_cutouts,
                                          cutout_size_power=cutout_power, use_augs=use_augs)
 
