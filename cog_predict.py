@@ -24,8 +24,8 @@ class ClipGuidedDiffusionPredictor(cog.Predictor):
     def predict(self, prompt: str, respace: str, init_image: cog.Path = None):
         # this could feasibly be a parameter, but it's a highly confusing one. Using half works well enough.
         timesteps_to_skip = int(respace.replace("ddim", "")) // 2 if init_image else 0
-        use_magnitude = False if int(respace.replace("ddim", "")) <= 50 else False
-        use_augmentations = False if int(respace.replace("ddim", "")) <= 50 else False
+        use_magnitude = False if int(respace.replace("ddim", "")) <= 50 else True
+        use_augmentations = False if int(respace.replace("ddim", "")) <= 50 else True
         cgd_generator = clip_guided_diffusion(
             prompts=[prompt],
             init_image=init_image,
@@ -37,8 +37,8 @@ class ClipGuidedDiffusionPredictor(cog.Predictor):
             class_cond=True, # fixed to checkpoint
             clip_model_name="ViT-B/32", # changing works, but will break the cache
             randomize_class=True, # only works with class conditioned checkpoints
-            cutout_power=0.5,
-            num_cutouts=50,
+            cutout_power=1.0,
+            num_cutouts=32,
             device="cuda",
             prefix_path=self.prefix_path,
             progress=True,
