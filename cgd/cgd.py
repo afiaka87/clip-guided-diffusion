@@ -1,26 +1,16 @@
-from math import exp
-import random
 import argparse
-import os
-import time
 from pathlib import Path
 
 import lpips
-from numpy import half
-from numpy.lib.function_base import interp
 import torch as th
 import wandb
 from PIL import Image
-from torchvision.transforms.transforms import RandomAdjustSharpness, ToPILImage, ToTensor
-import torchvision.transforms.functional as tvtf
 import torchvision.transforms as tvt
 
 from tqdm.auto import tqdm
 from cgd import losses
 from cgd import clip_util
 from cgd import script_util
-from cgd.ResizeRight import resize_right
-from cgd.ResizeRight.interp_methods import lanczos3
 
 
 # Define necessary functions
@@ -327,11 +317,6 @@ def main():
         image_prompts = args.image_prompts.split('|')
     else:
         image_prompts = []
-
-    # user_params = locals()
-    # print("Starting CLIP Guided Diffusion with params:")
-    # for k, v in user_params.items():
-        # print(f"\t{k}: {v}")
 
     cgd_generator = clip_guided_diffusion(
         prompts=prompts,
