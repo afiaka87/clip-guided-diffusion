@@ -19,7 +19,7 @@ class ClipGuidedDiffusionPredictor(cog.Predictor):
             _, _ = clip_util.load_clip("ViT-B/32", "cuda")
 
     @cog.input("prompt", type=str, help="a caption to visualize")
-    @cog.input("respace", type=str, help="Number of timesteps", default="ddim100", options=["25", "50", "100", "200", "250", "500", "1000", "ddim25", "ddim50", "ddim100", "ddim200", "ddim250", "ddim500", "ddim1000"])
+    @cog.input("respace", type=str, help="Number of timesteps", default="250", options=["25", "50", "100", "200", "250", "500", "1000", "ddim25", "ddim50", "ddim100", "ddim200", "ddim250", "ddim500", "ddim1000"])
     @cog.input("init_image", type=cog.Path, help="an image to blend with diffusion before clip guidance begins. Uses half as many timesteps.", default=None)
     def predict(self, prompt: str, respace: str, init_image: cog.Path = None):
         # this could feasibly be a parameter, but it's a highly confusing one. Using half works well enough.
