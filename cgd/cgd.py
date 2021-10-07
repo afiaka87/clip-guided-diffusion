@@ -1,17 +1,26 @@
+from math import exp
+import random
 import argparse
 import os
 import time
 from pathlib import Path
 
 import lpips
+from numpy import half
+from numpy.lib.function_base import interp
 import torch as th
 import wandb
 from PIL import Image
-from torchvision.transforms.transforms import ToTensor
+from torchvision.transforms.transforms import RandomAdjustSharpness, ToPILImage, ToTensor
+import torchvision.transforms.functional as tvtf
+import torchvision.transforms as tvt
+
 from tqdm.auto import tqdm
 from cgd import losses
 from cgd import clip_util
 from cgd import script_util
+from cgd.ResizeRight import resize_right
+from cgd.ResizeRight.interp_methods import lanczos3
 
 
 # Define necessary functions
@@ -44,12 +53,13 @@ def clip_guided_diffusion(
     device: str = '',
     wandb_project: str = None,
     wandb_entity: str = None,
+    use_augs: bool = False, # enables augmentation, mostly better for timesteps <= 100
+    use_magnitude: bool = False, # enables magnitude of the gradient
     progress: bool = True,
 ):
     if len(device) == 0:
         device = 'cuda' if th.cuda.is_available() else 'cpu'
-        print(
-            f"Using device {device}. You can specify a device manually with `--device/-dev`")
+        print(f"Using device {device}. You can specify a device manually with `--device/-dev`")
     else:
         print(f"Using device {device}")
     fp32_diffusion = (device == 'cpu')
@@ -57,24 +67,21 @@ def clip_guided_diffusion(
     wandb_run = None
     if wandb_project is not None:
         # just use local vars for config
-        wandb_run = wandb.init(project=wandb_project,
-                               entity=wandb_entity, config=locals())
+        wandb_run = wandb.init(project=wandb_project, entity=wandb_entity, config=locals())
     else:
         print(f"--wandb_project not specified. Skipping W&B integration.")
 
     th.manual_seed(seed)
 
-    # only use magnitude for low timestep_respacing
-    use_magnitude = (int(timestep_respacing.replace(
-        "ddim", "")) <= 25 or image_size == 64)
-    # only use saturation loss on ddim
-    use_saturation = ("ddim" in timestep_respacing or image_size == 64)
-
+    if use_magnitude == False and image_size == 64:
+        use_magnitude = True
+        tqdm.write("Enabling magnitude for 64x64 checkpoints.")
+    
+    use_saturation = sat_scale != 0
     Path(prefix_path).mkdir(parents=True, exist_ok=True)
     Path(checkpoints_dir).mkdir(parents=True, exist_ok=True)
 
-    diffusion_path = script_util.download_guided_diffusion(
-        image_size=image_size, checkpoints_dir=checkpoints_dir, class_cond=class_cond)
+    diffusion_path = script_util.download_guided_diffusion(image_size=image_size, checkpoints_dir=checkpoints_dir, class_cond=class_cond)
 
     # Load CLIP model/Encode text/Create `MakeCutouts`
     embeds_list = []
@@ -83,8 +90,7 @@ def clip_guided_diffusion(
 
     for prompt in prompts:
         text, weight = script_util.parse_prompt(prompt)
-        text, weight = clip_util.encode_text_prompt(
-            text, weight, clip_model_name, device)
+        text, weight = clip_util.encode_text_prompt(text, weight, clip_model_name, device)
         embeds_list.append(text)
         weights_list.append(weight)
 
@@ -103,19 +109,16 @@ def clip_guided_diffusion(
     weights /= weights.sum().abs()
 
     # Add noise, translation, affine, etc. if under 100 diffusion steps
-    use_augs = (int(timestep_respacing.replace("ddim", "")) <= 100)
-    if use_augs:
-        tqdm.write(
-            f"Using augmentations to improve performance for lower timestep_respacing of {timestep_respacing}")
+    if use_augs: tqdm.write( f"Augmentations enabled, {diffusion_steps} steps")
     make_cutouts = clip_util.MakeCutouts(cut_size=clip_size, num_cutouts=num_cutouts,
                                          cutout_size_power=cutout_power, use_augs=use_augs)
 
     # Load initial image (if provided)
     init_tensor = None
     if len(init_image) > 0:
-        pil_image = Image.open(script_util.fetch(init_image)).convert(
-            "RGB").resize((image_size, image_size), Image.LANCZOS)
-        init_tensor = ToTensor()(pil_image).to(device).unsqueeze(0).mul(2).sub(1)
+        pil_image = Image.open(script_util.fetch(init_image)).convert('RGB').resize((image_size, image_size))
+        init_tensor = tvt.ToTensor()(pil_image)
+        init_tensor = init_tensor.to(device).unsqueeze(0).mul(2).sub(1)
 
    # Class randomization requires a starting class index `y`
     model_kwargs = {}
@@ -146,7 +149,7 @@ def clip_guided_diffusion(
         sigmas = 1 - fac
         x_in = out["pred_xstart"] * fac + x * sigmas
         if wandb_project is not None:
-            log['Generations'] = [
+            log[f'Generations - {timestep_respacing}'] = [
                 wandb.Image(x, caption=f"Noisy Sample"),
                 wandb.Image(out['pred_xstart'],
                             caption=f"Denoised Prediction"),
@@ -207,6 +210,8 @@ def clip_guided_diffusion(
     else:
         diffusion_sample_loop = diffusion.p_sample_loop_progressive
 
+    # def denoised_fn(image): return image
+
     try:
         cgd_samples = diffusion_sample_loop(
             gd_model,
@@ -219,6 +224,7 @@ def clip_guided_diffusion(
             init_image=init_tensor,
             randomize_class=randomize_class,
             cond_fn_with_grad=True,
+            # denoised_fn=denoised_fn,
         )
 
         # Gather generator for diffusion
@@ -301,6 +307,8 @@ def main():
                    help='Name W&B will use when saving results.\ne.g. `--wandb_project "my_project"`')
     p.add_argument('--wandb_entity', '-ent', default=None,
                    help='(optional) Name of W&B team/entity to log to.')
+    p.add_argument('--use_augs', '-augs', action='store_true', help="Uses augmentations from the `quick` clip guided diffusion notebook")
+    p.add_argument('--use_magnitude', '-mag', action='store_true', help="Uses magnitude of the gradient")
     p.add_argument('--quiet', '-q', action='store_true',
                    help='Suppress output.')
     args = p.parse_args()
@@ -319,6 +327,11 @@ def main():
         image_prompts = args.image_prompts.split('|')
     else:
         image_prompts = []
+
+    # user_params = locals()
+    # print("Starting CLIP Guided Diffusion with params:")
+    # for k, v in user_params.items():
+        # print(f"\t{k}: {v}")
 
     cgd_generator = clip_guided_diffusion(
         prompts=prompts,
@@ -348,6 +361,8 @@ def main():
         prefix_path=prefix_path,
         wandb_project=args.wandb_project,
         wandb_entity=args.wandb_entity,
+        use_augs=args.use_augs,
+        use_magnitude=args.use_magnitude,
         progress=not args.quiet,
     )
     list(enumerate(cgd_generator))  # iterate over generator
