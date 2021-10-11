@@ -3,6 +3,7 @@ from torch.nn import functional as tf
 
 
 def range_loss(input):
+    """(Katherine Crowson) - Spherical distance loss"""
     return (input - input.clamp(-1, 1)).pow(2).mean([1, 2, 3])
 
 

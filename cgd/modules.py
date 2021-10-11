@@ -1,11 +1,6 @@
 import torch as th
 import torch.nn.functional as tf
 import torchvision.transforms as tvt
-import torchvision.transforms.functional as tvtf
-from torchvision.transforms.transforms import RandomAdjustSharpness, RandomVerticalFlip
-
-from cgd.ResizeRight import interp_methods, resize_right
-
 
 class MakeCutouts(th.nn.Module):
     def __init__(self, cut_size: int, num_cutouts: int, cutout_size_power: float = 1.0, use_augs: bool = False):
@@ -37,9 +32,8 @@ class MakeCutouts(th.nn.Module):
             offsetx = th.randint(0, side_x - size + 1, ())
             offsety = th.randint(0, side_y - size + 1, ())
             cutout = input[:, :, offsety:offsety + size, offsetx:offsetx + size]
-            cutout = resize_right.resize(cutout, out_shape=[self.cut_size, self.cut_size], interp_method=interp_methods.lanczos3, by_convs=True)
             cutout = self.augs(cutout)
-            # cutout = tf.adaptive_avg_pool2d(cutout, self.cut_size)
+            cutout = tf.adaptive_avg_pool2d(cutout, self.cut_size)
             cutouts.append(cutout)
     
         return th.cat(cutouts)
