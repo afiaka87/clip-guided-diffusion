@@ -24,7 +24,7 @@ if __name__ == "__main__":
             'pytorch'
         ],
         py_modules=["cgd"],
-        version="0.2.3",
+        version="0.2.4",
         author="Katherine Crowson, Clay Mullis",
         entry_points={
             'console_scripts': ['cgd = cgd.cgd:main', ],
