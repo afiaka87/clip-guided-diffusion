@@ -5,7 +5,7 @@
 
 From [RiversHaveWings](https://twitter.com/RiversHaveWings).
 
-Generate vibrant and detailed images using only text.
+A CLI tool/python module for generating images from text.
 
 <img src="images/THX_sound_Spaceship.png" width="128px"></img><img src="images/Windows_XP_background_Mushroom.png" width="128px"></img><img src="images/a_red_ball_resting_on_top_of_a_mirror.png" width="128px"></img>
 
