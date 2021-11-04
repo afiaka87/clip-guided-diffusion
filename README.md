@@ -11,13 +11,17 @@ Generate vibrant and detailed images using only text.
 
 See captions and more generations in the [Gallery](/images/README.md).
 
-**NEW** All losses, the current noisy, denoised and blended generations are now logged to Weights & Biases if enabled using:
+**New: Non-square Generations (experimental)** 
+Generate portrait or landscape images by specifying a number to offset the width and/or height.
 
-`--wandb_project project_name_here`.
+```sh
+my_caption="a photo of beautiful green hills and a sunset, taken with a blackberry in 2004"
+cgd --prompts "$my_caption" \
+    --image_size 128 \
+    --width_offset 32 
+```
 
-[Have a look!](https://wandb.ai/dalle-pytorch-replicate/red_ball_cgd/reports/CLIP-Guided-Diffusion--VmlldzoxMDc1MjMz)
-
-<img src="images/weights_and_biases_screen.png" width="512"></img>
+<img src="images/green-hills.png">
 
 ## Install
 
@@ -190,7 +194,9 @@ usage: cgd [-h] [--prompts PROMPTS] [--image_prompts IMAGE_PROMPTS]
            [--clip_model CLIP_MODEL] [--uncond]
            [--noise_schedule NOISE_SCHEDULE] [--dropout DROPOUT]
            [--device DEVICE] [--wandb_project WANDB_PROJECT]
-           [--wandb_entity WANDB_ENTITY] [--quiet]
+           [--wandb_entity WANDB_ENTITY] [--height_offset HEIGHT_OFFSET]
+           [--width_offset WIDTH_OFFSET] [--use_augs] [--use_magnitude]
+           [--quiet]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -259,13 +265,21 @@ optional arguments:
                         Device to use. Either cpu or cuda. (default: )
   --wandb_project WANDB_PROJECT, -proj WANDB_PROJECT
                         Name W&B will use when saving results. e.g.
-                        `--wandb_name "my_project"` (default: None)
+                        `--wandb_project "my_project"` (default: None)
   --wandb_entity WANDB_ENTITY, -ent WANDB_ENTITY
                         (optional) Name of W&B team/entity to log to.
                         (default: None)
+  --height_offset HEIGHT_OFFSET, -ht HEIGHT_OFFSET
+                        Height offset for image (default: 0)
+  --width_offset WIDTH_OFFSET, -wd WIDTH_OFFSET
+                        Width offset for image (default: 0)
+  --use_augs, -augs     Uses augmentations from the `quick` clip guided
+                        diffusion notebook (default: False)
+  --use_magnitude, -mag
+                        Uses magnitude of the gradient (default: False)
   --quiet, -q           Suppress output. (default: False)
-```
 
+```
 ## Development
 
 ```sh
