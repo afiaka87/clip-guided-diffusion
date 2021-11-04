@@ -13,3 +13,4 @@ output/
 guided-diffusion/
 build/
 cgd_pytorch.egg-info/
+.venv/
