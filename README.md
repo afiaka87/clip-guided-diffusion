@@ -1,10 +1,11 @@
 # CLIP Guided Diffusion
+<a href="https://replicate.ai/afiaka87/clip-guided-diffusion" target="_blank"><img src="https://img.shields.io/static/v1?label=run&message=on replicate.ai&color=green"></a>
 
 [![https://gitter.im/clip-guided-diffusion/community](https://badges.gitter.im/clip-guided-diffusion/community.svg)](https://gitter.im/clip-guided-diffusion/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
-From [RiversHaveWings](https://twitter.com/RiversHaveWings).
+From [RiversHaveWings](https://twitter.com/RiversHaveWings) aka [@crowsonkb](https://github.com/crowsonkb)
 
-Generate vibrant and detailed images using only text.
+A CLI tool/python module for generating images from text using [guided diffusion](https://arxiv.org/abs/2105.05233) and [CLIP](https://openai.com/blog/clip/) from OpenAI.
 
 <img src="images/THX_sound_Spaceship.png" width="128px"></img><img src="images/Windows_XP_background_Mushroom.png" width="128px"></img><img src="images/a_red_ball_resting_on_top_of_a_mirror.png" width="128px"></img>
 
