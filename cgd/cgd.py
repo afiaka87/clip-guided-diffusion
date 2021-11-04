@@ -45,6 +45,8 @@ def clip_guided_diffusion(
     wandb_entity: str = None,
     use_augs: bool = False, # enables augmentation, mostly better for timesteps <= 100
     use_magnitude: bool = False, # enables magnitude of the gradient
+    height_offset: int = 0,
+    width_offset: int = 0,
     progress: bool = True,
 ):
     if len(device) == 0:
@@ -204,7 +206,7 @@ def clip_guided_diffusion(
     try:
         cgd_samples = diffusion_sample_loop(
             gd_model,
-            (batch_size, 3, image_size, image_size),
+            (batch_size, 3, image_size + height_offset, image_size + width_offset),
             clip_denoised=False,
             model_kwargs=model_kwargs,
             cond_fn=cond_fn,
@@ -296,6 +298,8 @@ def main():
                    help='Name W&B will use when saving results.\ne.g. `--wandb_project "my_project"`')
     p.add_argument('--wandb_entity', '-ent', default=None,
                    help='(optional) Name of W&B team/entity to log to.')
+    p.add_argument('--height_offset', '-ht', default=0, type=int, help='Height offset for image')
+    p.add_argument('--width_offset', '-wd', default=0, type=int, help='Width offset for image')
     p.add_argument('--use_augs', '-augs', action='store_true', help="Uses augmentations from the `quick` clip guided diffusion notebook")
     p.add_argument('--use_magnitude', '-mag', action='store_true', help="Uses magnitude of the gradient")
     p.add_argument('--quiet', '-q', action='store_true',
@@ -344,8 +348,10 @@ def main():
         prefix_path=prefix_path,
         wandb_project=args.wandb_project,
         wandb_entity=args.wandb_entity,
-        use_augs=args.use_augs,
-        use_magnitude=args.use_magnitude,
+        use_augs=False,
+        use_magnitude=False,
+        height_offset=args.height_offset,
+        width_offset=args.width_offset,
         progress=not args.quiet,
     )
     list(enumerate(cgd_generator))  # iterate over generator
