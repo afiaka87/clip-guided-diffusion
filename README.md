@@ -15,6 +15,12 @@ See captions and more generations in the [Gallery](/images/README.md).
 **New: Non-square Generations (experimental)** 
 Generate portrait or landscape images by specifying a number to offset the width and/or height.
 
+- offset should be a multiple of 16 for image sizes 64x64, 128x128
+- offset should be a multiple of 32 for image sizes 256x256, 512x512
+- may cause NaN/Inf errors.
+- increasing the offset will require more memory. 
+- **decreasing** the offset uses less memory and is faster. Food for though.
+
 ```sh
 my_caption="a photo of beautiful green hills and a sunset, taken with a blackberry in 2004"
 cgd --prompts "$my_caption" \
