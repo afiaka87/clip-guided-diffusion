@@ -56,7 +56,7 @@ def encode_image_prompt(image: str, weight: float, diffusion_size: int, num_cuto
     make_cutouts = MakeCutouts(cut_size=clip_size, num_cutouts=num_cutouts)
     pil_img = Image.open(script_util.fetch(image)).convert('RGB')
     smallest_side = min(diffusion_size, *pil_img.size)
-    pil_img = resize_right.resize(input, out_shape=[smallest_side],
+    pil_img = resize_right.resize(pil_img, out_shape=[smallest_side],
                                   interp_method=lanczos3, support_sz=None,
                                   antialiasing=True, by_convs=False, scale_tolerance=None)
     batch = make_cutouts(tvf.to_tensor(pil_img).unsqueeze(0).to(device))
