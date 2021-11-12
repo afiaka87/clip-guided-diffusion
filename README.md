@@ -1,4 +1,7 @@
 # CLIP Guided Diffusion
+
+See @crowsonkb's [v-diffusion-jax](https://github.com/crowsonkb/v-diffusion-jax) for a new guided diffusion architecture trained on Wikiart, Imagenet and others!
+
 <a href="https://replicate.ai/afiaka87/clip-guided-diffusion" target="_blank"><img src="https://img.shields.io/static/v1?label=run&message=on replicate.ai&color=green"></a>
 
 [![https://gitter.im/clip-guided-diffusion/community](https://badges.gitter.im/clip-guided-diffusion/community.svg)](https://gitter.im/clip-guided-diffusion/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
