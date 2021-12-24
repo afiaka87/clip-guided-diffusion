@@ -1,5 +1,7 @@
 # CLIP Guided Diffusion
 
+Note: progress continues on v-diffusion-jax and open ai has released GLIDE, a very parameter efficient text-to-image diffusion model that can run on much more reasonable setups than required by clip-guided-diffusion. I've made (text-glided-diffusion)[https://github.com/afiaka87/text-glided-diffusion] so people can run it easily from the CLI.
+
 See @crowsonkb's [v-diffusion-jax](https://github.com/crowsonkb/v-diffusion-jax) for a new guided diffusion architecture trained on Wikiart, Imagenet and others!
 
 <a href="https://replicate.ai/afiaka87/clip-guided-diffusion" target="_blank"><img src="https://img.shields.io/static/v1?label=run&message=on replicate.ai&color=green"></a>
