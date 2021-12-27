@@ -1,9 +1,5 @@
 # CLIP Guided Diffusion
 
-Note: progress continues on v-diffusion-jax and open ai has released GLIDE, a very parameter efficient text-to-image diffusion model that can run on much more reasonable setups than required by clip-guided-diffusion. I've made (text-glided-diffusion)[https://github.com/afiaka87/text-glided-diffusion] so people can run it easily from the CLI.
-
-See @crowsonkb's [v-diffusion-jax](https://github.com/crowsonkb/v-diffusion-jax) for a new guided diffusion architecture trained on Wikiart, Imagenet and others!
-
 <a href="https://replicate.ai/afiaka87/clip-guided-diffusion" target="_blank"><img src="https://img.shields.io/static/v1?label=run&message=on replicate.ai&color=green"></a>
 
 [![https://gitter.im/clip-guided-diffusion/community](https://badges.gitter.im/clip-guided-diffusion/community.svg)](https://gitter.im/clip-guided-diffusion/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
@@ -14,6 +10,11 @@ A CLI tool/python module for generating images from text using [guided diffusion
 
 <img src="images/THX_sound_Spaceship.png" width="128px"></img><img src="images/Windows_XP_background_Mushroom.png" width="128px"></img><img src="images/a_red_ball_resting_on_top_of_a_mirror.png" width="128px"></img>
 
+Related Projects:
+- https://github.com/crowsonkb/v-diffusion-pytorch
+    - Katherine Crowson strikes again! New checkpoints trained from scratch on a variety of datasets with a new training regime.
+- https://github.com/afiaka87/text-glided-diffusion
+    - OpenAI trains Katherine's work (more or less) on their unreleased 400M dataset
 
 See captions and more generations in the [Gallery](/images/README.md).
 
