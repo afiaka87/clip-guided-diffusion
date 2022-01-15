@@ -312,3 +312,5 @@ pip install -e guided-diffusion
 ```sh
 python -m unittest discover
 ```
+
+something clever about kianne
