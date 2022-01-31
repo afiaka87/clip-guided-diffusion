@@ -1,40 +1,15 @@
 # CLIP Guided Diffusion
+From [@crowsonkb](https://github.com/crowsonkb).
 
-<a href="https://replicate.ai/afiaka87/clip-guided-diffusion" target="_blank"><img src="https://img.shields.io/static/v1?label=run&message=on replicate.ai&color=green"></a>
+<p>
+<a href="https://replicate.ai/afiaka87/clip-guided-diffusion" target="_blank"><img src="https://img.shields.io/static/v1?label=run&message=clip-guided-diffusion&color=blue"></a>    <a href="https://replicate.ai/afiaka87/pyglide" target="_blank"><img src="https://img.shields.io/static/v1?label=run&message=pyglide&color=green"></a>
+</p>
 
-[![https://gitter.im/clip-guided-diffusion/community](https://badges.gitter.im/clip-guided-diffusion/community.svg)](https://gitter.im/clip-guided-diffusion/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+Disclaimer: I'm redirecting efforts to [pyglide](https://replicate.ai/afiaka87/pyglide) and may be slow to address bugs here.
 
-From [RiversHaveWings](https://twitter.com/RiversHaveWings) aka [@crowsonkb](https://github.com/crowsonkb)
-
-A CLI tool/python module for generating images from text using [guided diffusion](https://arxiv.org/abs/2105.05233) and [CLIP](https://openai.com/blog/clip/) from OpenAI.
-
-<img src="images/THX_sound_Spaceship.png" width="128px"></img><img src="images/Windows_XP_background_Mushroom.png" width="128px"></img><img src="images/a_red_ball_resting_on_top_of_a_mirror.png" width="128px"></img>
-
-Related Projects:
-- https://github.com/crowsonkb/v-diffusion-pytorch
-    - Katherine Crowson strikes again! New checkpoints trained from scratch on a variety of datasets with a new training regime.
-- https://github.com/afiaka87/text-glided-diffusion
-    - OpenAI trains Katherine's work (more or less) on their unreleased 400M dataset
+I also recommend looking at [@crowsonkb's](https://github.com/crowsonkb) [v-diffusion-pytorch](https://github.com/crowsonkb/v-diffusion-pytorch).
 
 See captions and more generations in the [Gallery](/images/README.md).
-
-**New: Non-square Generations (experimental)**
-Generate portrait or landscape images by specifying a number to offset the width and/or height.
-
-- offset should be a multiple of 16 for image sizes 64x64, 128x128
-- offset should be a multiple of 32 for image sizes 256x256, 512x512
-- may cause NaN/Inf errors.
-- a positive offset will require more memory.
-- a _negative_ offset uses less memory and is faster.
-
-```sh
-my_caption="a photo of beautiful green hills and a sunset, taken with a blackberry in 2004"
-cgd --prompts "$my_caption" \
-    --image_size 128 \
-    --width_offset 32 
-```
-
-<img src="images/green-hills.png">
 
 ## Install
 
@@ -152,7 +127,24 @@ cgd --image_size 512 --prompt "8K HUHD Mushroom"
 
 <img src="images/32K_HUHD_Mushroom_512.png?raw=true"></img>
 
-## Usage - Python
+**New: Non-square Generations (experimental)**
+Generate portrait or landscape images by specifying a number to offset the width and/or height.
+
+- offset should be a multiple of 16 for image sizes 64x64, 128x128
+- offset should be a multiple of 32 for image sizes 256x256, 512x512
+- may cause NaN/Inf errors.
+- a positive offset will require more memory.
+- a _negative_ offset uses less memory and is faster.
+
+```sh
+my_caption="a photo of beautiful green hills and a sunset, taken with a blackberry in 2004"
+cgd --prompts "$my_caption" \
+    --image_size 128 \
+    --width_offset 32 
+```
+<img src="images/green-hills.png">
+
+## Full Usage - Python
 
 ```python
 # Initialize diffusion generator
@@ -190,7 +182,7 @@ prefix_path.mkdir(exist_ok=True)
 list(enumerate(tqdm(cgd_generator))) # iterate over generator
 ```
 
-## Full Usage
+## Full Usage - CLI
 
 ```sh
 usage: cgd [-h] [--prompts PROMPTS] [--image_prompts IMAGE_PROMPTS]
