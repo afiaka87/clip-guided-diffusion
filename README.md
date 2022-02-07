@@ -14,7 +14,8 @@ See captions and more generations in the [Gallery](/images/README.md).
 ## Install
 
 ```sh
-git clone https://github.com/afiaka87/clip-guided-diffusion.git && cd clip-guided-diffusion
+git clone https://github.com/afiaka87/clip-guided-diffusion.git
+cd clip-guided-diffusion
 git clone https://github.com/crowsonkb/guided-diffusion.git
 pip3 install -e guided-diffusion
 python3 setup.py install
