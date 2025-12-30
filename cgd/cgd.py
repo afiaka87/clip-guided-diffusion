@@ -1,4 +1,5 @@
 import argparse
+import glob
 from pathlib import Path
 
 import lpips
@@ -227,8 +228,6 @@ def clip_guided_diffusion(
                     yield batch_idx, script_util.log_image(image_tensor, prefix_path, prompts, step, batch_idx)
                     # if wandb_project is not None: wandb.log({"image": wandb.Image(image_tensor, caption="|".join(prompts))})
 
-        for batch_idx in range(batch_size):
-            script_util.create_gif(prefix_path, prompts, batch_idx)
 
     except (RuntimeError, KeyboardInterrupt) as runtime_ex:
         if "CUDA out of memory" in str(runtime_ex):
@@ -304,6 +303,10 @@ def main():
     p.add_argument('--use_magnitude', '-mag', action='store_true', help="Uses magnitude of the gradient")
     p.add_argument('--quiet', '-q', action='store_true',
                    help='Suppress output.')
+    p.add_argument('--save-as-gif', '-gif', action='store_true',
+                   help='Save output as high-quality GIF using ffmpeg. Deletes individual frames.')
+    p.add_argument('--save-as-video', '-mp4', action='store_true',
+                   help='Save output as high-quality MP4 video using ffmpeg. Deletes individual frames.')
     args = p.parse_args()
 
     _class_cond = not args.uncond
@@ -355,6 +358,25 @@ def main():
         progress=not args.quiet,
     )
     list(enumerate(cgd_generator))  # iterate over generator
+
+    # Create GIF and/or video output if requested
+    # Only delete frames after all outputs are created
+    delete_frames = args.save_as_gif or args.save_as_video
+    for batch_idx in range(args.batch_size):
+        if args.save_as_gif:
+            script_util.create_gif_ffmpeg(prefix_path, prompts, batch_idx, delete_frames=False)
+        if args.save_as_video:
+            script_util.create_video_ffmpeg(prefix_path, prompts, batch_idx, delete_frames=False)
+        if delete_frames:
+            # Delete frames after all outputs are created
+            io_safe_prompts = script_util.clean_and_combine_prompts(prefix_path, prompts, batch_idx)
+            image_files = sorted(glob.glob(f"{io_safe_prompts}/*.png"))
+            for f in image_files:
+                Path(f).unlink()
+            # Remove directory if empty
+            if Path(io_safe_prompts).is_dir() and not list(Path(io_safe_prompts).iterdir()):
+                Path(io_safe_prompts).rmdir()
+            print(f"Deleted {len(image_files)} frame(s)")
 
 
 if __name__ == "__main__":
