@@ -101,14 +101,117 @@ def log_image(image: th.Tensor, base_path: str, txts: list, current_step: int, b
     return str(filename)
 
 
-def create_gif(base, prompts, batch_idx):
+def create_gif_ffmpeg(base, prompts, batch_idx, fps=10, delete_frames=False):
+    """Create a high-quality GIF using ffmpeg with palette optimization."""
+    import subprocess
+
     io_safe_prompts = clean_and_combine_prompts(base, prompts, batch_idx)
     images_glob = os.path.join(io_safe_prompts, "*.png")
-    imgs = [Image.open(f) for f in sorted(glob.glob(images_glob))]
+    image_files = sorted(glob.glob(images_glob))
+
+    if not image_files:
+        print(f"No images found in {io_safe_prompts}")
+        return None
+
     gif_filename = f"{io_safe_prompts}_{batch_idx:02}.gif"
-    imgs[0].save(fp=gif_filename, format='GIF', append_images=imgs,
-                 save_all=True, duration=200, loop=0)
-    return gif_filename
+    palette_file = os.path.join(io_safe_prompts, "palette.png")
+    input_pattern = os.path.join(io_safe_prompts, "%04d.png")
+
+    # Generate optimized palette for better color accuracy
+    palette_cmd = [
+        "ffmpeg", "-y",
+        "-framerate", str(fps),
+        "-i", input_pattern,
+        "-vf", "palettegen=max_colors=256:stats_mode=full",
+        palette_file
+    ]
+
+    # Create GIF using the palette with high-quality dithering
+    gif_cmd = [
+        "ffmpeg", "-y",
+        "-framerate", str(fps),
+        "-i", input_pattern,
+        "-i", palette_file,
+        "-lavfi", "paletteuse=dither=floyd_steinberg:bayer_scale=5:diff_mode=rectangle",
+        "-loop", "0",
+        gif_filename
+    ]
+
+    try:
+        subprocess.run(palette_cmd, check=True, capture_output=True)
+        subprocess.run(gif_cmd, check=True, capture_output=True)
+        print(f"Created GIF: {gif_filename}")
+
+        # Clean up palette file
+        if os.path.exists(palette_file):
+            os.remove(palette_file)
+
+        if delete_frames:
+            for f in image_files:
+                os.remove(f)
+            # Remove the directory if empty
+            if os.path.isdir(io_safe_prompts) and not os.listdir(io_safe_prompts):
+                os.rmdir(io_safe_prompts)
+            print(f"Deleted {len(image_files)} frame(s)")
+
+        return gif_filename
+
+    except subprocess.CalledProcessError as e:
+        print(f"ffmpeg error: {e.stderr.decode() if e.stderr else str(e)}")
+        return None
+    except FileNotFoundError:
+        print("ffmpeg not found. Please install ffmpeg to use this feature.")
+        return None
+
+
+def create_video_ffmpeg(base, prompts, batch_idx, fps=10, delete_frames=False):
+    """Create a high-quality MP4 video using ffmpeg with x264 encoding."""
+    import subprocess
+
+    io_safe_prompts = clean_and_combine_prompts(base, prompts, batch_idx)
+    images_glob = os.path.join(io_safe_prompts, "*.png")
+    image_files = sorted(glob.glob(images_glob))
+
+    if not image_files:
+        print(f"No images found in {io_safe_prompts}")
+        return None
+
+    video_filename = f"{io_safe_prompts}_{batch_idx:02}.mp4"
+    input_pattern = os.path.join(io_safe_prompts, "%04d.png")
+
+    # High-quality x264 encoding with settings to avoid artifacts
+    video_cmd = [
+        "ffmpeg", "-y",
+        "-framerate", str(fps),
+        "-i", input_pattern,
+        "-c:v", "libx264",
+        "-preset", "slow",
+        "-crf", "18",
+        "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart",
+        video_filename
+    ]
+
+    try:
+        subprocess.run(video_cmd, check=True, capture_output=True)
+        print(f"Created video: {video_filename}")
+
+        if delete_frames:
+            for f in image_files:
+                os.remove(f)
+            # Remove the directory if empty
+            if os.path.isdir(io_safe_prompts) and not os.listdir(io_safe_prompts):
+                os.rmdir(io_safe_prompts)
+            print(f"Deleted {len(image_files)} frame(s)")
+
+        return video_filename
+
+    except subprocess.CalledProcessError as e:
+        print(f"ffmpeg error: {e.stderr.decode() if e.stderr else str(e)}")
+        return None
+    except FileNotFoundError:
+        print("ffmpeg not found. Please install ffmpeg to use this feature.")
+        return None
 
 
 def download(url: str, filename: str, root: str = CACHE_PATH) -> str:
