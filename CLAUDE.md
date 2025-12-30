@@ -20,9 +20,10 @@ uv sync
 
 ```sh
 uv run python -m unittest discover
+uv run python -m unittest test.TestCGD.test_cgd_one_step_succeeds  # single test
 ```
 
-Note: Some tests require a CUDA GPU.
+Note: Some tests require a CUDA GPU. Outputs saved to `./outputs/` and `current.png`.
 
 ## CLI Usage
 
@@ -48,7 +49,7 @@ Key parameters:
 
 - **`cgd/losses.py`**: Loss functions - `spherical_dist_loss()` for CLIP similarity, `tv_loss()` for smoothness, `range_loss()` for RGB clamping.
 
-- **`cgd/modules.py`**: Neural network modules including `MakeCutouts` for random patch extraction with optional augmentations.
+- **`cgd/modules.py`**: `MakeCutouts` module for random patch extraction with optional augmentations.
 
 ### External Dependency
 
