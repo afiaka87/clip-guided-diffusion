@@ -66,3 +66,7 @@ The `guided-diffusion` package (git dependency from crowsonkb) provides the diff
 ### Prompt Weights
 
 Prompts support weights via `text:weight` syntax (e.g., `"cat:1.0|dog:-0.5"`). Weights are normalized to sum to non-zero.
+
+## Git Commits
+
+When tracking changes with git, NEVER (IMPORTANT!) include attribution to Claude Code or Anthropic. Use 1-2 sentence, per-file commits.
