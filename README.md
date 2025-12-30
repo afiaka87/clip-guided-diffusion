@@ -25,12 +25,12 @@ uv sync
 
 `uv run cgd -txt "Alien friend by Odilon Redo"`
 
-A gif of the full run will be saved to `./outputs/caption_{j}.gif` by default.
-
 ![Alien friend by Oidlon Redo](images/alien_friend_by_Odilon_Redo_00.gif)
 
 - `./outputs` will contain all intermediate outputs
 - `current.png` will contain the current generation.
+- Use `--save-as-gif` / `-gif` to save a high-quality GIF and delete frames
+- Use `--save-as-video` / `-mp4` to save a high-quality MP4 and delete frames
 - (optional) Provide **`--wandb_project <project_name>`** to enable logging intermediate outputs to wandb. Requires free account. URL to run will be provided in CLI - [example run](https://wandb.ai/dalle-pytorch-replicate/red_ball_cgd/reports/CLIP-Guided-Diffusion--VmlldzoxMDc1MjMz)
 - `~/.cache/clip-guided-diffusion/` will contain downloaded checkpoints from OpenAI/Katherine Crowson.
 
@@ -202,7 +202,7 @@ usage: cgd [-h] [--prompts PROMPTS] [--image_prompts IMAGE_PROMPTS]
            [--device DEVICE] [--wandb_project WANDB_PROJECT]
            [--wandb_entity WANDB_ENTITY] [--height_offset HEIGHT_OFFSET]
            [--width_offset WIDTH_OFFSET] [--use_augs] [--use_magnitude]
-           [--quiet]
+           [--quiet] [--save-as-gif] [--save-as-video]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -284,6 +284,11 @@ optional arguments:
   --use_magnitude, -mag
                         Uses magnitude of the gradient (default: False)
   --quiet, -q           Suppress output. (default: False)
+  --save-as-gif, -gif   Save output as high-quality GIF using ffmpeg. Deletes
+                        individual frames. (default: False)
+  --save-as-video, -mp4
+                        Save output as high-quality MP4 video using ffmpeg.
+                        Deletes individual frames. (default: False)
 
 ```
 ## Development
