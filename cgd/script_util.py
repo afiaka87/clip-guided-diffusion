@@ -5,8 +5,6 @@ import re
 import time
 from functools import lru_cache
 from pathlib import Path
-from urllib import request
-
 import requests
 import torch as th
 import torchvision.transforms.functional as tvf
@@ -113,7 +111,6 @@ def create_gif(base, prompts, batch_idx):
     return gif_filename
 
 
-# modified from https://github.com/lucidrains/DALLE-pytorch/blob/d355100061911b13e1f1c22de8c2b5deb44e65f8/dalle_pytorch/vae.py
 def download(url: str, filename: str, root: str = CACHE_PATH) -> str:
     os.makedirs(root, exist_ok=True)
     download_target = Path(os.path.join(root, filename))
@@ -123,15 +120,23 @@ def download(url: str, filename: str, root: str = CACHE_PATH) -> str:
             f"{download_target} exists and is not a regular file")
     if os.path.isfile(download_target):
         return str(download_target)
-    with request.urlopen(url) as source, open(download_target_tmp, "wb") as output:
-        with tqdm(total=int(source.info().get("Content-Length")), ncols=80) as loop:
-            while True:
-                buffer = source.read(4096)
-                if not buffer:
-                    break
-                output.write(buffer)
-                loop.update(len(buffer))
-    os.rename(download_target_tmp, download_target)
+
+    try:
+        with requests.get(url, stream=True, timeout=(10, 30)) as response:
+            response.raise_for_status()
+            total_size = int(response.headers.get("Content-Length", 0))
+            with open(download_target_tmp, "wb") as output:
+                with tqdm(total=total_size, ncols=80, unit='B', unit_scale=True, unit_divisor=1024) as loop:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            output.write(chunk)
+                            loop.update(len(chunk))
+        os.rename(download_target_tmp, download_target)
+    except Exception:
+        if download_target_tmp.exists():
+            download_target_tmp.unlink()
+        raise
+
     return str(download_target)
 
 
