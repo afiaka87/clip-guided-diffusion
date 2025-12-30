@@ -13,17 +13,17 @@ See captions and more generations in the [Gallery](/images/README.md).
 
 ## Install
 
+Requires [uv](https://docs.astral.sh/uv/getting-started/installation/).
+
 ```sh
 git clone https://github.com/afiaka87/clip-guided-diffusion.git
 cd clip-guided-diffusion
-git clone https://github.com/crowsonkb/guided-diffusion.git
-pip3 install -e guided-diffusion
-python3 setup.py install
+uv sync
 ```
 
 ## Run
 
-`cgd -txt "Alien friend by Odilon Redo"`
+`uv run cgd -txt "Alien friend by Odilon Redo"`
 
 A gif of the full run will be saved to `./outputs/caption_{j}.gif` by default.
 
@@ -41,7 +41,7 @@ A gif of the full run will be saved to `./outputs/caption_{j}.gif` by default.
 `--prompts` / `-txts`
 `--image_size` / `-size`
 
-`cgd --image_size 256 --prompts "32K HUHD Mushroom"`
+`uv run cgd --image_size 256 --prompts "32K HUHD Mushroom"`
 
 ![32K HUHD Mushroom](/images/32K_HUHD_Mushroom.png?raw=true)
 
@@ -52,7 +52,7 @@ A gif of the full run will be saved to `./outputs/caption_{j}.gif` by default.
 - e.g. `cgd --prompts "Noun to visualize:1.0|style:0.1|location:0.1|something you dont want:-0.1"`
 - weights must not sum to 0
 
-`cgd -txt "32K HUHD Mushroom|Green grass:-0.1"`
+`uv run cgd -txt "32K HUHD Mushroom|Green grass:-0.1"`
 
 <img src="images/32K_HUHD_Mushroom_MIN_green_grass.png"></img>
 
@@ -60,11 +60,11 @@ A gif of the full run will be saved to `./outputs/caption_{j}.gif` by default.
 
 - **Using a CPU will take a very long time** compared to using a GPU.
 
-`cgd --device cpu --prompt "Some text to be generated"`
+`uv run cgd --device cpu --prompt "Some text to be generated"`
 
 ### CUDA GPU
 
-`cgd --prompt "Theres no need to specify a device, it will be chosen automatically"`
+`uv run cgd --prompt "Theres no need to specify a device, it will be chosen automatically"`
 
 ### Iterations/Steps (Timestep Respacing)
 
@@ -97,7 +97,7 @@ Good values using timestep_respacing of 1000 are 250 to 500.
 To enable a VGG perceptual loss after the blending, you must specify an `--init_scale` value. 1000 seems to work well.
 
 ```sh
-cgd --prompts "A mushroom in the style of Vincent Van Gogh" \
+uv run cgd --prompts "A mushroom in the style of Vincent Van Gogh" \
   --timestep_respacing 1000 \
   --init_image "images/32K_HUHD_Mushroom.png" \
   --init_scale 1000 \
@@ -113,7 +113,7 @@ cgd --prompts "A mushroom in the style of Vincent Van Gogh" \
 - For all other checkpoints, clip_guidance_scale seems to work well around 1000-2000 and tv_scale at 0, 100, 150 or 200
 
 ```sh
-cgd --init_image=images/32K_HUHD_Mushroom.png \
+uv run cgd --init_image=images/32K_HUHD_Mushroom.png \
     --skip_timesteps=500 \
     --image_size 64 \
     --prompt "8K HUHD Mushroom"
@@ -123,7 +123,7 @@ cgd --init_image=images/32K_HUHD_Mushroom.png \
 _resized to 200 pixels for visibility_
 
 ```sh
-cgd --image_size 512 --prompt "8K HUHD Mushroom"
+uv run cgd --image_size 512 --prompt "8K HUHD Mushroom"
 ```
 
 <img src="images/32K_HUHD_Mushroom_512.png?raw=true"></img>
@@ -139,7 +139,7 @@ Generate portrait or landscape images by specifying a number to offset the width
 
 ```sh
 my_caption="a photo of beautiful green hills and a sunset, taken with a blackberry in 2004"
-cgd --prompts "$my_caption" \
+uv run cgd --prompts "$my_caption" \
     --image_size 128 \
     --width_offset 32 
 ```
@@ -291,11 +291,7 @@ optional arguments:
 ```sh
 git clone https://github.com/afiaka87/clip-guided-diffusion.git
 cd clip-guided-diffusion
-git clone https://github.com/afiaka87/guided-diffusion.git
-python3 -m venv cgd_venv
-source cgd_venv/bin/activate
-pip install -r requirements.txt
-pip install -e guided-diffusion
+uv sync
 ```
 
 ### Run integration tests
@@ -303,5 +299,5 @@ pip install -e guided-diffusion
 - Some tests require a GPU; you may ignore them if you dont have one.
 
 ```sh
-python -m unittest discover
+uv run python -m unittest discover
 ```
