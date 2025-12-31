@@ -49,6 +49,9 @@ def clip_guided_diffusion(
     height_offset: int = 0,
     width_offset: int = 0,
     progress: bool = True,
+    reduce_clip: bool = False,
+    progressive_cutout: bool = False,
+    cached_cutouts: bool = False,
 ):
     if len(device) == 0:
         device = 'cuda' if th.cuda.is_available() else 'cpu'
@@ -105,6 +108,10 @@ def clip_guided_diffusion(
     make_cutouts = clip_util.MakeCutouts(cut_size=clip_size, num_cutouts=num_cutouts,
                                          cutout_size_power=cutout_power, use_augs=use_augs)
 
+    # Pre-cache cutout coordinates if requested
+    if cached_cutouts:
+        make_cutouts.cache_coordinates(image_size + width_offset, image_size + height_offset)
+
     # Load initial image (if provided)
     init_tensor = None
     if init_image:
@@ -129,6 +136,13 @@ def clip_guided_diffusion(
         noise_schedule=noise_schedule,
         dropout=dropout,
     )
+
+    # When reduce_clip is enabled, skip first 20% of steps entirely (not just CLIP guidance)
+    if reduce_clip and skip_timesteps == 0:
+        skip_timesteps = int(diffusion.num_timesteps * 0.2)
+        if progress:
+            tqdm.write(f"Skipping first {skip_timesteps} timesteps (--reduce-clip optimization)")
+
     # This is initialized lazily as it can use a bit of VRAM
     if init_tensor is not None and init_scale != 0:
         lpips_vgg = lpips.LPIPS(net='vgg').to(device)
@@ -137,6 +151,29 @@ def clip_guided_diffusion(
     def cond_fn(x, t, out, y=None):
         log = {}
         n = x.shape[0]
+        total_steps = diffusion.num_timesteps
+        progress_pct = (total_steps - current_timestep) / total_steps
+
+        # Optimization 1: Reduce CLIP guidance frequency
+        # Note: First 20% is skipped entirely via skip_timesteps (set above)
+        if reduce_clip:
+            if progress_pct < 0.7:  # Steps 20-70% - run every 4th step
+                step_in_phase = int((progress_pct - 0.2) * total_steps)
+                if step_in_phase % 4 != 0:
+                    return th.zeros_like(x)
+            # Final 30% - every step (no skip)
+
+        # Optimization 2: Progressive cutout count
+        if progressive_cutout:
+            if progress_pct < 0.3:
+                current_cutn = max(4, num_cutouts // 4)
+            elif progress_pct < 0.7:
+                current_cutn = max(8, num_cutouts // 2)
+            else:
+                current_cutn = num_cutouts
+        else:
+            current_cutn = num_cutouts
+
         fac = diffusion.sqrt_one_minus_alphas_cumprod[current_timestep]
         sigmas = 1 - fac
         x_in = out["pred_xstart"] * fac + x * sigmas
@@ -148,12 +185,17 @@ def clip_guided_diffusion(
                 wandb.Image(x_in, caption=f"Blended (what CLIP sees)"),
             ]
 
-        clip_in = clip_util.CLIP_NORMALIZE(make_cutouts(x_in.add(1).div(2)))
+        # Optimization 3: Use cached cutouts if enabled
+        clip_in = clip_util.CLIP_NORMALIZE(make_cutouts(
+            x_in.add(1).div(2),
+            use_cache=cached_cutouts,
+            num_cutouts_override=current_cutn
+        ))
         cutout_embeds = clip_model.encode_image(
-            clip_in).float().view([num_cutouts, n, -1])
+            clip_in).float().view([current_cutn, n, -1])
         dists = losses.spherical_dist_loss(
             cutout_embeds.unsqueeze(0), target_embeds.unsqueeze(0))
-        dists = dists.view([num_cutouts, n, -1])
+        dists = dists.view([current_cutn, n, -1])
 
         clip_losses = dists.mul(weights).sum(2).mean(0)
         range_losses = losses.range_loss(out["pred_xstart"])
@@ -307,6 +349,12 @@ def main():
                    help='Save output as high-quality GIF using ffmpeg. Deletes individual frames.')
     p.add_argument('--save-as-video', '-mp4', action='store_true',
                    help='Save output as high-quality MP4 video using ffmpeg. Deletes individual frames.')
+    p.add_argument('--reduce-clip', '-reduce', action='store_true',
+                   help='Reduce CLIP guidance frequency for faster generation. Skips early steps, runs every 4th step in middle.')
+    p.add_argument('--progressive-cutout', '-cutn_skip', action='store_true',
+                   help='Use fewer cutouts in early steps (4->8->16) for faster generation.')
+    p.add_argument('--cached-cutouts', '-cached_cutn', action='store_true',
+                   help='Cache cutout coordinates for reuse across steps.')
     args = p.parse_args()
 
     _class_cond = not args.uncond
@@ -356,6 +404,9 @@ def main():
         height_offset=args.height_offset,
         width_offset=args.width_offset,
         progress=not args.quiet,
+        reduce_clip=args.reduce_clip,
+        progressive_cutout=args.progressive_cutout,
+        cached_cutouts=args.cached_cutouts,
     )
     list(enumerate(cgd_generator))  # iterate over generator
 
