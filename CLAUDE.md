@@ -37,6 +37,11 @@ Key parameters:
 - `-init`: Initial image path
 - `-skip`: Skip timesteps for image blending
 
+Performance optimizations:
+- `-reduce`: Skip early diffusion steps & reduce CLIP guidance frequency
+- `-cutn_skip`: Use fewer cutouts in early steps (4->8->16)
+- `-cached_cutn`: Cache cutout coordinates across steps
+
 ## Architecture
 
 ### Core Components
