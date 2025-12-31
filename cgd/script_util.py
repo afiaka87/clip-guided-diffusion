@@ -214,7 +214,7 @@ def create_video_ffmpeg(base, prompts, batch_idx, fps=10, delete_frames=False):
         return None
 
 
-def download(url: str, filename: str, root: str = CACHE_PATH) -> str:
+def download(url: str, filename: str, root: str = CACHE_PATH, max_retries: int = 3) -> str:
     os.makedirs(root, exist_ok=True)
     download_target = Path(os.path.join(root, filename))
     download_target_tmp = download_target.with_suffix('.tmp')
@@ -224,21 +224,45 @@ def download(url: str, filename: str, root: str = CACHE_PATH) -> str:
     if os.path.isfile(download_target):
         return str(download_target)
 
-    try:
-        with requests.get(url, stream=True, timeout=(10, 30)) as response:
-            response.raise_for_status()
-            total_size = int(response.headers.get("Content-Length", 0))
-            with open(download_target_tmp, "wb") as output:
-                with tqdm(total=total_size, ncols=80, unit='B', unit_scale=True, unit_divisor=1024) as loop:
-                    for chunk in response.iter_content(chunk_size=8192):
-                        if chunk:
-                            output.write(chunk)
-                            loop.update(len(chunk))
-        os.rename(download_target_tmp, download_target)
-    except Exception:
-        if download_target_tmp.exists():
-            download_target_tmp.unlink()
-        raise
+    for attempt in range(max_retries):
+        try:
+            # Use longer timeouts: 30s connect, 120s read (for slow connections at end)
+            with requests.get(url, stream=True, timeout=(30, 120)) as response:
+                response.raise_for_status()
+                total_size = int(response.headers.get("Content-Length", 0))
+                downloaded_size = 0
+
+                with open(download_target_tmp, "wb") as output:
+                    with tqdm(total=total_size, ncols=80, unit='B', unit_scale=True, unit_divisor=1024) as loop:
+                        # Use larger chunks for efficiency
+                        for chunk in response.iter_content(chunk_size=64 * 1024):
+                            if chunk:
+                                output.write(chunk)
+                                downloaded_size += len(chunk)
+                                loop.update(len(chunk))
+                    # Ensure all data is flushed to disk
+                    output.flush()
+                    os.fsync(output.fileno())
+
+            # Verify downloaded size matches expected size
+            actual_size = download_target_tmp.stat().st_size
+            if total_size > 0 and actual_size != total_size:
+                raise RuntimeError(
+                    f"Download incomplete: expected {total_size} bytes, got {actual_size} bytes")
+
+            os.rename(download_target_tmp, download_target)
+            return str(download_target)
+
+        except (requests.exceptions.RequestException, RuntimeError) as e:
+            if download_target_tmp.exists():
+                download_target_tmp.unlink()
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt  # Exponential backoff: 1s, 2s, 4s
+                print(f"Download failed (attempt {attempt + 1}/{max_retries}): {e}")
+                print(f"Retrying in {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                raise RuntimeError(f"Download failed after {max_retries} attempts: {e}") from e
 
     return str(download_target)
 
