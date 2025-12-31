@@ -31,6 +31,7 @@ uv sync
 - `current.png` will contain the current generation.
 - Use `--save-as-gif` / `-gif` to save a high-quality GIF and delete frames
 - Use `--save-as-video` / `-mp4` to save a high-quality MP4 and delete frames
+- Use `--reduce-clip` / `-reduce` for faster generation (see [Performance Optimizations](#performance-optimizations))
 - (optional) Provide **`--wandb_project <project_name>`** to enable logging intermediate outputs to wandb. Requires free account. URL to run will be provided in CLI - [example run](https://wandb.ai/dalle-pytorch-replicate/red_ball_cgd/reports/CLIP-Guided-Diffusion--VmlldzoxMDc1MjMz)
 - `~/.cache/clip-guided-diffusion/` will contain downloaded checkpoints from OpenAI/Katherine Crowson.
 
@@ -145,6 +146,48 @@ uv run cgd --prompts "$my_caption" \
 ```
 <img src="images/green-hills.png">
 
+### Performance Optimizations
+
+Three flags are available to speed up generation by 10-30 seconds:
+
+#### `--reduce-clip` / `-reduce`
+
+Reduces CLIP guidance frequency for faster generation:
+- Skips first 20% of diffusion steps entirely (pure noise doesn't benefit from CLIP guidance)
+- Runs CLIP guidance every 4th step during middle 50%
+- Runs every step in final 30% when details matter
+
+```sh
+uv run cgd -txt "a cat" -reduce
+```
+
+#### `--progressive-cutout` / `-cutn_skip`
+
+Uses fewer cutouts in early steps when the image is noisy:
+- First 30%: 1/4 of cutouts (e.g., 4 instead of 16)
+- Middle 40%: 1/2 of cutouts (e.g., 8 instead of 16)
+- Final 30%: Full cutouts
+
+```sh
+uv run cgd -txt "a cat" -cutn_skip
+```
+
+#### `--cached-cutouts` / `-cached_cutn`
+
+Pre-computes and reuses cutout coordinates across all steps instead of generating random positions each time. Improves GPU cache utilization.
+
+```sh
+uv run cgd -txt "a cat" -cached_cutn
+```
+
+#### Combining optimizations
+
+All three can be used together for maximum speedup:
+
+```sh
+uv run cgd -txt "a cat" -reduce -cutn_skip -cached_cutn
+```
+
 ## Full Usage - Python
 
 ```python
@@ -203,6 +246,7 @@ usage: cgd [-h] [--prompts PROMPTS] [--image_prompts IMAGE_PROMPTS]
            [--wandb_entity WANDB_ENTITY] [--height_offset HEIGHT_OFFSET]
            [--width_offset WIDTH_OFFSET] [--use_augs] [--use_magnitude]
            [--quiet] [--save-as-gif] [--save-as-video]
+           [--reduce-clip] [--progressive-cutout] [--cached-cutouts]
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -289,6 +333,16 @@ optional arguments:
   --save-as-video, -mp4
                         Save output as high-quality MP4 video using ffmpeg.
                         Deletes individual frames. (default: False)
+  --reduce-clip, -reduce
+                        Reduce CLIP guidance frequency for faster generation.
+                        Skips early steps, runs every 4th step in middle.
+                        (default: False)
+  --progressive-cutout, -cutn_skip
+                        Use fewer cutouts in early steps (4->8->16) for faster
+                        generation. (default: False)
+  --cached-cutouts, -cached_cutn
+                        Cache cutout coordinates for reuse across steps.
+                        (default: False)
 
 ```
 ## Development
