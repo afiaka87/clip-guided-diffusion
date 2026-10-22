@@ -5,6 +5,7 @@ import re
 import time
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlsplit
 import requests
 import torch as th
 import torchvision.transforms.functional as tvf
@@ -58,11 +59,20 @@ def check_parameters(
 
 
 def parse_prompt(prompt):  # parse a single prompt in the form "<text||img_url>:<weight>"
-    if prompt.startswith('http://') or prompt.startswith('https://'):
-        vals = prompt.rsplit(':', 2)  # theres two colons, so we grab the 2nd
-        vals = [vals[0] + ':' + vals[1], *vals[2:]]
-    else:
-        vals = prompt.rsplit(':', 1)  # grab weight after colon
+    if prompt.startswith(('http://', 'https://')):
+        vals = prompt.rsplit(':', 1)
+        if len(vals) == 1:
+            return prompt, 1.0
+        try:
+            weight = float(vals[1])
+        except ValueError:
+            return prompt, 1.0
+        parsed_url = urlsplit(prompt)
+        if parsed_url.port is not None and parsed_url.path in ('', '/') and vals[0].endswith(f':{parsed_url.port}'):
+            return prompt, 1.0
+        return vals[0], weight
+
+    vals = prompt.rsplit(':', 1)  # grab weight after colon
     vals = vals + ['', '1'][len(vals):]  # if no weight, use 1
     return vals[0], float(vals[1])  # return text, weight
 
