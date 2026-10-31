@@ -19,28 +19,25 @@ uv sync
 ## Running Tests
 
 ```sh
-uv run python -m unittest discover
-uv run python -m unittest test.TestCGD.test_cgd_one_step_succeeds  # single test
+uv run pytest
+uv run pytest test.py::TestCGD::test_cgd_one_step_succeeds  # single test
 ```
 
-Note: Some tests require a CUDA GPU. Outputs saved to `./outputs/` and `current.png`.
+Note: Most tests need a CUDA GPU and the cached checkpoints, and run against the real models. Give them a free GPU: if another process holds the VRAM they fail with a real out of memory error.
 
 ## CLI Usage
 
-Basic usage: `uv run cgd -txt "Your prompt here"`
+Basic usage: `uv run cgd "Your prompt here"`
 
 Key parameters:
 - `-size`: Image size (64, 128, 256, 512)
-- `-respace`: Timestep respacing (25, 50, 150, 250, 500, 1000, or ddim variants)
+- `-n`: Model calls for the fast sampler (default 30, or 60 with `-uncond`)
+- `-rate`: Fast sampler guidance strength (default 0.08)
 - `-cgs`: CLIP guidance scale (default 1000)
 - `-tvs`: TV loss scale for smoothness (default 150)
 - `-init`: Initial image path
-- `-skip`: Skip timesteps for image blending
-
-Performance optimizations:
-- `-reduce`: Skip early diffusion steps & reduce CLIP guidance frequency
-- `-cutn_skip`: Use fewer cutouts in early steps (4->8->16)
-- `-cached_cutn`: Cache cutout coordinates across steps
+- `-skip`: How much of the schedule an init image skips (default half)
+- `-respace`: Use the original guided-diffusion sampler instead, e.g. 1000 or ddim50. Much slower.
 
 ## Architecture
 
@@ -48,13 +45,15 @@ Performance optimizations:
 
 - **`cgd/cgd.py`**: Main entry point with `clip_guided_diffusion()` generator function and CLI `main()`. The generator yields `(batch_idx, image_path)` tuples during diffusion.
 
-- **`cgd/script_util.py`**: Utilities for downloading checkpoints, loading the guided diffusion model, parsing prompts with weights, and logging images. Model checkpoints cached at `~/.cache/clip-guided-diffusion/`.
+- **`cgd/sampling.py`**: The default fast sampler, DPM-Solver++(2M) SDE in uniform logSNR steps with capped guidance. Its docstring explains why each piece exists.
 
-- **`cgd/clip_util.py`**: CLIP model loading (`load_clip()`), text/image prompt encoding, and the `MakeCutouts` class for generating random crops.
+- **`cgd/script_util.py`**: Utilities for validating a configuration (`check_parameters()`, raising `ConfigError`), downloading checkpoints, loading the guided diffusion model, parsing prompts with weights, and logging images. Model checkpoints cached at `~/.cache/clip-guided-diffusion/`.
+
+- **`cgd/clip_util.py`**: CLIP model loading (`load_clip()`), text/image prompt encoding, and ImageNet class selection (`imagenet_top_n()`, text features cached on disk).
 
 - **`cgd/losses.py`**: Loss functions - `spherical_dist_loss()` for CLIP similarity, `tv_loss()` for smoothness, `range_loss()` for RGB clamping.
 
-- **`cgd/modules.py`**: `MakeCutouts` module for random patch extraction with optional augmentations.
+- **`cgd/modules.py`**: `MakeCutouts` module for random patch extraction with optional augmentations, and `adaptive_avg_pool()`. Keep that instead of `tf.adaptive_avg_pool2d`: the latter's CUDA backward pass is nondeterministic, which makes a seed produce a different image every run.
 
 ### External Dependency
 
@@ -64,9 +63,9 @@ The `guided-diffusion` package (git dependency from crowsonkb) provides the diff
 
 1. Text/image prompts encoded via CLIP
 2. Guided diffusion model loaded based on image size and conditioning
-3. `cond_fn()` computes gradients from CLIP loss + regularization losses
+3. With no `timestep_respacing`, `sampling.sample_loop_progressive()` runs, conditioned on the closest ImageNet class. Otherwise guided-diffusion's own loop runs through `cond_fn()`, re-randomising the class each step. Both share `guidance_loss()`: CLIP loss + regularization losses.
 4. Diffusion loop yields intermediate samples at specified frequency
-5. Final GIF created from all intermediate outputs
+5. `main()` builds any GIF or video from the frames this run yielded, and only deletes them once every requested output exists
 
 ### Prompt Weights
 

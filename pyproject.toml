@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cgd-pytorch"
-version = "0.2.5"
+version = "0.3.0"
 description = "CLIP Guided Diffusion"
 readme = "README.md"
 license = "MIT"
