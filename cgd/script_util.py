@@ -100,6 +100,11 @@ def clean_and_combine_prompts(base_path, txts, batch_idx, max_length=255) -> str
     return os.path.join(base_path, clean_txt, f"{batch_idx:02}")
 
 
+def run_name(prompts, image_prompts) -> list:
+    """What to name a run's output folder after: its text, or else its image prompts."""
+    return list(prompts) or [Path(parse_prompt(image)[0]).stem for image in image_prompts]
+
+
 def log_image(image: th.Tensor, base_path: str, txts: list, current_step: int, batch_idx: int) -> str:
     dirname = clean_and_combine_prompts(base_path, txts, batch_idx)
     os.makedirs(dirname, exist_ok=True)

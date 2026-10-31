@@ -122,13 +122,16 @@ def encode_image_prompt(image: str, weight: float, diffusion_size: int, num_cuto
     clip_model, clip_size = load_clip(clip_model_name, device)
     make_cutouts = MakeCutouts(cut_size=clip_size, num_cutouts=num_cutouts)
     pil_img = Image.open(script_util.fetch(image)).convert('RGB')
-    smallest_side = min(diffusion_size, *pil_img.size)
-    pil_img = resize_right.resize(pil_img, out_shape=[smallest_side],
+    img = tvf.to_tensor(pil_img).unsqueeze(0).to(device)
+    height, width = img.shape[2:]
+    scale = diffusion_size / min(height, width)
+    if scale < 1:  # Match the detail level of the generated image, keeping the aspect ratio.
+        out_shape = (round(height * scale), round(width * scale))
+        img = resize_right.resize(img, out_shape=out_shape,
                                   interp_method=lanczos3, support_sz=None,
-                                  antialiasing=True, by_convs=False, scale_tolerance=None)
-    batch = make_cutouts(tvf.to_tensor(pil_img).unsqueeze(0).to(device))
-    batch_embed = clip_model.encode_image(tf.normalize(batch)).float()
-    batch_weight = [weight / make_cutouts.cutn] * make_cutouts.cutn
+                                  antialiasing=True, by_convs=False, scale_tolerance=None).clamp(0, 1)
+    batch_embed = clip_model.encode_image(CLIP_NORMALIZE(make_cutouts(img))).float()
+    batch_weight = [weight / len(batch_embed)] * len(batch_embed)
     return batch_embed, batch_weight
 
 

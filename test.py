@@ -395,6 +395,28 @@ class TestFastSampler(unittest.TestCase):
         results = self.generate(prompts=["a red fox", "a yellow lemon:0.5"], image_size=64, sample_steps=8, batch_size=3)
         self.assertEqual(sorted(batch_idx for batch_idx, _ in results[-3:]), [0, 1, 2])
 
+    def test_image_prompt_embeds_like_its_content(self):
+        clip_model, clip_size = clip_util.load_clip("ViT-B/32", "cuda")
+        fox_path = self.generate(image_size=128)[-1][1]
+        embed, _ = clip_util.encode_image_prompt(fox_path, 1.0, 128, 4, "ViT-B/32", "cuda")
+        top = clip_util.imagenet_top_n(embed.mean(0, keepdim=True), device="cuda", n=10, clip_model_name="ViT-B/32")
+        labels = " ".join(IMAGENET_CLASSES[i] for i in top.tolist())
+        self.assertIn("fox", labels)
+
+    def test_image_prompt_accepts_non_square_and_small_images(self):
+        path = f"{self.prefix}/source.png"
+        for size in ((300, 150), (40, 40)):
+            Image.open("images/photon.png").convert("RGB").resize(size).save(path)
+            embed, weights = clip_util.encode_image_prompt(path, 1.0, 128, 4, "ViT-B/32", "cuda")
+            self.assertEqual(embed.shape[0], len(weights))
+            self.assertAlmostEqual(sum(weights), 1.0)
+
+    def test_image_prompt_alone_steers_generation(self):
+        fox_path = self.generate(image_size=128)[-1][1]
+        result = self.generate(prompts=[], image_prompts=[fox_path], image_size=128)[-1][1]
+        self.assertGreater(self.clip_similarity(result, "a photo of a fox"),
+                           self.clip_similarity(result, "a photo of a car"))
+
 
 class TestOutOfMemory(unittest.TestCase):
     def test_out_of_memory_raises_instead_of_ending_the_run_early(self):
@@ -535,6 +557,12 @@ class TestCommandLine(unittest.TestCase):
         self.assertIn("ffmpeg not found", result.stdout)
         self.assertEqual(len(self.frames()), 6)
         self.assertIn("Saved outputs/Loose_seal/00/0005.png", result.stdout)
+
+    def test_image_prompt_runs_are_named_after_the_image(self):
+        image = self.repo / "images/photon.png"
+        result = self.run_cgd("-imgs", f"{image}:2", *self.OPTIONS)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(len(self.frames("photon")), 2)  # Steps 0 and the final step 5.
 
 
 class TestLegacySampler(unittest.TestCase):

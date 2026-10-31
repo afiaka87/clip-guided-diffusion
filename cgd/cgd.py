@@ -266,10 +266,11 @@ def clip_guided_diffusion(
             progress=progress,
         )
 
+    run_name = script_util.run_name(prompts, image_prompts)
     for step, sample in enumerate(fast_samples() if fast else legacy_samples()):
         if step % save_frequency == 0 or sample["final"]:
             for batch_idx, image_tensor in enumerate(sample["pred_xstart"]):
-                yield batch_idx, script_util.log_image(image_tensor, prefix_path, prompts, step, batch_idx)
+                yield batch_idx, script_util.log_image(image_tensor, prefix_path, run_name, step, batch_idx)
 
 
 def main():
@@ -281,7 +282,7 @@ def main():
     p.add_argument("--prompts", "-txts", type=str, default='',
                    help="the prompt/s to reward paired with weights. e.g. 'My text:0.5|Other text:-0.5' ")
     p.add_argument("--image_prompts", "-imgs", type=str, default='',
-                   help="the image prompt/s to reward paired with weights. e.g. 'img1.png:0.5,img2.png:-0.5'")
+                   help="the image prompt/s to reward paired with weights. e.g. 'img1.png:0.5|img2.png:-0.5'")
     p.add_argument("--image_size", "-size", type=int, default=128, choices=(64, 128, 256, 512),
                    help="Diffusion image size.")
     p.add_argument("--init_image", "-init", type=str, default='',
