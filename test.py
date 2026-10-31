@@ -56,22 +56,16 @@ class TestTorchUtil(unittest.TestCase):
         checkpoint_path = Path(script_util.CACHE_PATH).joinpath(
             f"{image_size}x{image_size}_diffusion.pt")
         class_cond = True
-        diffusion_steps = 1000
         timestep_respacing = '25'
         use_fp16 = False
         device = 'cpu'
-        noise_schedule = "linear"
-        dropout = 0.0
         model, diffusion = script_util.load_guided_diffusion(
             checkpoint_path=str(checkpoint_path),
             image_size=image_size,
             class_cond=class_cond,
-            diffusion_steps=diffusion_steps,
             timestep_respacing=timestep_respacing,
             use_fp16=use_fp16,
             device=device,
-            noise_schedule=noise_schedule,
-            dropout=dropout,
         )
         self.assertIsInstance(model, th.nn.Module)
         self.assertIsInstance(diffusion, respace.SpacedDiffusion)
@@ -81,22 +75,16 @@ class TestTorchUtil(unittest.TestCase):
         checkpoint_path = Path(script_util.CACHE_PATH).joinpath(
             f"{image_size}x{image_size}_diffusion.pt")
         class_cond = True
-        diffusion_steps = 1000
         timestep_respacing = '25'
         use_fp16 = False
         device = 'cuda'
-        noise_schedule = "linear"
-        dropout = 0.0
         model, diffusion = script_util.load_guided_diffusion(
             checkpoint_path=str(checkpoint_path),
             image_size=image_size,
             class_cond=class_cond,
-            diffusion_steps=diffusion_steps,
             timestep_respacing=timestep_respacing,
             use_fp16=use_fp16,
             device=device,
-            noise_schedule=noise_schedule,
-            dropout=dropout,
         )
         def is_model_cuda(x): return next(x.parameters()).is_cuda
         self.assertTrue(is_model_cuda(model))
@@ -321,3 +309,12 @@ class TestSkipWeightInit(unittest.TestCase):
         self.assertTrue(th.equal(th.rand(4), expected))
         for name, function in init_functions.items():
             self.assertIs(getattr(th.nn.init, name), function)
+
+
+class TestCheckpointSchedule(unittest.TestCase):
+    def test_loader_keeps_the_schedule_the_checkpoint_was_trained_with(self):
+        _, diffusion = script_util.load_guided_diffusion(
+            checkpoint_path=str(Path(script_util.CACHE_PATH).joinpath("64x64_diffusion.pt")),
+            image_size=64, class_cond=True, timestep_respacing="",
+            use_fp16=False, device="cpu")
+        self.assertLess(diffusion.betas[0], 1e-4 / 2)  # linear starts at 1e-4, cosine far below it

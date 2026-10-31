@@ -30,15 +30,12 @@ def clip_guided_diffusion(
     cutout_power: float = 1.0,
     timestep_respacing: str = "1000",
     seed: int = 0,
-    diffusion_steps: int = 1000,
     skip_timesteps: int = 0,
     checkpoints_dir: str = script_util.CACHE_PATH,
     clip_model_name: str = "ViT-B/32",
     randomize_class: bool = True,
     prefix_path: Path = Path('./outputs'),
     save_frequency: int = 25,
-    noise_schedule: str = "linear",
-    dropout: float = 0.0,
     device: str = '',
     wandb_project: str = None,
     wandb_entity: str = None,
@@ -122,12 +119,9 @@ def clip_guided_diffusion(
     gd_model, diffusion = script_util.load_guided_diffusion(
         checkpoint_path=diffusion_path,
         image_size=image_size, class_cond=class_cond,
-        diffusion_steps=diffusion_steps,
         timestep_respacing=timestep_respacing,
         use_fp16=(not fp32_diffusion),
         device=device,
-        noise_schedule=noise_schedule,
-        dropout=dropout,
     )
 
     # This is initialized lazily as it can use a bit of VRAM
@@ -274,8 +268,6 @@ def main():
                    default=0, help="Random number seed")
     p.add_argument("--save_frequency", "-freq", type=int,
                    default=1, help="Save frequency")
-    p.add_argument("--diffusion_steps", "-steps", type=int,
-                   default=1000, help="Diffusion steps")
     p.add_argument("--timestep_respacing", "-respace", type=str,
                    default="1000", help="Timestep respacing")
     p.add_argument("--num_cutouts", "-cutn", type=int, default=16,
@@ -286,10 +278,6 @@ def main():
                    help=f"clip model name. Should be one of: {clip_util.CLIP_MODEL_NAMES} or a checkpoint filename ending in `.pt`")
     p.add_argument("--uncond", "-uncond", action="store_true",
                    help='Use finetuned unconditional checkpoints from OpenAI (256px) and Katherine Crowson (512px)')
-    p.add_argument("--noise_schedule", "-sched", default='linear', type=str,
-                   help="Specify noise schedule. Either 'linear' or 'cosine'.")
-    p.add_argument("--dropout", "-drop", default=0.0, type=float,
-                   help="Amount of dropout to apply. ")
     p.add_argument("--device", "-dev", default='', type=str,
                    help="Device to use. Either cpu or cuda.")
     p.add_argument('--wandb_project', '-proj', default=None,
@@ -339,13 +327,10 @@ def main():
         num_cutouts=args.num_cutouts,
         timestep_respacing=args.timestep_respacing,
         seed=args.seed,
-        diffusion_steps=args.diffusion_steps,
         skip_timesteps=args.skip_timesteps,
         init_image=args.init_image,
         checkpoints_dir=args.checkpoints_dir,
         clip_model_name=args.clip_model,
-        noise_schedule=args.noise_schedule,
-        dropout=args.dropout,
         device=args.device,
         prefix_path=prefix_path,
         wandb_project=args.wandb_project,

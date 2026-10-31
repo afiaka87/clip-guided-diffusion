@@ -17,6 +17,7 @@ from cgd import clip_util
 from guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
 
 CACHE_PATH = os.path.expanduser("~/.cache/clip-guided-diffusion")
+NUM_TRAINING_TIMESTEPS = 1000  # Every checkpoint was trained on this schedule length.
 TIMESTEP_RESPACINGS = ("25", "50", "100", "250", "500", "1000",
                        "ddim25", "ddim50", "ddim100", "ddim250", "ddim500", "ddim1000")
 DIFFUSION_SCHEDULES = (25, 50, 100, 250, 500, 1000)
@@ -266,14 +267,8 @@ def download(url: str, filename: str, root: str = CACHE_PATH, max_retries: int =
     return str(download_target)
 
 
-def download_guided_diffusion(image_size: int, class_cond: bool, checkpoints_dir: str = CACHE_PATH, overwrite: bool = False) -> str:
-    cond_key = 'cond' if class_cond else 'uncond'
-    diffusion_model_info = DIFFUSION_LOOKUP[cond_key][image_size]
-    if not overwrite:
-        target_path = Path(checkpoints_dir).joinpath(
-            diffusion_model_info["filename"])
-        if target_path.exists():
-            return str(target_path)
+def download_guided_diffusion(image_size: int, class_cond: bool, checkpoints_dir: str = CACHE_PATH) -> str:
+    diffusion_model_info = DIFFUSION_LOOKUP['cond' if class_cond else 'uncond'][image_size]
     return download(diffusion_model_info["url"], diffusion_model_info["filename"], checkpoints_dir)
 
 
@@ -282,35 +277,30 @@ def load_guided_diffusion(
     checkpoint_path: str,
     image_size: int,
     class_cond: bool,
-    diffusion_steps: int = None,
-    timestep_respacing: str = None,
+    timestep_respacing: str = "",
     use_fp16: bool = True,
     device: str = '',
-    noise_schedule: str = 'linear',
-    dropout: float = 0.0,
 ):
     '''
     checkpoint_path: path to the checkpoint to load.
     image_size: size of the images to be used.
     class_cond: whether to condition on the class label
-    diffusion_steps: number of diffusion steps
-    timestep_respacing: whether to use timestep-respacing or not
+    timestep_respacing: subset of the training timesteps to sample. Empty keeps them all.
+
+    The diffusion schedule always comes from the checkpoint's flags: sampling a model
+    on a schedule it was not trained on produces garbage.
     '''
     if not (len(device) > 0):
         raise ValueError("device must be set")
-    if not (noise_schedule in ["linear", "cosine"]):
-        raise ValueError("linear_or_cosine must be set")
 
     cond_key = 'cond' if class_cond else 'uncond'
     diffusion_model_info = DIFFUSION_LOOKUP[cond_key][image_size]
     model_config: dict = model_and_diffusion_defaults()
     model_config.update(diffusion_model_info['model_flags'])
     model_config.update(**{  # Custom params from user
-        'diffusion_steps': diffusion_steps,
+        'diffusion_steps': NUM_TRAINING_TIMESTEPS,
         'timestep_respacing': timestep_respacing,
         "use_fp16": use_fp16,
-        "noise_schedule": noise_schedule,
-        "dropout": dropout,
     })
     # Build on the meta device: random-initialising 400M+ parameters only to
     # overwrite them is the slowest part of startup. mmap + assign then adopts
