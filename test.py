@@ -283,6 +283,34 @@ class TestClipUtil(unittest.TestCase):
         self.assertEqual(result_weight, weight)
 
 
+class TestMakeCutouts(unittest.TestCase):
+    def test_full_frame_only_collapses_to_one_cutout(self):
+        make_cutouts = modules.MakeCutouts(cut_size=224, num_cutouts=16)
+        self.assertEqual(make_cutouts.distinct_cutouts(128, 128), 1)
+        self.assertEqual(len(set(make_cutouts._generate_coords(128, 128, 16))), 1)
+
+    def test_real_variety_keeps_every_cutout(self):
+        self.assertEqual(modules.MakeCutouts(224, 16).distinct_cutouts(256, 256), 16)
+        self.assertEqual(modules.MakeCutouts(224, 16, use_augs=True).distinct_cutouts(128, 128), 16)
+        self.assertEqual(modules.MakeCutouts(224, 16).distinct_cutouts(128, 192), 16)
+
+    def test_min_cut_fraction_varies_cutouts_below_clip_resolution(self):
+        make_cutouts = modules.MakeCutouts(cut_size=224, num_cutouts=4, min_cut_fraction=0.7)
+        self.assertEqual(make_cutouts.distinct_cutouts(128, 128), 4)
+        sizes = [size for _, _, size in make_cutouts._generate_coords(128, 128, 64)]
+        self.assertGreaterEqual(min(sizes), 89)
+        self.assertLessEqual(max(sizes), 128)
+        self.assertGreater(len(set(sizes)), 1)
+
+    def test_non_square_cutouts_span_the_width(self):
+        th.manual_seed(0)
+        left_black_right_white = th.zeros(1, 3, 64, 128)
+        left_black_right_white[..., 64:] = 1
+        cutouts = modules.MakeCutouts(cut_size=64, num_cutouts=32)(left_black_right_white)
+        self.assertEqual(cutouts.shape, (32, 3, 64, 64))
+        self.assertGreater(cutouts.mean(dim=(1, 2, 3)).max().item(), 0.5)
+
+
 class TestSkipWeightInit(unittest.TestCase):
     def test_loading_clip_leaves_the_random_stream_and_init_functions_alone(self):
         init_functions = {name: getattr(th.nn.init, name) for name in clip_util._INIT_FUNCTIONS}

@@ -138,7 +138,6 @@ def clip_guided_diffusion(
 
     def cond_fn(x, t, out, y=None):
         log = {}
-        n = x.shape[0]
         fac = diffusion.sqrt_one_minus_alphas_cumprod[current_timestep]
         sigmas = 1 - fac
         x_in = out["pred_xstart"] * fac + x * sigmas
@@ -151,11 +150,9 @@ def clip_guided_diffusion(
             ]
 
         clip_in = clip_util.CLIP_NORMALIZE(make_cutouts(x_in.add(1).div(2)))
-        cutout_embeds = clip_model.encode_image(
-            clip_in).float().view([num_cutouts, n, -1])
-        dists = losses.spherical_dist_loss(
-            cutout_embeds.unsqueeze(0), target_embeds.unsqueeze(0))
-        dists = dists.view([num_cutouts, n, -1])
+        cutout_embeds = clip_model.encode_image(clip_in).float()
+        cutout_embeds = cutout_embeds.view(-1, x.shape[0], cutout_embeds.shape[-1])  # [cutouts, batch, features]
+        dists = losses.spherical_dist_loss(cutout_embeds.unsqueeze(2), target_embeds)
 
         clip_losses = dists.mul(weights).sum(2).mean(0)
         range_losses = losses.range_loss(out["pred_xstart"])
