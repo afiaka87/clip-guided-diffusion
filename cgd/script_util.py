@@ -4,7 +4,10 @@ import os
 import re
 import shutil
 import subprocess
+import tempfile
 import time
+import uuid
+from contextlib import suppress
 from functools import lru_cache
 from pathlib import Path
 import requests
@@ -116,17 +119,46 @@ def log_image(image: th.Tensor, base_path: str, txts: list, current_step: int, b
 
 
 def _encode_frames(frames: list, output: str, fps: int, *encoder_args):
-    """Pipe `frames` through ffmpeg. Returns `output`, or None if it could not be made."""
-    command = ["ffmpeg", "-y", "-f", "image2pipe", "-framerate", str(fps), "-i", "-", *encoder_args, str(output)]
+    """Stream frames to an atomic export; failures preserve inputs and any previous export."""
+    if not frames or fps <= 0:
+        raise ValueError("Export requires at least one frame and a positive frame rate")
+    destination = Path(output)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary = destination.with_name(f".{destination.stem}.{uuid.uuid4().hex}.tmp{destination.suffix}")
+    command = ["ffmpeg", "-y", "-f", "image2pipe", "-framerate", str(fps), "-i", "-",
+               *encoder_args, str(temporary)]
     try:
-        subprocess.run(command, input=b"".join(Path(frame).read_bytes() for frame in frames),
-                       check=True, capture_output=True)
-    except FileNotFoundError:
-        print("ffmpeg not found. Please install ffmpeg to use this feature.")
+        with tempfile.TemporaryFile() as errors:
+            process = subprocess.Popen(command, stdin=subprocess.PIPE,
+                                       stdout=subprocess.DEVNULL, stderr=errors,
+                                       creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0)
+            try:
+                with process.stdin as stream:
+                    for frame in frames:
+                        with Path(frame).open("rb") as source:
+                            shutil.copyfileobj(source, stream, length=64 * 1024)
+                code = process.wait(timeout=120)
+            finally:
+                if process.poll() is None:
+                    process.kill()
+                    process.wait()
+            if code:
+                errors.seek(max(0, errors.seek(0, os.SEEK_END) - 4096))
+                print(f"ffmpeg error: {errors.read().decode(errors='replace')}")
+                return None
+        if not temporary.is_file() or temporary.stat().st_size == 0:
+            print("ffmpeg did not produce an output file.")
+            return None
+        os.replace(temporary, destination)
+    except FileNotFoundError as error:
+        print(f"ffmpeg not found or an input frame was missing: {error}")
         return None
-    except subprocess.CalledProcessError as error:
-        print(f"ffmpeg error: {error.stderr.decode()}")
+    except (OSError, subprocess.TimeoutExpired) as error:
+        print(f"ffmpeg export failed: {error}")
         return None
+    finally:
+        with suppress(OSError):
+            temporary.unlink(missing_ok=True)
     print(f"Created {output}")
     return str(output)
 
@@ -140,7 +172,9 @@ def create_gif_ffmpeg(frames: list, output: str, fps: int = 10):
 
 def create_video_ffmpeg(frames: list, output: str, fps: int = 10):
     """Create a high-quality MP4 video using x264."""
-    return _encode_frames(frames, output, fps, "-c:v", "libx264", "-preset", "slow", "-crf", "18",
+    return _encode_frames(frames, output, fps,
+                          "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",
+                          "-c:v", "libx264", "-preset", "slow", "-crf", "18",
                           "-pix_fmt", "yuv420p", "-movflags", "+faststart")
 
 
