@@ -1,6 +1,5 @@
 """CLIP Guided Diffusion: generate images from text and image prompts."""
 import argparse
-import glob
 from pathlib import Path
 
 import torch as th
@@ -379,33 +378,31 @@ def main():
         sample_steps=args.sample_steps,
         guidance_rate=args.guidance_rate,
     )
+    frames = {}  # Only this run's frames: the folder may hold older ones for the same prompt.
     try:
-        results = list(cgd_generator)
+        for batch_idx, frame_path in cgd_generator:
+            frames.setdefault(batch_idx, []).append(frame_path)
     except script_util.ConfigError as error:
         p.error(str(error))
     except th.cuda.OutOfMemoryError:
         p.exit(1, f"Ran out of GPU memory. Try lowering --image_size/-size, --batch_size/-bs or --num_cutouts/-cutn.\n"
                   f"--clip_model/-clip (currently {args.clip_model}) has a large impact on VRAM: RN50 uses the least, ViT-B/32 the second least.\n")
 
-    # Create GIF and/or video output if requested
-    # Only delete frames after all outputs are created
-    for batch_idx in range(args.batch_size):
+    for batch_idx, paths in frames.items():
+        run_dir = Path(paths[0]).parent
+        outputs = []
         if args.save_as_gif:
-            script_util.create_gif_ffmpeg(prefix_path, prompts, batch_idx, delete_frames=False)
+            outputs.append(script_util.create_gif_ffmpeg(paths, run_dir.with_suffix('.gif')))
         if args.save_as_video:
-            script_util.create_video_ffmpeg(prefix_path, prompts, batch_idx, delete_frames=False)
-        if make_animation:
-            # Delete frames after all outputs are created
-            io_safe_prompts = script_util.clean_and_combine_prompts(prefix_path, prompts, batch_idx)
-            image_files = sorted(glob.glob(f"{io_safe_prompts}/*.png"))
-            for f in image_files:
-                Path(f).unlink()
-            # Remove directory if empty
-            if Path(io_safe_prompts).is_dir() and not list(Path(io_safe_prompts).iterdir()):
-                Path(io_safe_prompts).rmdir()
-            print(f"Deleted {len(image_files)} frame(s)")
-    if results and not make_animation:
-        print(f"Saved {results[-1][1]}")
+            outputs.append(script_util.create_video_ffmpeg(paths, run_dir.with_suffix('.mp4')))
+        # The frames are the only copy of the result until every requested output exists.
+        if make_animation and all(outputs):
+            for frame_path in paths:
+                Path(frame_path).unlink()
+            if not any(run_dir.iterdir()):
+                run_dir.rmdir()
+        else:
+            print(f"Saved {paths[-1]}")
 
 
 if __name__ == "__main__":

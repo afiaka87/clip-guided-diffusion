@@ -463,6 +463,9 @@ class TestCommandLine(unittest.TestCase):
         environment = {**os.environ, "PYTHONPATH": str(self.repo), **(env or {})}
         return subprocess.run([*self.COMMAND, *args], cwd=self.cwd, env=environment, capture_output=True, text=True)
 
+    def frames(self, directory="Loose_seal"):
+        return sorted((self.cwd / "outputs" / directory / "00").glob("*.png"))
+
     def test_positional_prompt_reports_the_saved_image(self):
         result = self.run_cgd("Loose seal.", *self.OPTIONS)
         self.assertEqual(result.returncode, 0, result.stderr)
@@ -490,6 +493,35 @@ class TestCommandLine(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("Ran out of GPU memory", result.stderr)
         self.assertNotIn("Traceback", result.stderr)
+
+    @unittest.skipUnless(shutil.which("ffprobe"), "needs ffmpeg")
+    def test_gif_holds_every_saved_frame_even_with_gaps_and_stale_frames(self):
+        stale = self.run_cgd("Loose seal.", *self.OPTIONS[:2], "-n", "8", "-clip", "RN50", "-q", "-freq", "1")
+        self.assertEqual(stale.returncode, 0, stale.stderr)
+        self.assertEqual(len(self.frames()), 8)
+
+        result = self.run_cgd("Loose seal.", *self.OPTIONS, "-freq", "2", "-gif")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        gif = self.cwd / "outputs/Loose_seal/00.gif"
+        count = subprocess.run(["ffprobe", "-v", "error", "-count_frames", "-select_streams", "v:0", "-show_entries",
+                                "stream=nb_read_frames", "-of", "csv=p=0", str(gif)], capture_output=True, text=True)
+        self.assertEqual(count.stdout.strip(), "4")  # Steps 0, 2, 4 and the final step 5.
+        self.assertEqual(len(self.frames()), 4)  # The older run's frames were not this run's to delete.
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "needs ffmpeg")
+    def test_video_replaces_the_frames(self):
+        result = self.run_cgd("Loose seal.", *self.OPTIONS, "-mp4")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertGreater((self.cwd / "outputs/Loose_seal/00.mp4").stat().st_size, 0)
+        self.assertEqual(self.frames(), [])
+
+    def test_frames_survive_when_ffmpeg_is_unavailable(self):
+        bin_dir = Path(sys.executable).parent
+        result = self.run_cgd("Loose seal.", *self.OPTIONS, "-gif", env={"PATH": str(bin_dir)})
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("ffmpeg not found", result.stdout)
+        self.assertEqual(len(self.frames()), 6)
+        self.assertIn("Saved outputs/Loose_seal/00/0005.png", result.stdout)
 
 
 class TestLegacySampler(unittest.TestCase):
