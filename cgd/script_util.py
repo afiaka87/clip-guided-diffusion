@@ -11,52 +11,62 @@ import torch as th
 import torchvision.transforms.functional as tvf
 from tqdm.auto import tqdm
 from data.diffusion_model_flags import DIFFUSION_LOOKUP
-from PIL import Image
 
-from cgd import clip_util
+from guided_diffusion.respace import space_timesteps
 from guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
 
 CACHE_PATH = os.path.expanduser("~/.cache/clip-guided-diffusion")
 NUM_TRAINING_TIMESTEPS = 1000  # Every checkpoint was trained on this schedule length.
-TIMESTEP_RESPACINGS = ("25", "50", "100", "250", "500", "1000",
-                       "ddim25", "ddim50", "ddim100", "ddim250", "ddim500", "ddim1000")
-DIFFUSION_SCHEDULES = (25, 50, 100, 250, 500, 1000)
-IMAGE_SIZES = (64, 128, 256, 512)
+
+
+class ConfigError(ValueError):
+    """The requested run cannot work. The message says what to change."""
+
+
+def is_url(path) -> bool:
+    return str(path).startswith(('http://', 'https://'))
+
 
 def check_parameters(
-    prompts: list,
-    image_prompts: list,
+    prompts,
+    image_prompts,
     image_size: int,
-    timestep_respacing: str,
-    diffusion_steps: int,
-    clip_model_name: str,
-    save_frequency: int,
-    noise_schedule: str,
+    class_cond: bool = True,
+    timestep_respacing: str = None,
+    skip_timesteps: int = 0,
+    save_frequency: int = 1,
+    sample_steps: int = 1,
+    height_offset: int = 0,
+    width_offset: int = 0,
+    init_image=None,
 ):
-    if not (len(prompts) > 0 or len(image_prompts) > 0):
-        raise ValueError("Must provide at least one prompt, text or image.")
-    if not (noise_schedule in ['linear', 'cosine']):
-        raise ValueError('Noise schedule should be one of: linear, cosine')
-    if not (image_size in IMAGE_SIZES):
-        raise ValueError(f"--image size should be one of {IMAGE_SIZES}")
-    if not (0 < save_frequency <= int(timestep_respacing.replace('ddim', ''))):
-        raise ValueError(
-            "--save_frequency must be greater than 0 and less than `timestep_respacing`")
-    if not (diffusion_steps in DIFFUSION_SCHEDULES):
-        print('(warning) Diffusion steps should be one of:', DIFFUSION_SCHEDULES)
-    if not (timestep_respacing in TIMESTEP_RESPACINGS):
-        print(
-            f"Pausing run. `timestep_respacing` should be one of {TIMESTEP_RESPACINGS}. CTRL-C if this was a mistake.")
-        time.sleep(5)
-        print("Resuming run.")
-    if clip_model_name.endswith('.pt') or clip_model_name.endswith('.pth'):
-        assert os.path.isfile(
-            clip_model_name), f"{clip_model_name} does not exist"
-        print(f"Loading custom model from {clip_model_name}")
-    elif not (clip_model_name in clip_util.CLIP_MODEL_NAMES):
-        print(
-            f"--clip model name should be one of: {clip_util.CLIP_MODEL_NAMES} unless you are trying to use your own checkpoint.")
-        print(f"Loading OpenAI CLIP - {clip_model_name}")
+    """Reject a bad configuration before spending time loading anything."""
+    if not (prompts or image_prompts):
+        raise ConfigError("Provide at least one prompt, text or image.")
+    sizes = DIFFUSION_LOOKUP['cond' if class_cond else 'uncond']
+    if image_size not in sizes:
+        kind = 'class conditional' if class_cond else 'unconditional'
+        raise ConfigError(f"No {kind} checkpoint for size {image_size}. Choose one of {sorted(sizes)}.")
+    if save_frequency < 1:
+        raise ConfigError("--save_frequency must be at least 1.")
+    if sample_steps < 1:
+        raise ConfigError("--sample_steps must be at least 1.")
+    total_steps = NUM_TRAINING_TIMESTEPS
+    if timestep_respacing is not None:
+        try:
+            total_steps = len(space_timesteps(NUM_TRAINING_TIMESTEPS, timestep_respacing))
+        except ValueError as error:
+            raise ConfigError(f"Bad --timestep_respacing {timestep_respacing!r}: {error}") from error
+    if not 0 <= skip_timesteps < total_steps:
+        raise ConfigError(f"--skip_timesteps must be between 0 and {total_steps - 1}.")
+    stride = image_size // 8  # The U-Net halves the resolution down to 8x8.
+    if (image_size + height_offset) % stride or (image_size + width_offset) % stride:
+        raise ConfigError(f"At size {image_size}, height and width must be multiples of {stride}. "
+                          f"Got {image_size + height_offset}x{image_size + width_offset}.")
+    images = [parse_prompt(image_prompt)[0] for image_prompt in image_prompts]
+    for image in images + ([init_image] if init_image else []):
+        if not is_url(image) and not os.path.isfile(image):
+            raise ConfigError(f"No such image: {image}")
 
 
 def parse_prompt(prompt):  # parse a single prompt in the form "<text||img_url>:<weight>"
@@ -70,13 +80,10 @@ def parse_prompt(prompt):  # parse a single prompt in the form "<text||img_url>:
 
 
 def fetch(url_or_path):
-    if str(url_or_path).startswith('http://') or str(url_or_path).startswith('https://'):
-        r = requests.get(url_or_path)
+    if is_url(url_or_path):
+        r = requests.get(url_or_path, timeout=30)
         r.raise_for_status()
-        fd = io.BytesIO()
-        fd.write(r.content)
-        fd.seek(0)
-        return fd
+        return io.BytesIO(r.content)
     return open(url_or_path, 'rb')
 
 

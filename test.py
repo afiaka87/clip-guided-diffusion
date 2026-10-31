@@ -396,6 +396,38 @@ class TestFastSampler(unittest.TestCase):
         self.assertEqual(sorted(batch_idx for batch_idx, _ in results[-3:]), [0, 1, 2])
 
 
+class TestCheckParameters(unittest.TestCase):
+    def assertRejected(self, message, prompts=("cat",), image_prompts=(), image_size=128, **kwargs):
+        with self.assertRaisesRegex(script_util.ConfigError, message):
+            script_util.check_parameters(prompts, image_prompts, image_size, **kwargs)
+
+    def test_needs_a_prompt(self):
+        self.assertRejected("at least one prompt", prompts=())
+
+    def test_rejects_a_size_with_no_checkpoint(self):
+        self.assertRejected("Choose one of", image_size=128, class_cond=False)
+        self.assertRejected("Choose one of", image_size=100)
+
+    def test_rejects_shapes_the_unet_cannot_process(self):
+        self.assertRejected("multiples of 16", height_offset=8)
+
+    def test_rejects_missing_images(self):
+        self.assertRejected("No such image", image_prompts=("missing.png:0.5",))
+        self.assertRejected("No such image", init_image="missing.png")
+
+    def test_rejects_impossible_respacing(self):
+        self.assertRejected("Bad --timestep_respacing", timestep_respacing="ddim999")
+        self.assertRejected("Bad --timestep_respacing", timestep_respacing="fast")
+
+    def test_rejects_skipping_the_whole_schedule(self):
+        self.assertRejected("between 0 and 999", skip_timesteps=1000)
+        self.assertRejected("between 0 and 49", timestep_respacing="50", skip_timesteps=50)
+
+    def test_accepts_a_good_configuration(self):
+        script_util.check_parameters(("cat",), ("images/photon.png:2",), 256, class_cond=False,
+                                     timestep_respacing="ddim50", skip_timesteps=25, width_offset=32)
+
+
 class TestSkipWeightInit(unittest.TestCase):
     def test_loading_clip_leaves_the_random_stream_and_init_functions_alone(self):
         init_functions = {name: getattr(th.nn.init, name) for name in clip_util._INIT_FUNCTIONS}
@@ -427,6 +459,17 @@ class TestCommandLine(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("Saved outputs/Loose_seal/00/0005.png", result.stdout)
         self.assertTrue((self.cwd / "current.png").exists())
+
+    def test_without_a_prompt_it_explains_itself(self):
+        result = self.run_cgd("-q")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("at least one prompt", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+
+    def test_weights_that_cancel_out_are_explained(self):
+        result = self.run_cgd("cat:1|dog:-1", *self.OPTIONS)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("must not sum to 0", result.stderr)
 
     def test_prefix_can_be_a_new_nested_directory(self):
         result = self.run_cgd("Loose seal.", *self.OPTIONS, "-dir", "a/b/c")

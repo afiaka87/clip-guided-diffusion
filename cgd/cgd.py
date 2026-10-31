@@ -53,6 +53,10 @@ def clip_guided_diffusion(
     sample_steps: int = sampling.DEFAULT_STEPS,
     guidance_rate: float = sampling.DEFAULT_GUIDANCE_RATE,
 ):
+    script_util.check_parameters(
+        prompts, image_prompts, image_size, class_cond=class_cond, timestep_respacing=timestep_respacing,
+        skip_timesteps=skip_timesteps, save_frequency=save_frequency, sample_steps=sample_steps,
+        height_offset=height_offset, width_offset=width_offset, init_image=init_image)
     fast = timestep_respacing is None
     if num_cutouts is None:
         num_cutouts = FAST_NUM_CUTOUTS if fast else LEGACY_NUM_CUTOUTS
@@ -107,7 +111,7 @@ def clip_guided_diffusion(
 
     weights = th.tensor(weights_list, device=device)
     if weights.sum().abs() < 1e-3:  # smart :)
-        raise RuntimeError('The weights must not sum to 0.')
+        raise script_util.ConfigError('The prompt weights must not sum to 0.')
     weights /= weights.sum().abs()
 
     make_cutouts = clip_util.MakeCutouts(cut_size=clip_size, num_cutouts=num_cutouts,
@@ -387,7 +391,10 @@ def main():
         sample_steps=args.sample_steps,
         guidance_rate=args.guidance_rate,
     )
-    results = list(cgd_generator)
+    try:
+        results = list(cgd_generator)
+    except script_util.ConfigError as error:
+        p.error(str(error))
 
     # Create GIF and/or video output if requested
     # Only delete frames after all outputs are created
