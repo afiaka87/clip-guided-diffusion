@@ -405,6 +405,11 @@ class TestFastSampler(unittest.TestCase):
         # 16 bit weights set the tolerance, as the two paths round in a different order.
         self.assertLess((gradients[0] - gradients[1]).abs().max() / gradients[0].abs().max(), 0.01)
 
+    def test_perceptual_init_loss_runs(self):
+        results = self.generate(image_size=64, init_image="images/32K_HUHD_Mushroom.png", init_scale=1000, sample_steps=6)
+        self.assertTrue(results[-1][1].endswith(".png"))
+        self.assertTrue(os.path.isfile(script_util.download_vgg16()))
+
     def test_batch_yields_distinct_images(self):
         results = self.generate(image_size=64, sample_steps=6, batch_size=2)
         first, second = [path for batch_idx, path in results if path.endswith("0005.png")]

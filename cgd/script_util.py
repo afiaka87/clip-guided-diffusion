@@ -18,6 +18,7 @@ from guided_diffusion.script_util import create_model_and_diffusion, model_and_d
 
 CACHE_PATH = os.path.expanduser("~/.cache/clip-guided-diffusion")
 NUM_TRAINING_TIMESTEPS = 1000  # Every checkpoint was trained on this schedule length.
+VGG16_URL = "https://download.pytorch.org/models/vgg16-397923af.pth"
 
 
 class ConfigError(ValueError):
@@ -194,6 +195,15 @@ def download(url: str, filename: str, root: str = CACHE_PATH, max_retries: int =
                 raise RuntimeError(f"Download failed after {max_retries} attempts: {e}") from e
 
     return str(download_target)
+
+
+def download_vgg16() -> str:
+    """Put the weights LPIPS needs where torch hub looks for them.
+
+    LPIPS would fetch them itself, but torch hub reads without a timeout, so a
+    connection that stalls near the end of the file hangs the run forever.
+    """
+    return download(VGG16_URL, os.path.basename(VGG16_URL), os.path.join(th.hub.get_dir(), "checkpoints"))
 
 
 def download_guided_diffusion(image_size: int, class_cond: bool, checkpoints_dir: str = CACHE_PATH) -> str:

@@ -161,6 +161,7 @@ def clip_guided_diffusion(
     # This is initialized lazily as it can use a bit of VRAM
     if init_tensor is not None and init_scale != 0:
         import lpips
+        script_util.download_vgg16()
         lpips_vgg = lpips.LPIPS(net='vgg').to(device)
     current_timestep = None
 
