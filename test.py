@@ -405,6 +405,19 @@ class TestOutOfMemory(unittest.TestCase):
         th.cuda.empty_cache()
 
 
+class TestParsePrompt(unittest.TestCase):
+    def test_a_colon_in_the_text_is_not_a_weight(self):
+        self.assertEqual(script_util.parse_prompt("a sign that says: hello"), ("a sign that says: hello", 1.0))
+
+    def test_urls_keep_their_colons(self):
+        url = "https://example.com:8080/cat.png"
+        self.assertEqual(script_util.parse_prompt(url), (url, 1.0))
+        self.assertEqual(script_util.parse_prompt(f"{url}:0.5"), (url, 0.5))
+
+    def test_non_finite_weights_are_text(self):
+        self.assertEqual(script_util.parse_prompt("cat:nan"), ("cat:nan", 1.0))
+
+
 class TestCheckParameters(unittest.TestCase):
     def assertRejected(self, message, prompts=("cat",), image_prompts=(), image_size=128, **kwargs):
         with self.assertRaisesRegex(script_util.ConfigError, message):

@@ -1,4 +1,5 @@
 import io
+import math
 import os
 import re
 import shutil
@@ -69,14 +70,14 @@ def check_parameters(
             raise ConfigError(f"No such image: {image}")
 
 
-def parse_prompt(prompt):  # parse a single prompt in the form "<text||img_url>:<weight>"
-    if prompt.startswith('http://') or prompt.startswith('https://'):
-        vals = prompt.rsplit(':', 2)  # theres two colons, so we grab the 2nd
-        vals = [vals[0] + ':' + vals[1], *vals[2:]]
-    else:
-        vals = prompt.rsplit(':', 1)  # grab weight after colon
-    vals = vals + ['', '1'][len(vals):]  # if no weight, use 1
-    return vals[0], float(vals[1])  # return text, weight
+def parse_prompt(prompt: str):
+    """Split "<text or image>:<weight>". The weight is optional, and defaults to 1."""
+    text, _, weight = prompt.rpartition(':')
+    try:
+        weight = float(weight)
+    except ValueError:  # That colon was part of the prompt or URL, not a weight.
+        return prompt, 1.0
+    return (text, weight) if math.isfinite(weight) else (prompt, 1.0)
 
 
 def fetch(url_or_path):
