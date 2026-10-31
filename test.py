@@ -396,6 +396,15 @@ class TestFastSampler(unittest.TestCase):
         self.assertEqual(sorted(batch_idx for batch_idx, _ in results[-3:]), [0, 1, 2])
 
 
+class TestOutOfMemory(unittest.TestCase):
+    def test_out_of_memory_raises_instead_of_ending_the_run_early(self):
+        with tempfile.TemporaryDirectory() as prefix:
+            with self.assertRaises(th.cuda.OutOfMemoryError):
+                list(clip_guided_diffusion(prompts=["Loose seal."], image_size=64, batch_size=4096,
+                                           prefix_path=prefix, save_frequency=1, progress=False))
+        th.cuda.empty_cache()
+
+
 class TestCheckParameters(unittest.TestCase):
     def assertRejected(self, message, prompts=("cat",), image_prompts=(), image_size=128, **kwargs):
         with self.assertRaisesRegex(script_util.ConfigError, message):
@@ -475,6 +484,12 @@ class TestCommandLine(unittest.TestCase):
         result = self.run_cgd("Loose seal.", *self.OPTIONS, "-dir", "a/b/c")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertTrue((self.cwd / "a/b/c/Loose_seal/00/0005.png").exists())
+
+    def test_out_of_memory_fails_the_process_with_advice(self):
+        result = self.run_cgd("Loose seal.", *self.OPTIONS, "-bs", "4096")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Ran out of GPU memory", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
 
 
 class TestLegacySampler(unittest.TestCase):

@@ -267,22 +267,10 @@ def clip_guided_diffusion(
             progress=progress,
         )
 
-    try:
-        for step, sample in enumerate(fast_samples() if fast else legacy_samples()):
-            if step % save_frequency == 0 or sample["final"]:
-                for batch_idx, image_tensor in enumerate(sample["pred_xstart"]):
-                    yield batch_idx, script_util.log_image(image_tensor, prefix_path, prompts, step, batch_idx)
-
-    except (RuntimeError, KeyboardInterrupt) as runtime_ex:
-        if "CUDA out of memory" in str(runtime_ex):
-            print(f"CUDA OOM error occurred.")
-            print(
-                f"Try lowering --image_size/-size, --batch_size/-bs, --num_cutouts/-cutn")
-            print(
-                f"--clip_model/-clip (currently {clip_model_name}) can have a large impact on VRAM usage.")
-            print(f"'RN50' will use the least VRAM. 'ViT-B/32' the second least and is good for its memory/runtime constraints.")
-        else:
-            raise runtime_ex
+    for step, sample in enumerate(fast_samples() if fast else legacy_samples()):
+        if step % save_frequency == 0 or sample["final"]:
+            for batch_idx, image_tensor in enumerate(sample["pred_xstart"]):
+                yield batch_idx, script_util.log_image(image_tensor, prefix_path, prompts, step, batch_idx)
 
 
 def main():
@@ -395,6 +383,9 @@ def main():
         results = list(cgd_generator)
     except script_util.ConfigError as error:
         p.error(str(error))
+    except th.cuda.OutOfMemoryError:
+        p.exit(1, f"Ran out of GPU memory. Try lowering --image_size/-size, --batch_size/-bs or --num_cutouts/-cutn.\n"
+                  f"--clip_model/-clip (currently {args.clip_model}) has a large impact on VRAM: RN50 uses the least, ViT-B/32 the second least.\n")
 
     # Create GIF and/or video output if requested
     # Only delete frames after all outputs are created
