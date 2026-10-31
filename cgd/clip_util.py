@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from functools import lru_cache
 import os
 
@@ -44,9 +45,30 @@ def download_clip_model(model_name: str) -> str:
 
 CLIP_NORMALIZE = tvt.Normalize(mean=[0.48145466, 0.4578275, 0.40821073], std=[0.26862954, 0.26130258, 0.27577711])
 
+_INIT_FUNCTIONS = ("normal_", "uniform_", "constant_", "kaiming_uniform_", "xavier_uniform_", "xavier_normal_")
+
+
+@contextmanager
+def skip_weight_init():
+    """Skip random init while building a model the checkpoint will overwrite anyway.
+
+    The `clip` library initialises every parameter before loading the real ones, which
+    makes up most of its load time.
+    """
+    originals = {name: getattr(th.nn.init, name) for name in _INIT_FUNCTIONS}
+    for name in _INIT_FUNCTIONS:
+        setattr(th.nn.init, name, lambda tensor, *args, **kwargs: tensor)
+    try:
+        yield
+    finally:
+        for name, function in originals.items():
+            setattr(th.nn.init, name, function)
+
+
 @lru_cache(maxsize=1)
 def load_clip(model_name='ViT-B/32', device="cpu"):
-    print(f"Loading clip model\t{model_name}\ton device\t{device}.")
+    if "cuda" not in device and device != "cpu":
+        raise ValueError("Invalid or unspecified device: {}".format(device))
 
     # Use our robust download function for known models
     if model_name in CLIP_MODEL_URLS:
@@ -55,18 +77,12 @@ def load_clip(model_name='ViT-B/32', device="cpu"):
         # Fall back to clip library's download for unknown models
         model_path = model_name
 
-    if device == "cpu":
-        clip_model = clip.load(model_path, jit=False, device=device)[
-            0].eval().to(device=device).float()
-        clip_size = clip_model.visual.input_resolution
-        return clip_model, clip_size
-    elif "cuda" in device:
-        clip_model = clip.load(model_path, jit=False, device=device)[
-            0].eval().requires_grad_(False).to(device)
-        clip_size = clip_model.visual.input_resolution
-        return clip_model, clip_size
-    else:
-        raise ValueError("Invalid or unspecified device: {}".format(device))
+    # Building CLIP draws random numbers. Fork the stream so a seed gives the same
+    # image whether or not this call was a cache hit.
+    with th.random.fork_rng(devices=[]), skip_weight_init():
+        clip_model = clip.load(model_path, jit=False, device=device)[0]
+    clip_model = clip_model.eval().requires_grad_(False)
+    return clip_model, clip_model.visual.input_resolution
 
 
 def imagenet_top_n(text_encodes, device: str = 'cuda', n: int = len(IMAGENET_CLASSES), clip_model_name: str = "ViT-B/32"):

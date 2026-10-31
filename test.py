@@ -281,3 +281,15 @@ class TestClipUtil(unittest.TestCase):
         result_encode, result_weight = clip_util.encode_text_prompt(clip_model_name=clip_model_name, txt=text, weight=weight, device=device)
         self.assertEqual(str(result_encode.device), device)
         self.assertEqual(result_weight, weight)
+
+
+class TestSkipWeightInit(unittest.TestCase):
+    def test_loading_clip_leaves_the_random_stream_and_init_functions_alone(self):
+        init_functions = {name: getattr(th.nn.init, name) for name in clip_util._INIT_FUNCTIONS}
+        th.manual_seed(0)
+        expected = th.rand(4)
+        th.manual_seed(0)
+        clip_util.load_clip.__wrapped__("RN50", "cpu")
+        self.assertTrue(th.equal(th.rand(4), expected))
+        for name, function in init_functions.items():
+            self.assertIs(getattr(th.nn.init, name), function)

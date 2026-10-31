@@ -2,9 +2,7 @@ import argparse
 import glob
 from pathlib import Path
 
-import lpips
 import torch as th
-import wandb
 from PIL import Image
 import torchvision.transforms as tvt
 
@@ -63,7 +61,9 @@ def clip_guided_diffusion(
     wandb_run = None
     if wandb_project is not None:
         # just use local vars for config
-        wandb_run = wandb.init(project=wandb_project, entity=wandb_entity, config=locals())
+        wandb_config = dict(locals())
+        import wandb
+        wandb_run = wandb.init(project=wandb_project, entity=wandb_entity, config=wandb_config)
     else:
         print(f"--wandb_project not specified. Skipping W&B integration.")
 
@@ -145,6 +145,7 @@ def clip_guided_diffusion(
 
     # This is initialized lazily as it can use a bit of VRAM
     if init_tensor is not None and init_scale != 0:
+        import lpips
         lpips_vgg = lpips.LPIPS(net='vgg').to(device)
     current_timestep = None
 

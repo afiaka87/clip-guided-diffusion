@@ -2,6 +2,7 @@ import glob
 import io
 import os
 import re
+import shutil
 import time
 from functools import lru_cache
 from pathlib import Path
@@ -93,12 +94,10 @@ def clean_and_combine_prompts(base_path, txts, batch_idx, max_length=255) -> str
 def log_image(image: th.Tensor, base_path: str, txts: list, current_step: int, batch_idx: int) -> str:
     dirname = clean_and_combine_prompts(base_path, txts, batch_idx)
     os.makedirs(dirname, exist_ok=True)
-    stem = f"{current_step:04}"
-    filename = os.path.join(dirname, f'{stem}.png')
-    pil_image = tvf.to_pil_image(image.add(1).div(2).clamp(0, 1))
-    pil_image.save(os.path.join(os.getcwd(), f'current.png'))
-    pil_image.save(filename)
-    return str(filename)
+    filename = os.path.join(dirname, f'{current_step:04}.png')
+    tvf.to_pil_image(image.add(1).div(2).clamp(0, 1)).save(filename)
+    shutil.copyfile(filename, os.path.join(os.getcwd(), 'current.png'))
+    return filename
 
 
 def create_gif_ffmpeg(base, prompts, batch_idx, fps=10, delete_frames=False):
@@ -313,12 +312,15 @@ def load_guided_diffusion(
         "noise_schedule": noise_schedule,
         "dropout": dropout,
     })
-    model, diffusion = create_model_and_diffusion(**model_config)
-    model.load_state_dict(th.load(checkpoint_path, map_location='cpu'))
-    model.requires_grad_(False).eval().to(device)
-    for name, param in model.named_parameters():
-        if "qkv" in name or "norm" in name or "proj" in name:
-            param.requires_grad_()
+    # Build on the meta device: random-initialising 400M+ parameters only to
+    # overwrite them is the slowest part of startup. mmap + assign then adopts
+    # the checkpoint's tensors without an extra copy.
+    with th.device('meta'):
+        model, diffusion = create_model_and_diffusion(**model_config)
+    state_dict = th.load(checkpoint_path, map_location='cpu', mmap=True, weights_only=True)
+    model.load_state_dict(state_dict, assign=True)
+    model.requires_grad_(False).eval()
+    # Convert before moving so the 32-bit weights never occupy VRAM.
     if model_config["use_fp16"]:
         model.convert_to_fp16()
     return model.to(device), diffusion
