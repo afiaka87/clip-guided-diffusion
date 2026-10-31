@@ -120,7 +120,8 @@ def clip_guided_diffusion(
     # Load initial image (if provided)
     init_tensor = None
     if init_image:
-        pil_image = Image.open(script_util.fetch(init_image)).convert('RGB').resize((image_size, image_size))
+        pil_image = Image.open(script_util.fetch(init_image)).convert('RGB')
+        pil_image = pil_image.resize((image_size + width_offset, image_size + height_offset))
         init_tensor = tvt.ToTensor()(pil_image)
         init_tensor = init_tensor.to(device).unsqueeze(0).mul(2).sub(1)
 
@@ -146,6 +147,11 @@ def clip_guided_diffusion(
         use_fp16=(not fp32_diffusion),
         device=device,
     )
+
+    # An init image only has an effect if diffusion starts partway down the schedule.
+    if init_tensor is not None and skip_timesteps == 0:
+        skip_timesteps = diffusion.num_timesteps // 2
+        status(f"Skipping {skip_timesteps} timesteps to blend in the init image. Set --skip_timesteps to change this.")
 
     # This is initialized lazily as it can use a bit of VRAM
     if init_tensor is not None and init_scale != 0:
@@ -290,7 +296,7 @@ def main():
     p.add_argument("--init_scale", "-is", type=float, default=0,
                    help="(optional) Perceptual loss scale for init image. ")
     p.add_argument("--skip_timesteps", "-skip", type=int, default=0,
-                   help="Number of timesteps to blend image for. CLIP guidance occurs after this.")
+                   help="How much of the schedule to skip with an init image. Higher stays closer to it. 0 skips half.")
     p.add_argument("--prefix", "-dir", default="outputs",
                    type=Path, help="output directory")
     p.add_argument("--checkpoints_dir", "-ckpts", default=script_util.CACHE_PATH,

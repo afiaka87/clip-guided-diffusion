@@ -391,6 +391,15 @@ class TestFastSampler(unittest.TestCase):
         results = self.generate(image_size=64, sample_steps=6, skip_timesteps=500, save_frequency=1)
         self.assertEqual(len(results), 6)
 
+    def test_init_image_without_skip_timesteps_starts_halfway(self):
+        results = self.generate(image_size=64, init_image="images/photon.png", save_frequency=1)
+        self.assertLess(len(results), 30)
+        self.assertGreater(len(results), 5)
+
+    def test_init_image_follows_the_requested_shape(self):
+        results = self.generate(image_size=64, init_image="images/photon.png", sample_steps=6, width_offset=32)
+        self.assertEqual(Image.open(results[-1][1]).size, (96, 64))
+
     def test_batch_with_several_prompts_guides_every_image_with_every_prompt(self):
         results = self.generate(prompts=["a red fox", "a yellow lemon:0.5"], image_size=64, sample_steps=8, batch_size=3)
         self.assertEqual(sorted(batch_idx for batch_idx, _ in results[-3:]), [0, 1, 2])
