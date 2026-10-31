@@ -299,6 +299,20 @@ class TestMakeCutouts(unittest.TestCase):
         self.assertEqual(cutouts.shape, (32, 3, 64, 64))
         self.assertGreater(cutouts.mean(dim=(1, 2, 3)).max().item(), 0.5)
 
+    def test_pooling_matches_adaptive_avg_pool2d(self):
+        for side in (44, 64, 89, 128, 224, 256, 301, 512):
+            image = th.rand(2, 3, side, side)
+            pooled = modules.adaptive_avg_pool(image, 224)
+            self.assertLess((pooled - tf.adaptive_avg_pool2d(image, 224)).abs().max().item(), 1e-5)
+
+    @unittest.skipUnless(th.cuda.is_available(), "The rounding differences come from the CUDA backward pass.")
+    def test_pooling_gradient_is_reproducible(self):
+        image = th.rand(4, 3, 128, 128, device="cuda").requires_grad_()
+        direction = th.randn(4, 3, 224, 224, device="cuda")
+        gradients = [th.autograd.grad((modules.adaptive_avg_pool(image, 224) * direction).sum(), image)[0]
+                     for _ in range(10)]
+        self.assertEqual(len({gradient.cpu().numpy().tobytes() for gradient in gradients}), 1)
+
 
 class TestNoiseLevels(unittest.TestCase):
     def setUp(self):
@@ -367,11 +381,12 @@ class TestFastSampler(unittest.TestCase):
         self.assertGreater(self.clip_similarity(image_path, self.PROMPT),
                            self.clip_similarity(image_path, "a bowl of ramen on a wooden table"))
 
-    def test_same_seed_reproduces_the_image(self):
-        first = self.generate(image_size=64, sample_steps=6, seed=3, prefix_path=f"{self.prefix}/a")[-1][1]
-        second = self.generate(image_size=64, sample_steps=6, seed=3, prefix_path=f"{self.prefix}/b")[-1][1]
-        difference = tvf.to_tensor(Image.open(first)) - tvf.to_tensor(Image.open(second))
-        self.assertLess(difference.abs().max().item(), 2 / 255)
+    def test_same_seed_reproduces_the_image_exactly(self):
+        for name, options in (("fast", dict(sample_steps=12)), ("original", dict(timestep_respacing="ddim10"))):
+            with self.subTest(sampler=name):
+                first = self.generate(image_size=128, seed=3, prefix_path=f"{self.prefix}/{name}a", **options)[-1][1]
+                second = self.generate(image_size=128, seed=3, prefix_path=f"{self.prefix}/{name}b", **options)[-1][1]
+                self.assertEqual(Path(first).read_bytes(), Path(second).read_bytes())
 
     def test_batch_yields_distinct_images(self):
         results = self.generate(image_size=64, sample_steps=6, batch_size=2)

@@ -1,6 +1,24 @@
 import torch as th
-import torch.nn.functional as tf
 import torchvision.transforms as tvt
+
+
+def adaptive_avg_pool(input: th.Tensor, size: int) -> th.Tensor:
+    """Square adaptive average pooling with a reproducible gradient.
+
+    Same result as tf.adaptive_avg_pool2d, but written as a weight matrix. That
+    function's CUDA backward pass sums into shared pixels with atomic adds in no
+    fixed order, so the same inputs give gradients that differ by rounding error,
+    and the guided sampler amplifies that into a visibly different image.
+    """
+    side = input.shape[-1]
+    positions = th.arange(side, device=input.device)
+    bins = th.arange(size, device=input.device)
+    starts = bins * side // size
+    ends = -(-(bins + 1) * side // size)  # Ceiling division.
+    in_bin = (positions >= starts[:, None]) & (positions < ends[:, None])
+    weights = in_bin.to(input.dtype) / (ends - starts)[:, None]
+    return weights @ input @ weights.T
+
 
 class MakeCutouts(th.nn.Module):
     def __init__(self, cut_size: int, num_cutouts: int, cutout_size_power: float = 1.0, use_augs: bool = False,
@@ -58,7 +76,6 @@ class MakeCutouts(th.nn.Module):
         for offsetx, offsety, size in self._generate_coords(side_x, side_y, self.distinct_cutouts(side_x, side_y)):
             cutout = input[:, :, offsety:offsety + size, offsetx:offsetx + size]
             cutout = self.augs(cutout)
-            cutout = tf.adaptive_avg_pool2d(cutout, self.cut_size)
-            cutouts.append(cutout)
+            cutouts.append(adaptive_avg_pool(cutout, self.cut_size))
 
         return th.cat(cutouts)
