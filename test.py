@@ -1,6 +1,9 @@
 from clip.model import ModifiedResNet, VisionTransformer
 import itertools
 import os
+import shutil
+import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -8,11 +11,16 @@ from pathlib import Path
 from cgd import script_util
 from cgd import clip_util
 from cgd import losses
+from cgd import sampling
 
+import numpy as np
 import torch as th
+import torchvision.transforms.functional as tvf
 from cgd import modules
 from cgd.cgd import clip_guided_diffusion
+from data.imagenet1000_clsidx_to_labels import IMAGENET_CLASSES
 from guided_diffusion import respace
+from PIL import Image
 from torch.nn import functional as tf
 
 
@@ -129,13 +137,6 @@ class TestCGD(unittest.TestCase):
                                         num_cutouts=1, clip_model_name="RN50", prefix_path=self.test_dir_path)
         first_yielded_sample = list(itertools.islice(samples, 1))[0]
         self.assertIsNotNone(first_yielded_sample)
-
-    def test_cgd_init_fails_with_default_params(self):
-        try:
-            samples = clip_guided_diffusion(prompts=["Loose seal."], init_image='images/photon.png',
-                                            skip_timesteps=0, image_size=64, num_cutouts=1, clip_model_name="RN50", prefix_path=self.test_dir_path)
-        except Exception as assertion_exception:
-            self.assertEquals(assertion_exception.__class__, ValueError)
 
     def test_cgd_init_succeeds_with_skip_timesteps(self):
         samples = clip_guided_diffusion(prompts=["Loose seal."], init_image='images/photon.png',
@@ -299,6 +300,102 @@ class TestMakeCutouts(unittest.TestCase):
         self.assertGreater(cutouts.mean(dim=(1, 2, 3)).max().item(), 0.5)
 
 
+class TestNoiseLevels(unittest.TestCase):
+    def setUp(self):
+        self.alphas_cumprod = np.cumprod(1 - np.linspace(1e-4, 0.02, 1000))
+        self.levels = sampling.NoiseLevels(self.alphas_cumprod)
+
+    def test_alpha_sigma_matches_the_table_at_integer_timesteps(self):
+        for t in (0, 137, 999):
+            alpha, sigma = self.levels.alpha_sigma(t)
+            self.assertAlmostEqual(alpha ** 2, self.alphas_cumprod[t], places=9)
+            self.assertAlmostEqual(alpha ** 2 + sigma ** 2, 1.0, places=9)
+
+    def test_timesteps_are_descending_and_uniform_in_log_snr(self):
+        ts = self.levels.timesteps(30)
+        self.assertEqual(len(ts), 31)
+        self.assertEqual(ts[0], 999)
+        self.assertEqual(ts[-1], 0.0)
+        self.assertTrue(all(a > b for a, b in zip(ts, ts[1:])))
+        log_snr = [np.log(a / s) for a, s in map(self.levels.alpha_sigma, ts)]
+        spacing = np.diff(log_snr)
+        self.assertLess(spacing.std() / spacing.mean(), 0.01)
+
+    def test_start_joins_the_full_schedule(self):
+        full = self.levels.timesteps(30)
+        ts = self.levels.timesteps(30, start=400)
+        self.assertEqual(ts[0], 400)
+        self.assertEqual(ts[1:], [t for t in full if t < 400])
+        self.assertTrue(all(a > b for a, b in zip(ts, ts[1:])))
+
+
+class TestFastSampler(unittest.TestCase):
+    PROMPT = "a photograph of a red fox in the snow"
+
+    def setUp(self):
+        self.test_dir = tempfile.TemporaryDirectory()
+        self.prefix = self.test_dir.name
+        self.addCleanup(self.test_dir.cleanup)
+
+    def generate(self, **kwargs):
+        options = dict(prompts=[self.PROMPT], prefix_path=self.prefix, save_frequency=1000,
+                       progress=False, device="cuda")
+        options.update(kwargs)
+        return list(clip_guided_diffusion(**options))
+
+    def clip_similarity(self, image_path, text):
+        clip_model, clip_size = clip_util.load_clip("ViT-B/32", "cuda")
+        image = tvf.to_tensor(Image.open(image_path).convert("RGB")).unsqueeze(0).cuda()
+        image = tf.interpolate(image, size=clip_size, mode="bicubic", align_corners=False).clamp(0, 1)
+        with th.no_grad():
+            image_embed = clip_model.encode_image(clip_util.CLIP_NORMALIZE(image)).float()
+        text_embed, _ = clip_util.encode_text_prompt(text, 1.0, "ViT-B/32", "cuda")
+        return tf.cosine_similarity(image_embed, text_embed).item()
+
+    def test_imagenet_top_n_selects_the_matching_class(self):
+        text_embed, _ = clip_util.encode_text_prompt(self.PROMPT, 1.0, "ViT-B/32", "cuda")
+        top = clip_util.imagenet_top_n(text_embed, device="cuda", n=5, clip_model_name="ViT-B/32")
+        self.assertIn("red fox", [IMAGENET_CLASSES[i] for i in top.tolist()])
+
+    def test_generates_the_prompt_without_blowing_out(self):
+        image_path = self.generate(image_size=128)[-1][1]
+        self.assertTrue(image_path.endswith("0029.png"))
+        pixels = tvf.to_tensor(Image.open(image_path).convert("RGB"))
+        clipped = ((pixels <= 1 / 255) | (pixels >= 254 / 255)).float().mean().item()
+        self.assertLess(clipped, 0.25)
+        self.assertGreater(pixels.std().item(), 0.1)
+        self.assertGreater(self.clip_similarity(image_path, self.PROMPT),
+                           self.clip_similarity(image_path, "a bowl of ramen on a wooden table"))
+
+    def test_same_seed_reproduces_the_image(self):
+        first = self.generate(image_size=64, sample_steps=6, seed=3, prefix_path=f"{self.prefix}/a")[-1][1]
+        second = self.generate(image_size=64, sample_steps=6, seed=3, prefix_path=f"{self.prefix}/b")[-1][1]
+        difference = tvf.to_tensor(Image.open(first)) - tvf.to_tensor(Image.open(second))
+        self.assertLess(difference.abs().max().item(), 2 / 255)
+
+    def test_batch_yields_distinct_images(self):
+        results = self.generate(image_size=64, sample_steps=6, batch_size=2)
+        first, second = [path for batch_idx, path in results if path.endswith("0005.png")]
+        difference = tvf.to_tensor(Image.open(first)) - tvf.to_tensor(Image.open(second))
+        self.assertGreater(difference.abs().mean().item(), 0.01)
+
+    def test_init_image_shortens_the_schedule_and_saves_the_final_frame(self):
+        results = self.generate(image_size=64, init_image="images/photon.png", skip_timesteps=700, save_frequency=1)
+        self.assertLess(len(results), 30)
+        result = tvf.to_tensor(Image.open(results[-1][1]).convert("RGB"))
+        init = tvf.to_tensor(Image.open("images/photon.png").convert("RGB").resize((64, 64)))
+        noise = th.rand_like(init)
+        self.assertLess((result - init).abs().mean(), (noise - init).abs().mean())
+
+    def test_skip_timesteps_without_an_init_image_runs_the_whole_schedule(self):
+        results = self.generate(image_size=64, sample_steps=6, skip_timesteps=500, save_frequency=1)
+        self.assertEqual(len(results), 6)
+
+    def test_batch_with_several_prompts_guides_every_image_with_every_prompt(self):
+        results = self.generate(prompts=["a red fox", "a yellow lemon:0.5"], image_size=64, sample_steps=8, batch_size=3)
+        self.assertEqual(sorted(batch_idx for batch_idx, _ in results[-3:]), [0, 1, 2])
+
+
 class TestSkipWeightInit(unittest.TestCase):
     def test_loading_clip_leaves_the_random_stream_and_init_functions_alone(self):
         init_functions = {name: getattr(th.nn.init, name) for name in clip_util._INIT_FUNCTIONS}
@@ -309,6 +406,15 @@ class TestSkipWeightInit(unittest.TestCase):
         self.assertTrue(th.equal(th.rand(4), expected))
         for name, function in init_functions.items():
             self.assertIs(getattr(th.nn.init, name), function)
+
+
+class TestLegacySampler(unittest.TestCase):
+    def test_respacing_selects_the_original_sampler_and_saves_the_final_frame_after_skipping(self):
+        with tempfile.TemporaryDirectory() as prefix:
+            results = list(clip_guided_diffusion(
+                prompts=["Loose seal."], image_size=64, timestep_respacing="25", skip_timesteps=5,
+                clip_model_name="RN50", prefix_path=prefix, save_frequency=1000, progress=False))
+            self.assertEqual(Path(results[-1][1]).name, "0019.png")
 
 
 class TestCheckpointSchedule(unittest.TestCase):

@@ -3,22 +3,27 @@ import glob
 from pathlib import Path
 
 import torch as th
+import torch.nn.functional as tf
 from PIL import Image
 import torchvision.transforms as tvt
 
 from tqdm.auto import tqdm
 from cgd import losses
 from cgd import clip_util
+from cgd import sampling
 from cgd import script_util
 
+FAST_NUM_CUTOUTS = 4
+FAST_MIN_CUT_FRACTION = 0.7  # Cutouts span 70-100% of the frame.
+LEGACY_NUM_CUTOUTS = 16
+DEFAULT_SAVE_FREQUENCY = 10
 
-# Define necessary functions
 
 def clip_guided_diffusion(
     image_size: int = 128,
-    num_cutouts: int = 16,
-    prompts: "list[str]" = [],
-    image_prompts: "list[str]" = [],
+    num_cutouts: int = None,
+    prompts: "list[str]" = (),
+    image_prompts: "list[str]" = (),
     clip_guidance_scale: int = 1000,
     tv_scale: float = 150,
     range_scale: float = 50,
@@ -28,28 +33,31 @@ def clip_guided_diffusion(
     init_image: Path = None,
     class_cond: bool = True,
     cutout_power: float = 1.0,
-    timestep_respacing: str = "1000",
+    timestep_respacing: str = None,  # Set this to use the original guided-diffusion sampler.
     seed: int = 0,
     skip_timesteps: int = 0,
     checkpoints_dir: str = script_util.CACHE_PATH,
     clip_model_name: str = "ViT-B/32",
     randomize_class: bool = True,
     prefix_path: Path = Path('./outputs'),
-    save_frequency: int = 25,
+    save_frequency: int = DEFAULT_SAVE_FREQUENCY,
     device: str = '',
     wandb_project: str = None,
     wandb_entity: str = None,
     use_augs: bool = False, # enables augmentation, mostly better for timesteps <= 100
-    use_magnitude: bool = False, # enables magnitude of the gradient
+    use_magnitude: bool = False, # clamps the gradient. Original sampler only: the fast one caps guidance itself.
     height_offset: int = 0,
     width_offset: int = 0,
     progress: bool = True,
+    sample_steps: int = sampling.DEFAULT_STEPS,
+    guidance_rate: float = sampling.DEFAULT_GUIDANCE_RATE,
 ):
+    fast = timestep_respacing is None
+    if num_cutouts is None:
+        num_cutouts = FAST_NUM_CUTOUTS if fast else LEGACY_NUM_CUTOUTS
+
     if len(device) == 0:
         device = 'cuda' if th.cuda.is_available() else 'cpu'
-        print(f"Using device {device}. You can specify a device manually with `--device/-dev`")
-    else:
-        print(f"Using device {device}")
     fp32_diffusion = (device == 'cpu')
 
     wandb_run = None
@@ -58,15 +66,18 @@ def clip_guided_diffusion(
         wandb_config = dict(locals())
         import wandb
         wandb_run = wandb.init(project=wandb_project, entity=wandb_entity, config=wandb_config)
-    else:
-        print(f"--wandb_project not specified. Skipping W&B integration.")
 
+    def status(message):
+        if progress:
+            tqdm.write(message)
+
+    status(f"Using device {device}")
     th.manual_seed(seed)
 
-    if use_magnitude == False and image_size == 64:
+    if not fast and use_magnitude == False and image_size == 64:
         use_magnitude = True
-        tqdm.write("Enabling magnitude for 64x64 checkpoints.")
-    
+        status("Enabling magnitude for 64x64 checkpoints.")
+
     use_saturation = sat_scale != 0
     Path(prefix_path).mkdir(parents=True, exist_ok=True)
     Path(checkpoints_dir).mkdir(parents=True, exist_ok=True)
@@ -98,9 +109,9 @@ def clip_guided_diffusion(
         raise RuntimeError('The weights must not sum to 0.')
     weights /= weights.sum().abs()
 
-    if use_augs: tqdm.write( f"Augmentations enabled." )
     make_cutouts = clip_util.MakeCutouts(cut_size=clip_size, num_cutouts=num_cutouts,
-                                         cutout_size_power=cutout_power, use_augs=use_augs)
+                                         cutout_size_power=cutout_power, use_augs=use_augs,
+                                         min_cut_fraction=FAST_MIN_CUT_FRACTION if fast else 1.0)
 
     # Load initial image (if provided)
     init_tensor = None
@@ -114,12 +125,20 @@ def clip_guided_diffusion(
     if class_cond:
         model_kwargs["y"] = th.zeros(
             [batch_size], device=device, dtype=th.long)
+        if fast:
+            # Let the U-Net do the heavy lifting by conditioning on the closest real class.
+            query = (weights[:, None] * tf.normalize(target_embeds, dim=-1)).sum(0, keepdim=True)
+            class_index = clip_util.imagenet_top_n(query, device=device, n=1, clip_model_name=clip_model_name)
+            model_kwargs["y"][:] = class_index
+            status(f"Conditioning on ImageNet class: {clip_util.IMAGENET_CLASSES[class_index.item()]}")
+
+    shape = (batch_size, 3, image_size + height_offset, image_size + width_offset)
 
     # Load guided diffusion
     gd_model, diffusion = script_util.load_guided_diffusion(
         checkpoint_path=diffusion_path,
         image_size=image_size, class_cond=class_cond,
-        timestep_respacing=timestep_respacing,
+        timestep_respacing="" if fast else timestep_respacing,
         use_fp16=(not fp32_diffusion),
         device=device,
     )
@@ -130,15 +149,15 @@ def clip_guided_diffusion(
         lpips_vgg = lpips.LPIPS(net='vgg').to(device)
     current_timestep = None
 
-    def cond_fn(x, t, out, y=None):
+    def guidance_loss(x, pred_xstart, fac):
+        """Scaled guidance losses for what CLIP sees: a blend of pred_xstart and x."""
         log = {}
-        fac = diffusion.sqrt_one_minus_alphas_cumprod[current_timestep]
         sigmas = 1 - fac
-        x_in = out["pred_xstart"] * fac + x * sigmas
+        x_in = pred_xstart * fac + x * sigmas
         if wandb_project is not None:
-            log[f'Generations - {timestep_respacing}'] = [
+            log[f'Generations - {timestep_respacing or sample_steps}'] = [
                 wandb.Image(x, caption=f"Noisy Sample"),
-                wandb.Image(out['pred_xstart'],
+                wandb.Image(pred_xstart,
                             caption=f"Denoised Prediction"),
                 wandb.Image(x_in, caption=f"Blended (what CLIP sees)"),
             ]
@@ -149,7 +168,7 @@ def clip_guided_diffusion(
         dists = losses.spherical_dist_loss(cutout_embeds.unsqueeze(2), target_embeds)
 
         clip_losses = dists.mul(weights).sum(2).mean(0)
-        range_losses = losses.range_loss(out["pred_xstart"])
+        range_losses = losses.range_loss(pred_xstart)
         tv_losses = losses.tv_loss(x_in)
 
         clip_losses = clip_losses.sum() * clip_guidance_scale
@@ -175,6 +194,20 @@ def clip_guided_diffusion(
             loss = loss + init_losses
 
         log['Total Loss'] = loss.item()
+        return loss, log
+
+    def report(log):
+        if wandb_project is not None:
+            wandb_run.log(log)
+
+    def fast_loss(x, pred_xstart, fac):
+        loss, log = guidance_loss(x, pred_xstart, fac)
+        report(log)
+        return loss
+
+    def cond_fn(x, t, out, y=None):
+        fac = diffusion.sqrt_one_minus_alphas_cumprod[current_timestep]
+        loss, log = guidance_loss(x, out["pred_xstart"], fac)
 
         final_loss = -th.autograd.grad(loss, x)[0]  # negative gradient
         if use_magnitude:
@@ -182,25 +215,22 @@ def clip_guided_diffusion(
             log["Magnitude"] = magnitude.item()
             final_loss = final_loss * magnitude.clamp(max=0.05) / magnitude
         log['Grad'] = final_loss.mean().item()
-        if progress:
-            tqdm.write(
-                "\t".join([f"{k}: {v:.3f}" for k, v in log.items() if "loss" in k.lower()]))
-        if wandb_project is not None:
-            wandb_run.log(log)
+        status("\t".join(f"{k}: {v:.3f}" for k, v in log.items() if "loss" in k.lower()))
+        report(log)
         return final_loss
 
-    # Choose between normal or DDIM
-    if timestep_respacing.startswith("ddim"):
-        diffusion_sample_loop = diffusion.ddim_sample_loop_progressive
-    else:
-        diffusion_sample_loop = diffusion.p_sample_loop_progressive
+    def legacy_samples():
+        nonlocal current_timestep
+        # Choose between normal or DDIM
+        if timestep_respacing.startswith("ddim"):
+            diffusion_sample_loop = diffusion.ddim_sample_loop_progressive
+        else:
+            diffusion_sample_loop = diffusion.p_sample_loop_progressive
 
-    # def denoised_fn(image): return image
-
-    try:
-        cgd_samples = diffusion_sample_loop(
+        current_timestep = diffusion.num_timesteps - 1 - skip_timesteps
+        for sample in diffusion_sample_loop(
             gd_model,
-            (batch_size, 3, image_size + height_offset, image_size + width_offset),
+            shape,
             clip_denoised=False,
             model_kwargs=model_kwargs,
             cond_fn=cond_fn,
@@ -209,18 +239,34 @@ def clip_guided_diffusion(
             init_image=init_tensor,
             randomize_class=randomize_class,
             cond_fn_with_grad=True,
-            # denoised_fn=denoised_fn,
+        ):
+            current_timestep -= 1
+            yield {**sample, "final": current_timestep == -1}
+
+    def fast_samples():
+        # Only an init image can start partway down the schedule, as it supplies the signal.
+        start_timestep = None
+        if init_tensor is not None:
+            start_timestep = diffusion.num_timesteps - 1 - skip_timesteps
+        return sampling.sample_loop_progressive(
+            gd_model,
+            diffusion,
+            shape,
+            loss_fn=fast_loss,
+            steps=sample_steps,
+            guidance_rate=guidance_rate,
+            init_image=init_tensor,
+            start_timestep=start_timestep,
+            model_kwargs=model_kwargs,
+            device=device,
+            progress=progress,
         )
 
-        # Gather generator for diffusion
-        current_timestep = diffusion.num_timesteps - 1
-        for step, sample in enumerate(cgd_samples):
-            current_timestep -= 1
-            if step % save_frequency == 0 or current_timestep == -1:
+    try:
+        for step, sample in enumerate(fast_samples() if fast else legacy_samples()):
+            if step % save_frequency == 0 or sample["final"]:
                 for batch_idx, image_tensor in enumerate(sample["pred_xstart"]):
                     yield batch_idx, script_util.log_image(image_tensor, prefix_path, prompts, step, batch_idx)
-                    # if wandb_project is not None: wandb.log({"image": wandb.Image(image_tensor, caption="|".join(prompts))})
-
 
     except (RuntimeError, KeyboardInterrupt) as runtime_ex:
         if "CUDA out of memory" in str(runtime_ex):
@@ -268,10 +314,14 @@ def main():
                    default=0, help="Random number seed")
     p.add_argument("--save_frequency", "-freq", type=int,
                    default=1, help="Save frequency")
-    p.add_argument("--timestep_respacing", "-respace", type=str,
-                   default="1000", help="Timestep respacing")
-    p.add_argument("--num_cutouts", "-cutn", type=int, default=16,
-                   help="Number of randomly cut patches to distort from diffusion.")
+    p.add_argument("--timestep_respacing", "-respace", type=str, default=None,
+                   help="Use the original guided-diffusion sampler with this respacing, e.g. 1000 or ddim50. Much slower.")
+    p.add_argument("--sample_steps", "-n", type=int, default=sampling.DEFAULT_STEPS,
+                   help="Model calls for the fast sampler. Ignored when --timestep_respacing is set.")
+    p.add_argument("--guidance_rate", "-rate", type=float, default=sampling.DEFAULT_GUIDANCE_RATE,
+                   help="Fast sampler guidance strength, as the most CLIP may move each step relative to the noise. Higher follows the prompt harder but saturates.")
+    p.add_argument("--num_cutouts", "-cutn", type=int, default=None,
+                   help=f"Number of randomly cut patches to distort from diffusion. Defaults to {FAST_NUM_CUTOUTS}, or {LEGACY_NUM_CUTOUTS} with --timestep_respacing.")
     p.add_argument("--cutout_power", "-cutpow", type=float,
                    default=1.0, help="Cutout size power")
     p.add_argument("--clip_model", "-clip", type=str, default="ViT-B/32",
@@ -340,6 +390,8 @@ def main():
         height_offset=args.height_offset,
         width_offset=args.width_offset,
         progress=not args.quiet,
+        sample_steps=args.sample_steps,
+        guidance_rate=args.guidance_rate,
     )
     list(enumerate(cgd_generator))  # iterate over generator
 

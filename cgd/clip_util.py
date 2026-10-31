@@ -1,6 +1,8 @@
 from contextlib import contextmanager
 from functools import lru_cache
 import os
+import re
+from pathlib import Path
 
 import clip
 import torch as th
@@ -85,22 +87,35 @@ def load_clip(model_name='ViT-B/32', device="cpu"):
     return clip_model, clip_model.visual.input_resolution
 
 
+def imagenet_text_features(clip_model_name: str = "ViT-B/32", device: str = "cpu") -> th.Tensor:
+    """Normalized CLIP text features for every ImageNet class, cached on disk."""
+    safe_name = re.sub(r"[^\w.-]", "-", clip_model_name)
+    cache_path = Path(script_util.CACHE_PATH) / f"imagenet_text_features_{safe_name}.pt"
+    if cache_path.is_file():
+        return th.load(cache_path, map_location=device, weights_only=True)
+
+    clip_model, _ = load_clip(clip_model_name, device)
+    labels = [f"a photo of a {img_cls}" for img_cls in IMAGENET_CLASSES]
+    tokens = clip.tokenize(labels, truncate=True).to(device)
+    with th.no_grad():
+        features = th.cat([clip_model.encode_text(chunk).float() for chunk in tokens.split(256)])
+    features = tf.normalize(features, dim=-1)
+
+    cache_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = cache_path.with_suffix(f".{os.getpid()}.tmp")
+    th.save(features.cpu(), tmp_path)
+    os.replace(tmp_path, cache_path)
+    return features
+
+
 def imagenet_top_n(text_encodes, device: str = 'cuda', n: int = len(IMAGENET_CLASSES), clip_model_name: str = "ViT-B/32"):
     """
     Returns the top n classes for a given clip model.
     """
-    clip_model, _ = load_clip(model_name=clip_model_name, device=device)
-    with th.no_grad():
-        engineered_pronmpts = [
-            f"an image of a {img_cls}" for img_cls in IMAGENET_CLASSES]
-        imagenet_lbl_tokens = clip.tokenize(engineered_pronmpts).to(device)
-        imagenet_features = clip_model.encode_text(imagenet_lbl_tokens).float()
-        imagenet_features /= imagenet_features.norm(dim=-1, keepdim=True)
-        prompt_features = text_encodes / \
-            text_encodes.norm(dim=-1, keepdim=True)
-        text_probs = (100.0 * prompt_features @
-                      imagenet_features.T).softmax(dim=-1)
-        return text_probs.topk(n, dim=-1, sorted=True).indices[0].to(device)
+    imagenet_features = imagenet_text_features(clip_model_name, device)
+    prompt_features = tf.normalize(text_encodes.detach(), dim=-1)
+    similarity = prompt_features @ imagenet_features.T
+    return similarity.topk(n, dim=-1, sorted=True).indices[0].to(device)
 
 
 def encode_image_prompt(image: str, weight: float, diffusion_size: int, num_cutouts, clip_model_name: str = "ViT-B/32", device: str = "cpu"):
