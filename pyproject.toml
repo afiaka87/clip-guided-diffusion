@@ -51,7 +51,7 @@ allow-direct-references = true
 packages = ["cgd", "data"]
 
 [tool.pytest.ini_options]
-python_files = ["test.py"]
+python_files = ["test.py", "test_*.py"]
 filterwarnings = ["ignore::UserWarning:clip", "ignore::DeprecationWarning"]
 
 [dependency-groups]
