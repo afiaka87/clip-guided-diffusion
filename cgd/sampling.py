@@ -20,8 +20,13 @@ that changes every step. This sampler reaches the same prompt fidelity in about
   and at low noise the gradient is mostly adversarial high frequency detail that
   the U-Net cleans up better on its own. Those steps also skip the U-Net
   backward pass, the single most expensive part of guidance.
+- Without a class label nothing brings the subject, so CLIP also has to set the
+  composition. That happens at high noise, so unconditional checkpoints are guided
+  from the very start, and need twice the steps for that not to overshoot. Neither
+  change helps alone, and this is still a little behind the original sampler.
 
-The defaults were tuned on 128px and validated on prompts held out from tuning.
+The defaults were tuned on 128px and validated on prompts held out from tuning, and
+the unconditional ones likewise on 256px.
 """
 import math
 
@@ -30,9 +35,11 @@ import torch as th
 from tqdm.auto import tqdm
 
 DEFAULT_STEPS = 30
+UNCOND_STEPS = 60
 DEFAULT_ETA = 0.5  # Fresh noise per step: 0 is an ODE, 1 is fully ancestral.
 DEFAULT_GUIDANCE_RATE = 0.08  # Max RMS of the guidance relative to the noise.
 GUIDANCE_WINDOW = (0.1, 0.8)  # Guide between these fractions of the schedule.
+UNCOND_GUIDANCE_WINDOW = (0.1, 1.0)
 X0_CLAMP = 1.2  # Bound on x0. Slightly loose so guidance can still move extremes.
 
 
@@ -84,6 +91,7 @@ def sample_loop_progressive(
     steps: int = DEFAULT_STEPS,
     eta: float = DEFAULT_ETA,
     guidance_rate: float = DEFAULT_GUIDANCE_RATE,
+    guidance_window: tuple = GUIDANCE_WINDOW,
     x0_clamp: float = X0_CLAMP,
     init_image: th.Tensor = None,
     start_timestep: float = None,
@@ -102,7 +110,7 @@ def sample_loop_progressive(
     ts = levels.timesteps(steps, start_timestep)
     scale_t = 1000.0 / levels.num_timesteps if diffusion.rescale_timesteps else 1.0
     last = levels.num_timesteps - 1
-    guide_from, guide_to = (bound * last for bound in GUIDANCE_WINDOW)
+    guide_from, guide_to = (bound * last for bound in guidance_window)
     guided_run = loss_fn is not None and guidance_rate > 0
 
     x = th.randn(shape, device=device)

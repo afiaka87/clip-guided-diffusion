@@ -53,9 +53,11 @@ def clip_guided_diffusion(
     height_offset: int = 0,
     width_offset: int = 0,
     progress: bool = True,
-    sample_steps: int = sampling.DEFAULT_STEPS,
+    sample_steps: int = None,
     guidance_rate: float = sampling.DEFAULT_GUIDANCE_RATE,
 ):
+    if sample_steps is None:
+        sample_steps = sampling.DEFAULT_STEPS if class_cond else sampling.UNCOND_STEPS
     script_util.check_parameters(
         prompts, image_prompts, image_size, class_cond=class_cond, timestep_respacing=timestep_respacing,
         skip_timesteps=skip_timesteps, save_frequency=save_frequency, sample_steps=sample_steps,
@@ -273,6 +275,7 @@ def clip_guided_diffusion(
             loss_fn=fast_loss,
             steps=sample_steps,
             guidance_rate=guidance_rate,
+            guidance_window=sampling.GUIDANCE_WINDOW if class_cond else sampling.UNCOND_GUIDANCE_WINDOW,
             init_image=init_tensor,
             start_timestep=start_timestep,
             model_kwargs=model_kwargs,
@@ -325,8 +328,8 @@ def main():
                    help=f"Save a frame every n steps. The final image is always saved. Defaults to {DEFAULT_SAVE_FREQUENCY}, or 1 with --save-as-gif/--save-as-video.")
     p.add_argument("--timestep_respacing", "-respace", type=str, default=None,
                    help="Use the original guided-diffusion sampler with this respacing, e.g. 1000 or ddim50. Much slower.")
-    p.add_argument("--sample_steps", "-n", type=int, default=sampling.DEFAULT_STEPS,
-                   help="Model calls for the fast sampler. Ignored when --timestep_respacing is set.")
+    p.add_argument("--sample_steps", "-n", type=int, default=None,
+                   help=f"Model calls for the fast sampler. Defaults to {sampling.DEFAULT_STEPS}, or {sampling.UNCOND_STEPS} with --uncond. Ignored when --timestep_respacing is set.")
     p.add_argument("--guidance_rate", "-rate", type=float, default=sampling.DEFAULT_GUIDANCE_RATE,
                    help="Fast sampler guidance strength, as the most CLIP may move each step relative to the noise. Higher follows the prompt harder but saturates.")
     p.add_argument("--num_cutouts", "-cutn", type=int, default=None,

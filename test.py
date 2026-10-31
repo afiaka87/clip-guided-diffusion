@@ -391,6 +391,9 @@ class TestFastSampler(unittest.TestCase):
     def test_512_runs_with_guidance(self):  # Needs gradient checkpointing to fit in 8 GB.
         self.assertTrue(self.generate(image_size=512, sample_steps=6)[-1][1].endswith("0005.png"))
 
+    def test_unconditional_checkpoints_get_their_own_defaults(self):
+        self.assertTrue(self.generate(image_size=256, class_cond=False)[-1][1].endswith("0059.png"))
+
     def test_gradient_checkpointing_keeps_the_gradient(self):
         checkpoint_path = script_util.download_guided_diffusion(image_size=64, class_cond=True)
         image = th.randn(1, 3, 64, 64, device="cuda")
