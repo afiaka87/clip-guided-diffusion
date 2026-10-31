@@ -97,7 +97,7 @@ DIFFUSION_LOOKUP = {
             },
         },
         512: {
-            "url": 'https://the-eye.eu/public/AI/models/512x512_diffusion_unconditional_ImageNet/512x512_diffusion_uncond_finetune_008100.pt',
+            "url": 'https://huggingface.co/lowlevelware/512x512_diffusion_unconditional_ImageNet/resolve/main/512x512_diffusion_uncond_finetune_008100.pt',
             "filename": '512x512_diffusion_uncond_finetune_008100.pt',
             "model_flags": {
                 'attention_resolutions': '32, 16, 8',
