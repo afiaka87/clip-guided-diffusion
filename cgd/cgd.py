@@ -165,11 +165,13 @@ def clip_guided_diffusion(
         sigmas = 1 - fac
         x_in = pred_xstart * fac + x * sigmas
         if wandb_project is not None:
+            def preview(images, caption):  # The first image of the batch, as wandb wants it.
+                return wandb.Image(images[0].detach().add(1).div(2).clamp(0, 1), caption=caption)
+
             log[f'Generations - {timestep_respacing or sample_steps}'] = [
-                wandb.Image(x, caption=f"Noisy Sample"),
-                wandb.Image(pred_xstart,
-                            caption=f"Denoised Prediction"),
-                wandb.Image(x_in, caption=f"Blended (what CLIP sees)"),
+                preview(x, "Noisy Sample"),
+                preview(pred_xstart, "Denoised Prediction"),
+                preview(x_in, "Blended (what CLIP sees)"),
             ]
 
         clip_in = clip_util.CLIP_NORMALIZE(make_cutouts(x_in.add(1).div(2)))

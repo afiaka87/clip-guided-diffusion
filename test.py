@@ -567,6 +567,11 @@ class TestCommandLine(unittest.TestCase):
         self.assertEqual(len(self.frames()), 6)
         self.assertIn("Saved outputs/Loose_seal/00/0005.png", result.stdout)
 
+    def test_wandb_logging_runs_offline(self):
+        result = self.run_cgd("Loose seal.", *self.OPTIONS, "-bs", "2", "-proj", "cgd_test",
+                              env={"WANDB_MODE": "offline", "WANDB_DIR": str(self.cwd)})
+        self.assertEqual(result.returncode, 0, result.stderr)
+
     def test_image_prompt_runs_are_named_after_the_image(self):
         image = self.repo / "images/photon.png"
         result = self.run_cgd("-imgs", f"{image}:2", *self.OPTIONS)
