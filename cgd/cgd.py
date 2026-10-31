@@ -1,3 +1,4 @@
+"""CLIP Guided Diffusion: generate images from text and image prompts."""
 import argparse
 import glob
 from pathlib import Path
@@ -284,15 +285,17 @@ def main():
     p = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
+    p.add_argument("prompt", nargs="?", default='',
+                   help="the prompt/s to reward, same format as --prompts")
     p.add_argument("--prompts", "-txts", type=str, default='',
                    help="the prompt/s to reward paired with weights. e.g. 'My text:0.5|Other text:-0.5' ")
     p.add_argument("--image_prompts", "-imgs", type=str, default='',
                    help="the image prompt/s to reward paired with weights. e.g. 'img1.png:0.5,img2.png:-0.5'")
-    p.add_argument("--image_size", "-size", type=int, default=128,
-                   help="Diffusion image size. Must be one of [64, 128, 256, 512].")
+    p.add_argument("--image_size", "-size", type=int, default=128, choices=(64, 128, 256, 512),
+                   help="Diffusion image size.")
     p.add_argument("--init_image", "-init", type=str, default='',
-                   help="Blend an image with diffusion for n steps")
-    p.add_argument("--init_scale", "-is", type=int, default=0,
+                   help="Start from this image instead of pure noise.")
+    p.add_argument("--init_scale", "-is", type=float, default=0,
                    help="(optional) Perceptual loss scale for init image. ")
     p.add_argument("--skip_timesteps", "-skip", type=int, default=0,
                    help="Number of timesteps to blend image for. CLIP guidance occurs after this.")
@@ -312,8 +315,8 @@ def main():
                    help="Controls how much saturation is allowed. Used for ddim. From @nshepperd.",)
     p.add_argument("--seed", "-seed", type=int,
                    default=0, help="Random number seed")
-    p.add_argument("--save_frequency", "-freq", type=int,
-                   default=1, help="Save frequency")
+    p.add_argument("--save_frequency", "-freq", type=int, default=None,
+                   help=f"Save a frame every n steps. The final image is always saved. Defaults to {DEFAULT_SAVE_FREQUENCY}, or 1 with --save-as-gif/--save-as-video.")
     p.add_argument("--timestep_respacing", "-respace", type=str, default=None,
                    help="Use the original guided-diffusion sampler with this respacing, e.g. 1000 or ddim50. Much slower.")
     p.add_argument("--sample_steps", "-n", type=int, default=sampling.DEFAULT_STEPS,
@@ -336,8 +339,6 @@ def main():
                    help='(optional) Name of W&B team/entity to log to.')
     p.add_argument('--height_offset', '-ht', default=0, type=int, help='Height offset for image')
     p.add_argument('--width_offset', '-wd', default=0, type=int, help='Width offset for image')
-    p.add_argument('--use_augs', '-augs', action='store_true', help="Uses augmentations from the `quick` clip guided diffusion notebook")
-    p.add_argument('--use_magnitude', '-mag', action='store_true', help="Uses magnitude of the gradient")
     p.add_argument('--quiet', '-q', action='store_true',
                    help='Suppress output.')
     p.add_argument('--save-as-gif', '-gif', action='store_true',
@@ -348,18 +349,13 @@ def main():
 
     _class_cond = not args.uncond
     prefix_path = args.prefix
+    make_animation = args.save_as_gif or args.save_as_video
+    save_frequency = args.save_frequency
+    if save_frequency is None:
+        save_frequency = 1 if make_animation else DEFAULT_SAVE_FREQUENCY
 
-    Path(prefix_path).mkdir(exist_ok=True)
-
-    if len(args.prompts) > 0:
-        prompts = args.prompts.split('|')
-    else:
-        prompts = []
-
-    if len(args.image_prompts) > 0:
-        image_prompts = args.image_prompts.split('|')
-    else:
-        image_prompts = []
+    prompts = [prompt for prompt in f"{args.prompt}|{args.prompts}".split('|') if prompt]
+    image_prompts = [image_prompt for image_prompt in args.image_prompts.split('|') if image_prompt]
     cgd_generator = clip_guided_diffusion(
         prompts=prompts,
         image_prompts=image_prompts,
@@ -371,7 +367,7 @@ def main():
         image_size=args.image_size,
         class_cond=_class_cond,
         randomize_class=(_class_cond),
-        save_frequency=args.save_frequency,
+        save_frequency=save_frequency,
         clip_guidance_scale=args.clip_guidance_scale,
         cutout_power=args.cutout_power,
         num_cutouts=args.num_cutouts,
@@ -385,25 +381,22 @@ def main():
         prefix_path=prefix_path,
         wandb_project=args.wandb_project,
         wandb_entity=args.wandb_entity,
-        use_augs=False,
-        use_magnitude=False,
         height_offset=args.height_offset,
         width_offset=args.width_offset,
         progress=not args.quiet,
         sample_steps=args.sample_steps,
         guidance_rate=args.guidance_rate,
     )
-    list(enumerate(cgd_generator))  # iterate over generator
+    results = list(cgd_generator)
 
     # Create GIF and/or video output if requested
     # Only delete frames after all outputs are created
-    delete_frames = args.save_as_gif or args.save_as_video
     for batch_idx in range(args.batch_size):
         if args.save_as_gif:
             script_util.create_gif_ffmpeg(prefix_path, prompts, batch_idx, delete_frames=False)
         if args.save_as_video:
             script_util.create_video_ffmpeg(prefix_path, prompts, batch_idx, delete_frames=False)
-        if delete_frames:
+        if make_animation:
             # Delete frames after all outputs are created
             io_safe_prompts = script_util.clean_and_combine_prompts(prefix_path, prompts, batch_idx)
             image_files = sorted(glob.glob(f"{io_safe_prompts}/*.png"))
@@ -413,6 +406,8 @@ def main():
             if Path(io_safe_prompts).is_dir() and not list(Path(io_safe_prompts).iterdir()):
                 Path(io_safe_prompts).rmdir()
             print(f"Deleted {len(image_files)} frame(s)")
+    if results and not make_animation:
+        print(f"Saved {results[-1][1]}")
 
 
 if __name__ == "__main__":

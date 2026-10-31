@@ -408,6 +408,32 @@ class TestSkipWeightInit(unittest.TestCase):
             self.assertIs(getattr(th.nn.init, name), function)
 
 
+class TestCommandLine(unittest.TestCase):
+    COMMAND = [sys.executable, "-W", "ignore", "-m", "cgd.cgd"]
+    OPTIONS = ["-size", "64", "-n", "6", "-clip", "RN50", "-q"]
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.cwd = Path(self.temp.name)
+        self.repo = Path(__file__).parent
+
+    def run_cgd(self, *args, env=None):
+        environment = {**os.environ, "PYTHONPATH": str(self.repo), **(env or {})}
+        return subprocess.run([*self.COMMAND, *args], cwd=self.cwd, env=environment, capture_output=True, text=True)
+
+    def test_positional_prompt_reports_the_saved_image(self):
+        result = self.run_cgd("Loose seal.", *self.OPTIONS)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Saved outputs/Loose_seal/00/0005.png", result.stdout)
+        self.assertTrue((self.cwd / "current.png").exists())
+
+    def test_prefix_can_be_a_new_nested_directory(self):
+        result = self.run_cgd("Loose seal.", *self.OPTIONS, "-dir", "a/b/c")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue((self.cwd / "a/b/c/Loose_seal/00/0005.png").exists())
+
+
 class TestLegacySampler(unittest.TestCase):
     def test_respacing_selects_the_original_sampler_and_saves_the_final_frame_after_skipping(self):
         with tempfile.TemporaryDirectory() as prefix:
