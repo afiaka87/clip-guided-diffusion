@@ -33,6 +33,10 @@ uv sync
 - The same `--seed` and arguments reproduce the image byte for byte on the same machine and library versions.
 - Use `--save-as-gif` / `-gif` to save a high-quality GIF of every step and delete frames
 - Use `--save-as-video` / `-mp4` to save a high-quality MP4 of every step and delete frames
+- Animation exports require FFmpeg. Frames stream to the encoder without buffering the whole
+  animation in memory. MP4 uses H.264/yuv420p, padding odd dimensions for playback compatibility.
+  Exports replace the destination only after successful encoding; failures preserve source
+  frames and any previous export. The final image remains available as `current.png`.
 - (optional) Provide **`--wandb_project <project_name>`** to enable logging intermediate outputs to wandb. Requires free account. URL to run will be provided in CLI - [example run](https://wandb.ai/dalle-pytorch-replicate/red_ball_cgd/reports/CLIP-Guided-Diffusion--VmlldzoxMDc1MjMz)
 - `~/.cache/clip-guided-diffusion/` will contain downloaded checkpoints from OpenAI/Katherine Crowson.
 
