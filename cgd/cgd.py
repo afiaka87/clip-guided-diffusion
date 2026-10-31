@@ -17,6 +17,10 @@ FAST_NUM_CUTOUTS = 4
 FAST_MIN_CUT_FRACTION = 0.7  # Cutouts span 70-100% of the frame.
 LEGACY_NUM_CUTOUTS = 16
 DEFAULT_SAVE_FREQUENCY = 10
+# Guidance backpropagates through the U-Net. Above this many pixels per batch, recompute
+# its activations instead of storing them: 1.5x the time per guided step for under half
+# the memory, which is what lets 512px run in 8 GB.
+GRADIENT_CHECKPOINT_PIXELS = 256 ** 2
 
 
 def clip_guided_diffusion(
@@ -146,6 +150,7 @@ def clip_guided_diffusion(
         timestep_respacing="" if fast else timestep_respacing,
         use_fp16=(not fp32_diffusion),
         device=device,
+        use_checkpoint=batch_size * shape[2] * shape[3] > GRADIENT_CHECKPOINT_PIXELS,
     )
 
     # An init image only has an effect if diffusion starts partway down the schedule.

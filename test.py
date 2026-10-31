@@ -388,6 +388,23 @@ class TestFastSampler(unittest.TestCase):
                 second = self.generate(image_size=128, seed=3, prefix_path=f"{self.prefix}/{name}b", **options)[-1][1]
                 self.assertEqual(Path(first).read_bytes(), Path(second).read_bytes())
 
+    def test_512_runs_with_guidance(self):  # Needs gradient checkpointing to fit in 8 GB.
+        self.assertTrue(self.generate(image_size=512, sample_steps=6)[-1][1].endswith("0005.png"))
+
+    def test_gradient_checkpointing_keeps_the_gradient(self):
+        checkpoint_path = script_util.download_guided_diffusion(image_size=64, class_cond=True)
+        image = th.randn(1, 3, 64, 64, device="cuda")
+        timestep = th.tensor([500.0], device="cuda")
+        label = th.tensor([278], device="cuda")
+        gradients = []
+        for use_checkpoint in (False, True):
+            model, _ = script_util.load_guided_diffusion(checkpoint_path, 64, True, device="cuda",
+                                                         use_checkpoint=use_checkpoint)
+            pixels = image.clone().requires_grad_()
+            gradients.append(th.autograd.grad(model(pixels, timestep, y=label)[:, :3].square().sum(), pixels)[0])
+        # 16 bit weights set the tolerance, as the two paths round in a different order.
+        self.assertLess((gradients[0] - gradients[1]).abs().max() / gradients[0].abs().max(), 0.01)
+
     def test_batch_yields_distinct_images(self):
         results = self.generate(image_size=64, sample_steps=6, batch_size=2)
         first, second = [path for batch_idx, path in results if path.endswith("0005.png")]

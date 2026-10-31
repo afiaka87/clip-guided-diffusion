@@ -209,12 +209,14 @@ def load_guided_diffusion(
     timestep_respacing: str = "",
     use_fp16: bool = True,
     device: str = '',
+    use_checkpoint: bool = False,
 ):
     '''
     checkpoint_path: path to the checkpoint to load.
     image_size: size of the images to be used.
     class_cond: whether to condition on the class label
     timestep_respacing: subset of the training timesteps to sample. Empty keeps them all.
+    use_checkpoint: recompute activations during the backward pass instead of storing them.
 
     The diffusion schedule always comes from the checkpoint's flags: sampling a model
     on a schedule it was not trained on produces garbage.
@@ -230,6 +232,7 @@ def load_guided_diffusion(
         'diffusion_steps': NUM_TRAINING_TIMESTEPS,
         'timestep_respacing': timestep_respacing,
         "use_fp16": use_fp16,
+        "use_checkpoint": use_checkpoint,
     })
     # Build on the meta device: random-initialising 400M+ parameters only to
     # overwrite them is the slowest part of startup. mmap + assign then adopts
