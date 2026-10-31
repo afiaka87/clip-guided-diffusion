@@ -24,13 +24,12 @@ classifiers = [
     "Intended Audience :: Developers",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "License :: OSI Approved :: MIT License",
-    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.10",
 ]
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 dependencies = [
-    "torch",
+    "torch>=2.1",
     "torchvision",
-    "kornia",
     "tqdm",
     "clip-anytorch",
     "requests",
@@ -50,3 +49,12 @@ allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["cgd", "data"]
+
+[tool.pytest.ini_options]
+python_files = ["test.py"]
+filterwarnings = ["ignore::UserWarning:clip", "ignore::DeprecationWarning"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.2.0",
+]
