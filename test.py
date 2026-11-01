@@ -533,6 +533,117 @@ class TestSkipWeightInit(unittest.TestCase):
             self.assertIs(getattr(th.nn.init, name), function)
 
 
+class TestOpenClip(unittest.TestCase):
+    """Real open_clip checkpoints: the smallest of each family, which differ in tower and tokenizer."""
+    PERCEPTION_ENCODER = "PE-Core-B-16"
+    SIGLIP = "ViT-L-16-SigLIP2-256"
+    PROMPT = "a photograph of a red fox in the snow"
+
+    def setUp(self):
+        self.test_dir = tempfile.TemporaryDirectory()
+        self.prefix = self.test_dir.name
+        self.addCleanup(self.test_dir.cleanup)
+
+    def generate(self, **kwargs):
+        options = dict(prompts=[self.PROMPT], prefix_path=self.prefix, save_frequency=1000, progress=False,
+                       device="cuda", image_size=64, sample_steps=6)
+        options.update(kwargs)
+        return list(clip_guided_diffusion(**options))
+
+    def test_every_listed_model_is_published_by_open_clip(self):
+        import open_clip
+        published = set(open_clip.list_pretrained())
+        for model_name, weights in clip_util.OPEN_CLIP_MODELS.items():
+            self.assertIn((model_name, weights), published)
+
+    def test_only_the_vision_tower_is_on_the_gpu(self):
+        clip_model, _ = clip_util.load_clip(self.PERCEPTION_ENCODER, "cuda")
+        for name, parameter in clip_model.named_parameters():
+            self.assertEqual(parameter.device.type, "cuda" if name.startswith("visual") else "cpu", name)
+
+    def test_skipping_random_init_still_loads_every_weight(self):
+        import open_clip
+        expected = open_clip.create_model(self.PERCEPTION_ENCODER, pretrained="meta",
+                                          cache_dir=clip_util.CLIP_CACHE_PATH).state_dict()
+        loaded = clip_util.load_clip.__wrapped__(self.PERCEPTION_ENCODER, "cpu")[0].state_dict()
+        self.assertEqual(expected.keys(), loaded.keys())
+        for name, tensor in expected.items():
+            self.assertTrue(th.equal(tensor, loaded[name]), name)
+
+    def test_preprocess_uses_the_normalization_each_model_was_trained_with(self):
+        white = th.ones(1, 3, 8, 8)
+        perception_encoder = clip_util.load_clip.__wrapped__(self.PERCEPTION_ENCODER, "cpu")[0]
+        self.assertTrue(th.equal(clip_util.preprocess(perception_encoder, white), white))
+        openai = clip_util.load_clip.__wrapped__("RN50", "cpu")[0]
+        self.assertTrue(th.equal(clip_util.preprocess(openai, white), clip_util.CLIP_NORMALIZE(white)))
+
+    def test_text_and_images_land_in_the_same_space(self):
+        fox_path = self.generate(image_size=128, sample_steps=30)[-1][1]
+        for model_name in (self.PERCEPTION_ENCODER, self.SIGLIP):
+            for name, embed in (("text", clip_util.encode_text_prompt(self.PROMPT, 1.0, model_name, "cuda")[0]),
+                                ("image", clip_util.encode_image_prompt(fox_path, 1.0, 128, 4, model_name, "cuda")[0])):
+                top = clip_util.imagenet_top_n(embed.mean(0, keepdim=True), device="cuda", n=10, clip_model_name=model_name)
+                self.assertIn("fox", " ".join(IMAGENET_CLASSES[i] for i in top.tolist()), (model_name, name))
+
+    def test_gradient_checkpointing_keeps_the_gradient(self):
+        clip_model, clip_size = clip_util.load_clip(self.PERCEPTION_ENCODER, "cuda")
+
+        def gradient():
+            image = th.linspace(0, 1, 3 * clip_size ** 2, device="cuda").view(1, 3, clip_size, clip_size).requires_grad_()
+            embed = clip_model.encode_image(clip_util.preprocess(clip_model, image))
+            return th.autograd.grad(embed.square().sum(), image)[0]
+
+        checkpointed = gradient()
+        self.assertGreater(checkpointed.abs().max().item(), 0)
+        clip_model.visual.set_grad_checkpointing(False)
+        self.addCleanup(clip_model.visual.set_grad_checkpointing, True)
+        self.assertLess((checkpointed - gradient()).abs().max().item(), 1e-4 * checkpointed.abs().max().item())
+
+    def test_same_seed_reproduces_the_image_exactly(self):
+        for model_name in (self.PERCEPTION_ENCODER, self.SIGLIP):
+            first = self.generate(clip_model_name=model_name, seed=3, prefix_path=f"{self.prefix}/a")[-1][1]
+            second = self.generate(clip_model_name=model_name, seed=3, prefix_path=f"{self.prefix}/b")[-1][1]
+            self.assertEqual(Path(first).read_bytes(), Path(second).read_bytes(), model_name)
+
+    def test_backward_pass_is_reproducible(self):
+        # The fused attention kernels are not. This is the model that shows it fastest.
+        clip_model, clip_size = clip_util.load_clip("PE-Core-L-14-336", "cuda")
+        generator = th.Generator("cuda").manual_seed(0)
+        images = th.rand(4, 3, clip_size, clip_size, device="cuda", generator=generator)
+
+        def gradient():
+            inputs = images.clone().requires_grad_()
+            embed = clip_model.encode_image(clip_util.preprocess(clip_model, inputs))
+            return th.autograd.grad(embed.square().sum() * 100, inputs)[0]
+
+        first = gradient()
+        for _ in range(3):
+            self.assertTrue(th.equal(first, gradient()))
+
+    def test_a_gradient_that_overflows_fp16_does_not_black_out_the_image(self):
+        for options in ({}, {"clip_model_name": self.PERCEPTION_ENCODER},
+                        {"timestep_respacing": "10"}, {"timestep_respacing": "10", "image_size": 128},
+                        {"timestep_respacing": "10", "clip_guidance_scale": 1e30}):  # All of it overflows.
+            with self.subTest(options):
+                path = self.generate(**{"clip_guidance_scale": 1e7, **options})[-1][1]
+                self.assertGreater(np.asarray(Image.open(path)).std(), 5)
+
+    def test_clip_fp16_only_changes_the_vision_tower(self):
+        self.addCleanup(clip_util.load_clip.cache_clear)
+        results = self.generate(clip_model_name=self.PERCEPTION_ENCODER, clip_fp16=True)
+        self.assertTrue(Path(results[-1][1]).exists())
+        clip_model, _ = clip_util.load_clip(self.PERCEPTION_ENCODER, "cuda", True)
+        for name, parameter in clip_model.named_parameters():
+            self.assertEqual(parameter.dtype, th.float16 if name.startswith("visual") else th.float32, name)
+
+    def test_unknown_model_is_rejected_and_every_listed_one_is_not(self):
+        with self.assertRaisesRegex(script_util.ConfigError, "Unknown CLIP model"):
+            clip_util.check_clip_model("ViT-Z/99")
+        for model_name in clip_util.CLIP_MODEL_NAMES:
+            clip_util.check_clip_model(model_name)
+        clip_util.check_clip_model(__file__)  # Any checkpoint file on disk.
+
+
 class TestCommandLine(unittest.TestCase):
     COMMAND = [sys.executable, "-W", "ignore", "-m", "cgd.cgd"]
     OPTIONS = ["-size", "64", "-n", "6", "-clip", "RN50", "-q"]
@@ -566,6 +677,41 @@ class TestCommandLine(unittest.TestCase):
         result = self.run_cgd("cat:1|dog:-1", *self.OPTIONS)
         self.assertEqual(result.returncode, 2)
         self.assertIn("must not sum to 0", result.stderr)
+
+    def environment_without_allocator_setting(self):
+        names = ("PYTORCH_ALLOC_CONF", "PYTORCH_CUDA_ALLOC_CONF")
+        return {name: value for name, value in os.environ.items() if name not in names}
+
+    def test_cuda_allocator_setting_leaves_the_users_own_alone(self):
+        code = "import os, cgd; print(os.environ.get('PYTORCH_ALLOC_CONF'), os.environ.get('PYTORCH_CUDA_ALLOC_CONF'))"
+        own = "max_split_size_mb:64"
+        for given, expected in (({"PYTORCH_ALLOC_CONF": own}, f"{own} None"), ({"PYTORCH_CUDA_ALLOC_CONF": own}, f"None {own}")):
+            result = subprocess.run([sys.executable, "-c", code], env={**self.environment_without_allocator_setting(), **given},
+                                    capture_output=True, text=True)
+            self.assertEqual(result.stdout.strip(), expected, result.stderr)
+
+    def test_cuda_allocator_setting_reaches_the_allocator_without_a_warning(self):
+        # Only expandable segments can serve the third block from the memory of the first two.
+        code = ("import cgd, torch as th\n"
+                "first, second = (th.empty(100 << 20, dtype=th.uint8, device='cuda') for _ in range(2))\n"
+                "del first, second\n"
+                "third = th.empty(200 << 20, dtype=th.uint8, device='cuda')\n"
+                "print(th.cuda.memory_reserved() >> 20)\n")
+        result = subprocess.run([sys.executable, "-c", code], env=self.environment_without_allocator_setting(), capture_output=True, text=True)
+        self.assertEqual(result.stdout.strip(), "200", result.stderr)
+        self.assertNotIn("deprecated", result.stderr)
+
+    def test_unknown_clip_model_is_explained(self):
+        result = self.run_cgd("Loose seal.", "-clip", "ViT-Z/99", "-q")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("Unknown CLIP model", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+
+    def test_open_clip_model_runs_without_noise_from_its_libraries(self):
+        result = self.run_cgd("Loose seal.", *self.OPTIONS, "-clip", "PE-Core-B-16", "-fp16")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Saved outputs/Loose_seal/00/0005.png", result.stdout)
+        self.assertNotIn("HF Hub", result.stderr)
 
     def test_prefix_can_be_a_new_nested_directory(self):
         result = self.run_cgd("Loose seal.", *self.OPTIONS, "-dir", "a/b/c")
