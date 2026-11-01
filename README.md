@@ -128,7 +128,7 @@ uv run cgd "A mushroom in the style of Vincent Van Gogh" \
 ### Image size
 
 - options: `64, 128, 256, 512 pixels (square)`
-- Every size runs in 8 GB of VRAM. See [Speed](#speed) for the time and memory each one takes.
+- Every size runs in 8 GB of VRAM with the default CLIP model. See [Speed](#speed) for the time and memory each one takes, and [CLIP models](#clip-models) for the models that need more.
 - Above 256x256 pixels per batch, the U-Net recomputes its activations during guidance instead of storing them. That takes about 1.5x the time per guided step and under half the memory, and it is automatic.
 - `--uncond` uses the unconditional checkpoints, 256x256 and 512x512 only. It is less reliable than the default, because nothing but CLIP brings the subject.
 - **Note about 64x64 with `--timestep_respacing`** the 64x64 checkpoint uses the cosine noise schedule, which requires different values for `--clip_guidance_scale` and `--tv_scale` in the original sampler. I recommend starting with `-cgs 5 -tvs 0.00001` and experimenting from around there. The default sampler needs no changes.
@@ -197,6 +197,98 @@ The original pipeline takes 1000 ancestral steps, because CLIP has to build the 
 
 Model loading is faster too: checkpoints are memory mapped instead of copied, nothing is randomly initialised just to be overwritten, and the ImageNet class features are cached on disk.
 
+## CLIP models
+
+`--clip_model` / `-clip` (default: `ViT-B/32`)
+
+`uv run cgd -clip PE-Core-L-14-336 -size 256 "A red fox in the snow"`
+
+OpenAI's `RN50`, `RN101`, `RN50x4`, `RN50x16`, `ViT-B/16`, `ViT-B/32` and `ViT-L/14` are still there. These are the newer ones, from [open_clip](https://github.com/mlfoundations/open_clip): Meta's [PE-Core](https://arxiv.org/abs/2504.13181) and Google's [SigLIP 2](https://arxiv.org/abs/2502.14786).
+
+| Model | ImageNet zero-shot | Input | Download | Load |
+|---|---|---|---|---|
+| `ViT-B/32` (default) | 63.3% | 224 | 0.3 GiB | 0.8 s |
+| `PE-Core-B-16` | 78.4% | 224 | 1.7 GiB | 2.6 s |
+| `ViT-L-16-SigLIP2-256` | 82.5% | 256 | 3.3 GiB | 3.9 s |
+| `PE-Core-L-14-336` | 83.5% | 336 | 2.5 GiB | 3.9 s |
+| `ViT-SO400M-16-SigLIP2-384` | 84.1% | 384 | 4.2 GiB | 4.7 s |
+| `ViT-gopt-16-SigLIP2-384` | 85.0% | 384 | 7.0 GiB | 8.5 s |
+| `PE-Core-bigG-14-448` | 85.4% | 448 | 9.0 GiB | 13.4 s |
+
+Accuracy is as published by open_clip and Meta. Weights download to `~/.cache/clip-guided-diffusion/clip/` the first time a model is used. Loading takes about the download size in system RAM.
+
+The first run of each model also encodes the ImageNet class names, once, on the CPU: 2 minutes for `ViT-gopt-16-SigLIP2-384`, 2.5 for `PE-Core-bigG-14-448`, on a Ryzen 9 3900X.
+
+### Which one to use
+
+Start with `PE-Core-B-16`. It takes the same VRAM as the default and about 1.3 s more per image, and it is the only model that beat `ViT-B/32` with all three judges at 128. At 256 it does as well as the bigger models.
+
+Higher ImageNet accuracy did not make a better guide. `ViT-gopt-16-SigLIP2-384` and `PE-Core-bigG-14-448` tie or trail the default by score, at 5x to 15x the time at 128. By eye they draw the most photographic images, which can work against the prompt: `ViT-gopt-16-SigLIP2-384` at fp32 turned "a pencil sketch of an old man with a beard" into a photo of a bird. `ViT-SO400M-16-SigLIP2-384` at fp32 wrote nonsense text across "a plate of sushi on a black slate".
+
+`ViT-B/32` stays the default because it is the fastest and its gradient is by far the smoothest.
+
+Each cell is the change in CLIP similarity to the prompt against `ViT-B/32`, on 12 prompts held out from tuning with seed 0, then how many of the 12 improved. Three models judged the images, and a model never grades its own guidance, hence the empty cells. `ViT-B/16` is close kin to `ViT-B/32`, so it favours it. `-rate` was tuned on `ViT-B/32` and not retuned per model. The 95% interval on a difference is about ±0.03, so most of these are ties.
+
+128:
+
+| Model | Precision | `ViT-B/16` | `ViT-H-14-quickgelu` | `ViT-L-16-SigLIP2-256` |
+|---|---|---|---|---|
+| `PE-Core-B-16` | fp32 | +0.014 (8) | +0.016 (10) | +0.025 (8) |
+| `ViT-L-16-SigLIP2-256` | fp32 | -0.019 (5) | +0.010 (5) | |
+| | `-fp16` | -0.008 (5) | +0.007 (6) | |
+| `PE-Core-L-14-336` | fp32 | -0.017 (4) | +0.001 (7) | +0.001 (5) |
+| | `-fp16` | -0.011 (5) | +0.017 (9) | +0.011 (8) |
+| `ViT-SO400M-16-SigLIP2-384` | fp32 | -0.010 (3) | +0.005 (6) | +0.017 (8) |
+| | `-fp16` | -0.019 (4) | -0.009 (4) | -0.008 (5) |
+| `ViT-gopt-16-SigLIP2-384` | fp32 | -0.025 (3) | -0.012 (6) | -0.017 (6) |
+| | `-fp16` | -0.031 (2) | +0.004 (7) | -0.003 (7) |
+| `PE-Core-bigG-14-448` | `-fp16` | -0.022 (6) | -0.001 (8) | -0.001 (7) |
+
+256:
+
+| Model | Precision | `ViT-B/16` | `ViT-H-14-quickgelu` | `ViT-L-16-SigLIP2-256` |
+|---|---|---|---|---|
+| `PE-Core-B-16` | fp32 | -0.002 (4) | +0.018 (7) | +0.031 (12) |
+| `PE-Core-L-14-336` | fp32 | -0.004 (5) | +0.020 (9) | +0.032 (10) |
+| `ViT-SO400M-16-SigLIP2-384` | fp32 | -0.021 (3) | +0.018 (8) | +0.035 (11) |
+| `ViT-gopt-16-SigLIP2-384` | `-fp16 -cutn 2` | -0.041 (3) | -0.014 (5) | -0.003 (5) |
+
+`-fp16` moved scores in both directions, by less than the noise, which is why it counts as no measurable difference.
+
+### Time and VRAM
+
+Time to sample one image and peak VRAM, the median of 3 prompts on an RTX 2070 SUPER with 8 GB and nothing else on it. Add the load time above, once per run. `~` marks a size that ran out of memory on this card: the number is what it should need, projected from the models that ran at that size, and has not been measured.
+
+| Model | Precision | 128 | 256 | 512 |
+|---|---|---|---|---|
+| `ViT-B/32` | | 2.7 s, 2.3 GiB | 7.5 s, 5.3 GiB | 18.7 s, 4.1 GiB |
+| `PE-Core-B-16` | fp32 | 4.0 s, 2.4 GiB | 8.8 s, 5.3 GiB | 20.0 s, 4.1 GiB |
+| | `-fp16` | 3.3 s, 2.2 GiB | 8.2 s, 5.2 GiB | 19.4 s, 4.0 GiB |
+| `ViT-L-16-SigLIP2-256` | fp32 | 7.5 s, 3.3 GiB | 12.5 s, 6.3 GiB | 23.8 s, 4.9 GiB |
+| | `-fp16` | 4.2 s, 2.6 GiB | 9.2 s, 5.6 GiB | 20.5 s, 4.4 GiB |
+| `PE-Core-L-14-336` | fp32 | 16.0 s, 3.7 GiB | 20.7 s, 6.6 GiB | 32.3 s, 4.9 GiB |
+| | `-fp16` | 7.8 s, 2.8 GiB | 12.7 s, 5.8 GiB | 24.0 s, 4.4 GiB |
+| `ViT-SO400M-16-SigLIP2-384` | fp32 | 19.3 s, 4.2 GiB | 24.1 s, 7.1 GiB | 35.4 s, 5.4 GiB |
+| | `-fp16` | 7.8 s, 3.1 GiB | 12.7 s, 6.0 GiB | 24.0 s, 4.6 GiB |
+| `ViT-gopt-16-SigLIP2-384` | fp32 | 42.0 s, 7.2 GiB | ~10 GiB | ~8.5 GiB |
+| | `-fp16` | 13.7 s, 4.6 GiB | ~7.5 GiB | 30.0 s, 5.9 GiB |
+| `PE-Core-bigG-14-448` | fp32 | ~11.5 GiB | ~14.5 GiB | ~13 GiB |
+| | `-fp16` | 35.3 s, 6.6 GiB | ~9.5 GiB | ~8 GiB |
+
+256 needs more than 512 because 512 is the size where the U-Net starts recomputing its activations, see [Image size](#image-size). PyTorch holds on to about 0.1 GiB beyond the peak at 128 and 256, and up to 0.9 GiB at 512, so leave that free too.
+
+| VRAM | What fits |
+|---|---|
+| 8 GB | Everything through `ViT-SO400M-16-SigLIP2-384`, at every size, though that one at 256 fp32 needs a nearly empty card. `ViT-gopt-16-SigLIP2-384` at 128, at 512 with `-fp16`, or at 256 with `-fp16 -cutn 2` (31.5 s, 7.3 GiB). `PE-Core-bigG-14-448` at 128 with `-fp16`. |
+| 12 GB (estimated) | `ViT-gopt-16-SigLIP2-384` at every size. `PE-Core-bigG-14-448` at every size with `-fp16`. |
+| 16 GB (estimated) | Everything, at every size. |
+
+### `--clip_fp16` / `-fp16`
+
+Runs the vision tower of a PE-Core or SigLIP2 model at half precision: up to 3x faster and half the CLIP VRAM. fp32 stays the default because it is the exact computation, but use `-fp16` whenever time or VRAM matters: it made no measurable difference to quality, see [Which one to use](#which-one-to-use). It saves little on `PE-Core-B-16`, and that one combination has no quality measurement.
+
+The gradient does change. Its cosine similarity to the fp32 gradient varied by model and image, over 3 images: 0.11 to 0.42 for `ViT-gopt-16-SigLIP2-384`, 0.19 to 0.996 for `PE-Core-L-14-336`, 0.83 to 0.93 for `PE-Core-B-16`, 0.95 to 0.9995 for `ViT-L-16-SigLIP2-256` and 0.99 for `ViT-SO400M-16-SigLIP2-384`. That says less than it seems to, because these gradients are chaotic: noise of 1 part in 2048 on the input image, without changing the precision at all, moves the fp32 gradient to a cosine of 0.52 to 0.79 for `ViT-gopt-16-SigLIP2-384` and 0.39 to 0.97 for `PE-Core-L-14-336`. Guidance averages over cutouts and steps, so it follows what stays consistent. `ViT-B/32`, by comparison, stays at 0.999 under the same noise. OpenAI's models always run at half precision, and at 0.9997 to 0.9999 lose nothing by it.
+
 ## Full Usage - Python
 
 ```python
@@ -219,7 +311,8 @@ cgd_generator = clip_guided_diffusion(
     seed=0,
     skip_timesteps=400,
     init_image="image_to_blend_and_compare_with_vgg.png",
-    clip_model_name="ViT-B/16",
+    clip_model_name="PE-Core-L-14-336",
+    clip_fp16=False,
     device="cuda",
     prefix_path="store_images/",
     wandb_project=None,
@@ -244,10 +337,11 @@ usage: cgd [-h] [--prompts PROMPTS] [--image_prompts IMAGE_PROMPTS]
            [--timestep_respacing TIMESTEP_RESPACING]
            [--sample_steps SAMPLE_STEPS] [--guidance_rate GUIDANCE_RATE]
            [--num_cutouts NUM_CUTOUTS] [--cutout_power CUTOUT_POWER]
-           [--clip_model CLIP_MODEL] [--uncond] [--device DEVICE]
-           [--wandb_project WANDB_PROJECT] [--wandb_entity WANDB_ENTITY]
-           [--height_offset HEIGHT_OFFSET] [--width_offset WIDTH_OFFSET]
-           [--quiet] [--save-as-gif] [--save-as-video]
+           [--clip_model CLIP_MODEL] [--clip_fp16] [--uncond]
+           [--device DEVICE] [--wandb_project WANDB_PROJECT]
+           [--wandb_entity WANDB_ENTITY] [--height_offset HEIGHT_OFFSET]
+           [--width_offset WIDTH_OFFSET] [--quiet] [--save-as-gif]
+           [--save-as-video]
            [prompt]
 
 CLIP Guided Diffusion: generate images from text and image prompts.
@@ -320,8 +414,15 @@ options:
   --clip_model, -clip CLIP_MODEL
                         clip model name. Should be one of: ('ViT-B/16',
                         'ViT-B/32', 'RN50', 'RN101', 'RN50x4', 'RN50x16',
-                        'ViT-L/14') or a checkpoint filename ending in `.pt`
-                        (default: ViT-B/32)
+                        'ViT-L/14', 'PE-Core-B-16', 'ViT-L-16-SigLIP2-256',
+                        'PE-Core-L-14-336', 'ViT-SO400M-16-SigLIP2-384', 'ViT-
+                        gopt-16-SigLIP2-384', 'PE-Core-bigG-14-448') or a
+                        checkpoint filename ending in `.pt` (default:
+                        ViT-B/32)
+  --clip_fp16, -fp16    Run a PE-Core or SigLIP2 model at half precision: up
+                        to 3x faster for half the CLIP VRAM. Less exact, but
+                        it scored about the same. OpenAI's models always do.
+                        (default: False)
   --uncond, -uncond     Use finetuned unconditional checkpoints from OpenAI
                         (256px) and Katherine Crowson (512px) (default: False)
   --device, -dev DEVICE
