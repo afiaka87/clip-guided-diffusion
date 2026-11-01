@@ -17,7 +17,21 @@ from cgd.modules import MakeCutouts
 from cgd.ResizeRight import resize_right
 from cgd.ResizeRight.interp_methods import lanczos3
 
-CLIP_MODEL_NAMES = ("ViT-B/16", "ViT-B/32", "RN50", "RN101", "RN50x4", "RN50x16", "ViT-L/14")
+OPENAI_CLIP_MODEL_NAMES = ("ViT-B/16", "ViT-B/32", "RN50", "RN101", "RN50x4", "RN50x16", "ViT-L/14")
+
+# Perception Encoder and SigLIP 2 models from open_clip, lightest first, and the weights
+# to load for each. The README lists what each one costs.
+OPEN_CLIP_MODELS = {
+    "PE-Core-B-16": "meta",
+    "ViT-L-16-SigLIP2-256": "webli",
+    "PE-Core-L-14-336": "meta",
+    "ViT-SO400M-16-SigLIP2-384": "webli",
+    "ViT-gopt-16-SigLIP2-384": "webli",
+    "PE-Core-bigG-14-448": "meta",
+}
+
+CLIP_MODEL_NAMES = (*OPENAI_CLIP_MODEL_NAMES, *OPEN_CLIP_MODELS)
+CLIP_CACHE_PATH = os.path.join(script_util.CACHE_PATH, "clip")
 
 # CLIP model URLs from OpenAI
 CLIP_MODEL_URLS = {
@@ -40,9 +54,8 @@ def download_clip_model(model_name: str) -> str:
     url = CLIP_MODEL_URLS[model_name]
     # Convert model name to filename (e.g., "ViT-B/32" -> "ViT-B-32.pt")
     filename = model_name.replace("/", "-") + ".pt"
-    cache_dir = os.path.join(script_util.CACHE_PATH, "clip")
 
-    return script_util.download(url, filename, root=cache_dir)
+    return script_util.download(url, filename, root=CLIP_CACHE_PATH)
 
 
 CLIP_NORMALIZE = tvt.Normalize(mean=[0.48145466, 0.4578275, 0.40821073], std=[0.26862954, 0.26130258, 0.27577711])
@@ -67,10 +80,49 @@ def skip_weight_init():
             setattr(th.nn.init, name, function)
 
 
+def check_clip_model(model_name: str):
+    """Reject a CLIP model that cannot be loaded, before spending time on anything else."""
+    if model_name not in OPEN_CLIP_MODELS and model_name not in clip.available_models() and not os.path.isfile(model_name):
+        raise script_util.ConfigError(f"Unknown CLIP model {model_name!r}. Choose one of {list(CLIP_MODEL_NAMES)}, "
+                                      "or give the path of a checkpoint.")
+
+
+def _load_open_clip(model_name: str, device: str, fp16: bool):
+    import open_clip  # Slow to import, and only these models need it.
+    from huggingface_hub.utils import logging as hub_logging
+
+    hub_logging.set_verbosity_error()  # The Hub otherwise asks for a token on every run.
+    with skip_weight_init():
+        clip_model = open_clip.create_model(model_name, pretrained=OPEN_CLIP_MODELS[model_name], cache_dir=CLIP_CACHE_PATH)
+    clip_model = clip_model.eval().requires_grad_(False)
+    # Text is only encoded once, up front, so that tower stays on the CPU. It is up to
+    # two thirds of the weights and guidance has no use for it.
+    # fp32 is the exact computation, so it is the default. fp16's gradient can be far from
+    # it, as low as a cosine of 0.11, but on these towers noise of about that size on the
+    # input moves the exact gradient as far, and fp16 scored about the same on held out
+    # prompts. OpenAI's models have a smoother gradient, and always use fp16.
+    clip_model.visual.to(device, th.float16 if fp16 and device != "cpu" else th.float32)
+    # Guidance backpropagates through the vision tower. Recomputing its activations
+    # during the backward pass takes 30% more time and a quarter of the memory.
+    clip_model.visual.set_grad_checkpointing(True)
+    # The fused attention kernels have a nondeterministic backward pass, which makes a
+    # seed produce a different image every run. timm's plain path computes the same
+    # gradient for up to 3% more time, and does not depend on which kernel a GPU gets.
+    for module in clip_model.visual.modules():
+        if hasattr(module, "fused_attn"):
+            module.fused_attn = False
+    return clip_model
+
+
 @lru_cache(maxsize=1)
-def load_clip(model_name='ViT-B/32', device="cpu"):
+def load_clip(model_name='ViT-B/32', device="cpu", fp16=False):
     if "cuda" not in device and device != "cpu":
         raise ValueError("Invalid or unspecified device: {}".format(device))
+
+    if model_name in OPEN_CLIP_MODELS:
+        with th.random.fork_rng(devices=[]):
+            clip_model = _load_open_clip(model_name, device, fp16)
+        return clip_model, clip_model.visual.image_size[0]
 
     # Use our robust download function for known models
     if model_name in CLIP_MODEL_URLS:
@@ -87,19 +139,48 @@ def load_clip(model_name='ViT-B/32', device="cpu"):
     return clip_model, clip_model.visual.input_resolution
 
 
-def imagenet_text_features(clip_model_name: str = "ViT-B/32", device: str = "cpu") -> th.Tensor:
+def preprocess(clip_model, images: th.Tensor) -> th.Tensor:
+    """Prepare images in [0, 1] for `clip_model`: its normalization, in its precision."""
+    visual = clip_model.visual
+    normalized = tvf.normalize(images, *_normalization(visual))
+    return normalized.to(next(visual.parameters()).dtype)
+
+
+def _normalization(visual):
+    """The (mean, std) a vision tower was trained with. Only open_clip's record one."""
+    if hasattr(visual, "image_mean"):
+        return visual.image_mean, visual.image_std
+    return CLIP_NORMALIZE.mean, CLIP_NORMALIZE.std
+
+
+@lru_cache(maxsize=1)
+def _open_clip_tokenizer(model_name: str):
+    import open_clip
+    return open_clip.get_tokenizer(model_name, cache_dir=CLIP_CACHE_PATH)
+
+
+def encode_texts(texts, clip_model_name: str, device: str, truncate: bool = False, fp16: bool = False) -> th.Tensor:
+    """CLIP text features for `texts`, on `device`."""
+    clip_model, _ = load_clip(clip_model_name, device, fp16)
+    if clip_model_name in OPEN_CLIP_MODELS:
+        tokens = _open_clip_tokenizer(clip_model_name)(texts)  # The text tower is on the CPU.
+    else:
+        tokens = clip.tokenize(texts, truncate=truncate).to(device)
+    with th.no_grad():
+        return th.cat([clip_model.encode_text(chunk).float() for chunk in tokens.split(256)]).to(device)
+
+
+def imagenet_text_features(clip_model_name: str = "ViT-B/32", device: str = "cpu", fp16: bool = False) -> th.Tensor:
     """Normalized CLIP text features for every ImageNet class, cached on disk."""
     safe_name = re.sub(r"[^\w.-]", "-", clip_model_name)
     cache_path = Path(script_util.CACHE_PATH) / f"imagenet_text_features_{safe_name}.pt"
     if cache_path.is_file():
         return th.load(cache_path, map_location=device, weights_only=True)
 
-    clip_model, _ = load_clip(clip_model_name, device)
+    if clip_model_name in OPEN_CLIP_MODELS:
+        print(f"Encoding the ImageNet classes for {clip_model_name} on the CPU. This only happens once.")
     labels = [f"a photo of a {img_cls}" for img_cls in IMAGENET_CLASSES]
-    tokens = clip.tokenize(labels, truncate=True).to(device)
-    with th.no_grad():
-        features = th.cat([clip_model.encode_text(chunk).float() for chunk in tokens.split(256)])
-    features = tf.normalize(features, dim=-1)
+    features = tf.normalize(encode_texts(labels, clip_model_name, device, truncate=True, fp16=fp16), dim=-1)
 
     cache_path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = cache_path.with_suffix(f".{os.getpid()}.tmp")
@@ -108,18 +189,18 @@ def imagenet_text_features(clip_model_name: str = "ViT-B/32", device: str = "cpu
     return features
 
 
-def imagenet_top_n(text_encodes, device: str = 'cuda', n: int = len(IMAGENET_CLASSES), clip_model_name: str = "ViT-B/32"):
+def imagenet_top_n(text_encodes, device: str = 'cuda', n: int = len(IMAGENET_CLASSES), clip_model_name: str = "ViT-B/32", fp16: bool = False):
     """
     Returns the top n classes for a given clip model.
     """
-    imagenet_features = imagenet_text_features(clip_model_name, device)
+    imagenet_features = imagenet_text_features(clip_model_name, device, fp16)
     prompt_features = tf.normalize(text_encodes.detach(), dim=-1)
     similarity = prompt_features @ imagenet_features.T
     return similarity.topk(n, dim=-1, sorted=True).indices[0].to(device)
 
 
-def encode_image_prompt(image: str, weight: float, diffusion_size: int, num_cutouts, clip_model_name: str = "ViT-B/32", device: str = "cpu"):
-    clip_model, clip_size = load_clip(clip_model_name, device)
+def encode_image_prompt(image: str, weight: float, diffusion_size: int, num_cutouts, clip_model_name: str = "ViT-B/32", device: str = "cpu", fp16: bool = False):
+    clip_model, clip_size = load_clip(clip_model_name, device, fp16)
     make_cutouts = MakeCutouts(cut_size=clip_size, num_cutouts=num_cutouts)
     pil_img = Image.open(script_util.fetch(image)).convert('RGB')
     img = tvf.to_tensor(pil_img).unsqueeze(0).to(device)
@@ -130,13 +211,10 @@ def encode_image_prompt(image: str, weight: float, diffusion_size: int, num_cuto
         img = resize_right.resize(img, out_shape=out_shape,
                                   interp_method=lanczos3, support_sz=None,
                                   antialiasing=True, by_convs=False, scale_tolerance=None).clamp(0, 1)
-    batch_embed = clip_model.encode_image(CLIP_NORMALIZE(make_cutouts(img))).float()
+    batch_embed = clip_model.encode_image(preprocess(clip_model, make_cutouts(img))).float()
     batch_weight = [weight / len(batch_embed)] * len(batch_embed)
     return batch_embed, batch_weight
 
 
-def encode_text_prompt(txt, weight, clip_model_name="ViT-B/32", device="cpu"):
-    clip_model, _ = load_clip(clip_model_name, device)
-    txt_tokens = clip.tokenize(txt).to(device)
-    txt_encoded = clip_model.encode_text(txt_tokens).float()
-    return txt_encoded, weight
+def encode_text_prompt(txt, weight, clip_model_name="ViT-B/32", device="cpu", fp16=False):
+    return encode_texts(txt, clip_model_name, device, fp16=fp16), weight
