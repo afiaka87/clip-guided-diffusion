@@ -42,6 +42,7 @@ def clip_guided_diffusion(
     skip_timesteps: int = 0,
     checkpoints_dir: str = script_util.CACHE_PATH,
     clip_model_name: str = "ViT-B/32",
+    clip_fp16: bool = False,  # Faster and half the CLIP VRAM with open_clip models. Less exact, but scored about the same.
     randomize_class: bool = True,
     prefix_path: Path = Path('./outputs'),
     save_frequency: int = DEFAULT_SAVE_FREQUENCY,
@@ -62,6 +63,7 @@ def clip_guided_diffusion(
         prompts, image_prompts, image_size, class_cond=class_cond, timestep_respacing=timestep_respacing,
         skip_timesteps=skip_timesteps, save_frequency=save_frequency, sample_steps=sample_steps,
         height_offset=height_offset, width_offset=width_offset, init_image=init_image)
+    clip_util.check_clip_model(clip_model_name)
     fast = timestep_respacing is None
     if num_cutouts is None:
         num_cutouts = FAST_NUM_CUTOUTS if fast else LEGACY_NUM_CUTOUTS
@@ -97,18 +99,18 @@ def clip_guided_diffusion(
     # Load CLIP model/Encode text/Create `MakeCutouts`
     embeds_list = []
     weights_list = []
-    clip_model, clip_size = clip_util.load_clip(clip_model_name, device)
+    clip_model, clip_size = clip_util.load_clip(clip_model_name, device, clip_fp16)
 
     for prompt in prompts:
         text, weight = script_util.parse_prompt(prompt)
-        text, weight = clip_util.encode_text_prompt(text, weight, clip_model_name, device)
+        text, weight = clip_util.encode_text_prompt(text, weight, clip_model_name, device, clip_fp16)
         embeds_list.append(text)
         weights_list.append(weight)
 
     for image_prompt in image_prompts:
         img, weight = script_util.parse_prompt(image_prompt)
         image_prompt, batched_weight = clip_util.encode_image_prompt(
-            img, weight, image_size, num_cutouts=num_cutouts, clip_model_name=clip_model_name, device=device)
+            img, weight, image_size, num_cutouts=num_cutouts, clip_model_name=clip_model_name, device=device, fp16=clip_fp16)
         embeds_list.append(image_prompt)
         weights_list.extend(batched_weight)
 
@@ -139,7 +141,7 @@ def clip_guided_diffusion(
         if fast:
             # Let the U-Net do the heavy lifting by conditioning on the closest real class.
             query = (weights[:, None] * tf.normalize(target_embeds, dim=-1)).sum(0, keepdim=True)
-            class_index = clip_util.imagenet_top_n(query, device=device, n=1, clip_model_name=clip_model_name)
+            class_index = clip_util.imagenet_top_n(query, device=device, n=1, clip_model_name=clip_model_name, fp16=clip_fp16)
             model_kwargs["y"][:] = class_index
             status(f"Conditioning on ImageNet class: {clip_util.IMAGENET_CLASSES[class_index.item()]}")
 
@@ -182,7 +184,7 @@ def clip_guided_diffusion(
                 preview(x_in, "Blended (what CLIP sees)"),
             ]
 
-        clip_in = clip_util.CLIP_NORMALIZE(make_cutouts(x_in.add(1).div(2)))
+        clip_in = clip_util.preprocess(clip_model, make_cutouts(x_in.add(1).div(2)))
         cutout_embeds = clip_model.encode_image(clip_in).float()
         cutout_embeds = cutout_embeds.view(-1, x.shape[0], cutout_embeds.shape[-1])  # [cutouts, batch, features]
         dists = losses.spherical_dist_loss(cutout_embeds.unsqueeze(2), target_embeds)
@@ -229,11 +231,11 @@ def clip_guided_diffusion(
         fac = diffusion.sqrt_one_minus_alphas_cumprod[current_timestep]
         loss, log = guidance_loss(x, out["pred_xstart"], fac)
 
-        final_loss = -th.autograd.grad(loss, x)[0]  # negative gradient
+        final_loss = -sampling.loss_gradient(loss, x)  # negative gradient
         if use_magnitude:
             magnitude = final_loss.square().mean().sqrt()  # TODO experimental clamping?
             log["Magnitude"] = magnitude.item()
-            final_loss = final_loss * magnitude.clamp(max=0.05) / magnitude
+            final_loss = final_loss * magnitude.clamp(max=0.05) / magnitude.clamp(min=1e-20)
         log['Grad'] = final_loss.mean().item()
         status("\t".join(f"{k}: {v:.3f}" for k, v in log.items() if "loss" in k.lower()))
         report(log)
@@ -338,6 +340,8 @@ def main():
                    default=1.0, help="Cutout size power")
     p.add_argument("--clip_model", "-clip", type=str, default="ViT-B/32",
                    help=f"clip model name. Should be one of: {clip_util.CLIP_MODEL_NAMES} or a checkpoint filename ending in `.pt`")
+    p.add_argument("--clip_fp16", "-fp16", action="store_true",
+                   help="Run a PE-Core or SigLIP2 model at half precision: up to 3x faster for half the CLIP VRAM. Less exact, but it scored about the same. OpenAI's models always do.")
     p.add_argument("--uncond", "-uncond", action="store_true",
                    help='Use finetuned unconditional checkpoints from OpenAI (256px) and Katherine Crowson (512px)')
     p.add_argument("--device", "-dev", default='', type=str,
@@ -386,6 +390,7 @@ def main():
         init_image=args.init_image,
         checkpoints_dir=args.checkpoints_dir,
         clip_model_name=args.clip_model,
+        clip_fp16=args.clip_fp16,
         device=args.device,
         prefix_path=prefix_path,
         wandb_project=args.wandb_project,
@@ -403,8 +408,11 @@ def main():
     except script_util.ConfigError as error:
         p.error(str(error))
     except th.cuda.OutOfMemoryError:
-        p.exit(1, f"Ran out of GPU memory. Try lowering --image_size/-size, --batch_size/-bs or --num_cutouts/-cutn.\n"
+        advice = (f"Ran out of GPU memory. Try lowering --image_size/-size, --batch_size/-bs or --num_cutouts/-cutn.\n"
                   f"--clip_model/-clip (currently {args.clip_model}) has a large impact on VRAM: RN50 uses the least, ViT-B/32 the second least.\n")
+        if args.clip_model in clip_util.OPEN_CLIP_MODELS and not args.clip_fp16:
+            advice += "--clip_fp16/-fp16 halves what this model needs.\n"
+        p.exit(1, advice)
 
     for batch_idx, paths in frames.items():
         run_dir = Path(paths[0]).parent
