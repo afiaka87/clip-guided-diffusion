@@ -79,6 +79,17 @@ class NoiseLevels:
         return ts.tolist()
 
 
+def loss_gradient(loss: th.Tensor, x: th.Tensor) -> th.Tensor:
+    """The gradient of a guidance loss with respect to x, through the U-Net.
+
+    The U-Net backpropagates at fp16, and a spiky CLIP gradient can overflow that. One
+    inf would make the sample NaN for good, which saves as a black image, so whatever
+    overflowed gets no guidance instead. Scaling the loss down would prevent it, but
+    any scale changes the rounding and so every image a seed makes.
+    """
+    return th.nan_to_num(th.autograd.grad(loss, x)[0], nan=0.0, posinf=0.0, neginf=0.0)
+
+
 def _rms(tensor: th.Tensor) -> th.Tensor:
     return tensor.square().mean(dim=(1, 2, 3), keepdim=True).sqrt()
 
@@ -135,7 +146,7 @@ def sample_loop_progressive(
         if guide:
             loss = loss_fn(x, x0, sigma)
             bar.set_postfix(loss=f"{loss.item():.0f}", refresh=False)
-            gradient = -th.autograd.grad(loss, x)[0]
+            gradient = -loss_gradient(loss, x)
             ratio = _rms(sigma * gradient) / _rms(eps.detach())
             gradient = gradient * (guidance_rate / ratio).clamp(max=1)
             guided_x0 = guided_x0 + sigma ** 2 / alpha * gradient
