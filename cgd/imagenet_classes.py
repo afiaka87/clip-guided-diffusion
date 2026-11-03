@@ -1,4 +1,7 @@
-IMAGENET_CLASSES = [
+"""The names of the 1000 ImageNet classes, in label order, as the class conditional models number them."""
+
+# fmt: off
+IMAGENET_CLASSES = (
     "tench", "goldfish", "great white shark", "tiger shark",
     "hammerhead shark", "electric ray", "stingray", "rooster", "hen",
     "ostrich", "brambling", "goldfinch", "house finch", "junco",
@@ -217,5 +220,6 @@ IMAGENET_CLASSES = [
     "rapeseed", "daisy", "yellow lady's slipper", "corn", "acorn", "rose hip",
     "horse chestnut seed", "coral fungus", "agaric", "gyromitra",
     "stinkhorn mushroom", "earth star fungus", "hen of the woods mushroom",
-    "bolete", "corn cob", "toilet paper"
-]
+    "bolete", "corn cob", "toilet paper",
+)
+# fmt: on
