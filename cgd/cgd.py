@@ -3,24 +3,30 @@ import argparse
 from pathlib import Path
 
 import torch as th
-import torch.nn.functional as tf
 from PIL import Image
 import torchvision.transforms as tvt
 
 from tqdm.auto import tqdm
 from cgd import losses
 from cgd import clip_util
+from cgd import modern
 from cgd import sampling
 from cgd import script_util
+from cgd import secondary
+from cgd import upscale
 
 FAST_NUM_CUTOUTS = 4
-FAST_MIN_CUT_FRACTION = 0.7  # Cutouts span 70-100% of the frame.
+FAST_MIN_CUT_FRACTION = 0.7  # Cutouts span 70-100% of the frame, or down to CLIP's input size if that is smaller.
 LEGACY_NUM_CUTOUTS = 16
 DEFAULT_SAVE_FREQUENCY = 10
 # Guidance backpropagates through the U-Net. Above this many pixels per batch, recompute
 # its activations instead of storing them: 1.5x the time per guided step for under half
 # the memory, which is what lets 512px run in 8 GB.
 GRADIENT_CHECKPOINT_PIXELS = 256 ** 2
+CLIP_VIEWS = ("blend", "detached", "x0")
+DEFAULT_IMAGE_SIZE = 128
+DEFAULT_CLIP_MODEL = "ViT-B/32"
+JUDGE_MODELS = "ViT-B/16+ViT-L-16-SigLIP2-256"  # Models guidance does not use by default, so it cannot have fooled them.
 
 
 def clip_guided_diffusion(
@@ -56,6 +62,17 @@ def clip_guided_diffusion(
     progress: bool = True,
     sample_steps: int = None,
     guidance_rate: float = sampling.DEFAULT_GUIDANCE_RATE,
+    guidance_schedule: str = "flat",  # Shape of the rate over the guidance window: flat, sine or rising.
+    x0_threshold: float = None,  # Dynamic thresholding quantile, replacing the x0 clamp. Fast sampler only.
+    guidance_limit: float = None,  # Hold back guidance that would push this quantile of pixels out of range. Fast sampler only.
+    clip_loss: str = "spherical",  # spherical, or contrastive against the text of the ImageNet classes.
+    aesthetic_scale: float = 0,  # Also reward what people rate highly, per point of a 1 to 10 rating.
+    clip_view: str = "blend",  # What CLIP sees: blend, blend with no gradient through x, or x0.
+    pag_scale: float = 0,  # Perturbed attention guidance. Fast sampler only.
+    contrast_scale: float = 0,  # Push away from the second closest ImageNet class. Fast sampler only.
+    class_rank: int = 0,  # Condition on this closest ImageNet class, 0 being the closest.
+    secondary_guidance: bool = False,  # Guide through a small U-Net: much less VRAM from 256 up. Fast sampler only.
+    solver: str = sampling.SOLVERS[0],  # Fast sampler only.
 ):
     if sample_steps is None:
         sample_steps = sampling.DEFAULT_STEPS if class_cond else sampling.UNCOND_STEPS
@@ -64,6 +81,12 @@ def clip_guided_diffusion(
         skip_timesteps=skip_timesteps, save_frequency=save_frequency, sample_steps=sample_steps,
         height_offset=height_offset, width_offset=width_offset, init_image=init_image)
     clip_util.check_clip_model(clip_model_name)
+    if aesthetic_scale < 0:
+        raise script_util.ConfigError("--aesthetic_scale must not be negative.")
+    if clip_view not in CLIP_VIEWS:
+        raise script_util.ConfigError(f"Unknown CLIP view {clip_view!r}. Choose one of {list(CLIP_VIEWS)}.")
+    if solver not in sampling.SOLVERS:
+        raise script_util.ConfigError(f"Unknown solver {solver!r}. Choose one of {list(sampling.SOLVERS)}.")
     fast = timestep_respacing is None
     if num_cutouts is None:
         num_cutouts = FAST_NUM_CUTOUTS if fast else LEGACY_NUM_CUTOUTS
@@ -96,34 +119,9 @@ def clip_guided_diffusion(
 
     diffusion_path = script_util.download_guided_diffusion(image_size=image_size, checkpoints_dir=checkpoints_dir, class_cond=class_cond)
 
-    # Load CLIP model/Encode text/Create `MakeCutouts`
-    embeds_list = []
-    weights_list = []
-    clip_model, clip_size = clip_util.load_clip(clip_model_name, device, clip_fp16)
-
-    for prompt in prompts:
-        text, weight = script_util.parse_prompt(prompt)
-        text, weight = clip_util.encode_text_prompt(text, weight, clip_model_name, device, clip_fp16)
-        embeds_list.append(text)
-        weights_list.append(weight)
-
-    for image_prompt in image_prompts:
-        img, weight = script_util.parse_prompt(image_prompt)
-        image_prompt, batched_weight = clip_util.encode_image_prompt(
-            img, weight, image_size, num_cutouts=num_cutouts, clip_model_name=clip_model_name, device=device, fp16=clip_fp16)
-        embeds_list.append(image_prompt)
-        weights_list.extend(batched_weight)
-
-    target_embeds = th.cat(embeds_list)
-
-    weights = th.tensor(weights_list, device=device)
-    if weights.sum().abs() < 1e-3:  # smart :)
-        raise script_util.ConfigError('The prompt weights must not sum to 0.')
-    weights /= weights.sum().abs()
-
-    make_cutouts = clip_util.MakeCutouts(cut_size=clip_size, num_cutouts=num_cutouts,
-                                         cutout_size_power=cutout_power, use_augs=use_augs,
-                                         min_cut_fraction=FAST_MIN_CUT_FRACTION if fast else 1.0)
+    # Load CLIP models/Encode text/Create `MakeCutouts`
+    guide = clip_util.ClipGuide(clip_model_name, prompts, image_prompts, image_size, num_cutouts, device, clip_fp16,
+                                cutout_power, use_augs, FAST_MIN_CUT_FRACTION if fast else 1.0, clip_loss, aesthetic_scale)
 
     # Load initial image (if provided)
     init_tensor = None
@@ -140,8 +138,10 @@ def clip_guided_diffusion(
             [batch_size], device=device, dtype=th.long)
         if fast:
             # Let the U-Net do the heavy lifting by conditioning on the closest real class.
-            query = (weights[:, None] * tf.normalize(target_embeds, dim=-1)).sum(0, keepdim=True)
-            class_index = clip_util.imagenet_top_n(query, device=device, n=1, clip_model_name=clip_model_name, fp16=clip_fp16)
+            class_indices = clip_util.imagenet_top_n(guide.query(), device=device, n=class_rank + 2,
+                                                     clip_model_name=clip_util.ensemble_members(clip_model_name)[0], fp16=clip_fp16)
+            class_index = class_indices[class_rank:class_rank + 1]
+            runner_up = class_indices[class_rank + 1]
             model_kwargs["y"][:] = class_index
             status(f"Conditioning on ImageNet class: {clip_util.IMAGENET_CLASSES[class_index.item()]}")
 
@@ -173,7 +173,10 @@ def clip_guided_diffusion(
         """Scaled guidance losses for what CLIP sees: a blend of pred_xstart and x."""
         log = {}
         sigmas = 1 - fac
-        x_in = pred_xstart * fac + x * sigmas
+        if clip_view == "x0":
+            x_in = pred_xstart
+        else:
+            x_in = pred_xstart * fac + (x.detach() if clip_view == "detached" else x) * sigmas
         if wandb_project is not None:
             def preview(images, caption):  # The first image of the batch, as wandb wants it.
                 return wandb.Image(images[0].detach().add(1).div(2).clamp(0, 1), caption=caption)
@@ -184,16 +187,10 @@ def clip_guided_diffusion(
                 preview(x_in, "Blended (what CLIP sees)"),
             ]
 
-        clip_in = clip_util.preprocess(clip_model, make_cutouts(x_in.add(1).div(2)))
-        cutout_embeds = clip_model.encode_image(clip_in).float()
-        cutout_embeds = cutout_embeds.view(-1, x.shape[0], cutout_embeds.shape[-1])  # [cutouts, batch, features]
-        dists = losses.spherical_dist_loss(cutout_embeds.unsqueeze(2), target_embeds)
-
-        clip_losses = dists.mul(weights).sum(2).mean(0)
+        clip_losses = guide.loss(x_in, clip_guidance_scale)
         range_losses = losses.range_loss(pred_xstart)
         tv_losses = losses.tv_loss(x_in)
 
-        clip_losses = clip_losses.sum() * clip_guidance_scale
         range_losses = range_losses.sum() * range_scale
         tv_losses = tv_losses.sum() * tv_scale
 
@@ -241,6 +238,16 @@ def clip_guided_diffusion(
         report(log)
         return final_loss
 
+    def eps_adjustment(x, t, eps):
+        adjustment = 0
+        if pag_scale != 0:
+            with sampling.perturbed_attention(gd_model):
+                adjustment = adjustment + pag_scale * (eps - gd_model(x, t, **model_kwargs)[:, :shape[1]])
+        if contrast_scale != 0 and class_cond:
+            other = {**model_kwargs, "y": runner_up.expand(x.shape[0])}
+            adjustment = adjustment + contrast_scale * (eps - gd_model(x, t, **other)[:, :shape[1]])
+        return adjustment
+
     def legacy_samples():
         nonlocal current_timestep
         # Choose between normal or DDIM
@@ -278,6 +285,12 @@ def clip_guided_diffusion(
             steps=sample_steps,
             guidance_rate=guidance_rate,
             guidance_window=sampling.GUIDANCE_WINDOW if class_cond else sampling.UNCOND_GUIDANCE_WINDOW,
+            guidance_schedule=guidance_schedule,
+            x0_threshold=x0_threshold,
+            guidance_limit=guidance_limit,
+            eps_adjustment=eps_adjustment if pag_scale != 0 or (contrast_scale != 0 and class_cond) else None,
+            guide_model=secondary.load_secondary(device, checkpoints_dir) if secondary_guidance else None,
+            solver=solver,
             init_image=init_tensor,
             start_timestep=start_timestep,
             model_kwargs=model_kwargs,
@@ -286,10 +299,40 @@ def clip_guided_diffusion(
         )
 
     run_name = script_util.run_name(prompts, image_prompts)
-    for step, sample in enumerate(fast_samples() if fast else legacy_samples()):
-        if step % save_frequency == 0 or sample["final"]:
-            for batch_idx, image_tensor in enumerate(sample["pred_xstart"]):
-                yield batch_idx, script_util.log_image(image_tensor, prefix_path, run_name, step, batch_idx)
+    # The secondary model's convolutions are nondeterministic going backward unless cuDNN is
+    # told otherwise. The default path is reproducible without this, and it would change its images.
+    with th.backends.cudnn.flags(enabled=True, deterministic=secondary_guidance):
+        for step, sample in enumerate(fast_samples() if fast else legacy_samples()):
+            if step % save_frequency == 0 or sample["final"]:
+                for batch_idx, image_tensor in enumerate(sample["pred_xstart"]):
+                    yield batch_idx, script_util.log_image(image_tensor, prefix_path, run_name, step, batch_idx)
+
+
+def is_out_of_memory(error: RuntimeError) -> bool:
+    """PyTorch's allocator raises OutOfMemoryError, but CUDA failing mid-backward is a plain AcceleratorError."""
+    return "out of memory" in str(error).lower()
+
+
+def judged_candidates(generate, candidates: int, seed: int, prefix_path: Path, prompts, image_prompts, judges: str = JUDGE_MODELS):
+    """Return {batch_idx: frames} of the best of `candidates` runs, scored by models that did not guide them.
+
+    `generate(seed, prefix_path)` is one run, yielding (batch_idx, image_path). Each run
+    keeps its frames under its own seed. The judges run on the CPU, so they can not push
+    out what guidance needs.
+    """
+    runs = []
+    for candidate_seed in range(seed, seed + candidates):
+        frames = {}
+        for batch_idx, path in generate(candidate_seed, Path(prefix_path) / f"seed_{candidate_seed}"):
+            frames.setdefault(batch_idx, []).append(path)
+        runs.append(frames)
+    judge = clip_util.ClipGuide(judges, prompts, image_prompts, device="cpu")
+
+    def score(path):
+        image = tvt.ToTensor()(Image.open(path).convert('RGB')).unsqueeze(0).mul(2).sub(1)
+        return judge.score(image).item()
+
+    return {batch_idx: max((run[batch_idx] for run in runs), key=lambda frames: score(frames[-1])) for batch_idx in runs[0]}
 
 
 def main():
@@ -302,8 +345,8 @@ def main():
                    help="the prompt/s to reward paired with weights. e.g. 'My text:0.5|Other text:-0.5' ")
     p.add_argument("--image_prompts", "-imgs", type=str, default='',
                    help="the image prompt/s to reward paired with weights. e.g. 'img1.png:0.5|img2.png:-0.5'")
-    p.add_argument("--image_size", "-size", type=int, default=128, choices=(64, 128, 256, 512),
-                   help="Diffusion image size.")
+    p.add_argument("--image_size", "-size", type=int, default=None,
+                   help=f"Image size. Without --backbone one of 64, 128, 256 or 512, defaulting to {DEFAULT_IMAGE_SIZE}. With it, any multiple of {modern.LATENT_FACTOR}, defaulting to what the model was trained for.")
     p.add_argument("--init_image", "-init", type=str, default='',
                    help="Start from this image instead of pure noise.")
     p.add_argument("--init_scale", "-is", type=float, default=0,
@@ -338,8 +381,9 @@ def main():
                    help=f"Number of randomly cut patches to distort from diffusion. Defaults to {FAST_NUM_CUTOUTS}, or {LEGACY_NUM_CUTOUTS} with --timestep_respacing.")
     p.add_argument("--cutout_power", "-cutpow", type=float,
                    default=1.0, help="Cutout size power")
-    p.add_argument("--clip_model", "-clip", type=str, default="ViT-B/32",
-                   help=f"clip model name. Should be one of: {clip_util.CLIP_MODEL_NAMES} or a checkpoint filename ending in `.pt`")
+    p.add_argument("--clip_model", "-clip", type=str, default=None,
+                   help=f"clip model name. Should be one of: {clip_util.CLIP_MODEL_NAMES} or a checkpoint filename ending in `.pt`. Join several with + to guide with all of them. "
+                        f"Defaults to {DEFAULT_CLIP_MODEL}, or {modern.DEFAULT_CLIP_MODEL} with --backbone.")
     p.add_argument("--clip_fp16", "-fp16", action="store_true",
                    help="Run a PE-Core or SigLIP2 model at half precision: up to 3x faster for half the CLIP VRAM. Less exact, but it scored about the same. OpenAI's models always do.")
     p.add_argument("--uncond", "-uncond", action="store_true",
@@ -358,6 +402,49 @@ def main():
                    help='Save output as high-quality GIF using ffmpeg. Deletes individual frames.')
     p.add_argument('--save-as-video', '-mp4', action='store_true',
                    help='Save output as high-quality MP4 video using ffmpeg. Deletes individual frames.')
+    p.add_argument("--clip_loss", "-loss", choices=clip_util.CLIP_LOSSES, default="spherical",
+                   help="spherical is distance to the prompt. contrastive also pushes away from the text of the ImageNet classes.")
+    p.add_argument("--aesthetic_scale", "-aes", type=float, default=None,
+                   help=f"Also reward what people rate highly, per point of a 1 to 10 rating. Default 0, or {modern.DEFAULT_AESTHETIC_SCALE} with --backbone. The README has what it trades away.")
+    p.add_argument("--upscale", "-up", action="store_true",
+                   help=f"Also save a copy {upscale.SCALE}x larger, made with Real-ESRGAN x4plus. Adds little time or VRAM.")
+    p.add_argument("--candidates", "-best", type=int, default=1,
+                   help="Run this many seeds, starting at --seed, and report the one that models which did not guide it score best. Takes this many times as long.")
+
+    fast_sampler = p.add_argument_group("fast sampler", "Options of the fast sampler. Ignored with --timestep_respacing or --backbone.")
+    fast_sampler.add_argument("--x0_threshold", "-dt", type=float, default=None,
+                              help="Dynamic thresholding quantile, e.g. 0.999, instead of clamping each denoised image. Keeps contrast in what guidance saturates.")
+    fast_sampler.add_argument("--guidance_limit", "-gl", type=float, default=None,
+                              help="Hold back whatever part of CLIP's update would push more than this quantile of pixels out of range, e.g. 0.99. Natural colour and almost no clipped pixels, though the judges prefer the saturated default.")
+    fast_sampler.add_argument("--guidance_schedule", "-gs", choices=sampling.GUIDANCE_SCHEDULES, default="flat",
+                              help="Shape of --guidance_rate over the guidance window, keeping its total.")
+    fast_sampler.add_argument("--clip_view", "-view", choices=CLIP_VIEWS, default="blend",
+                              help="What CLIP sees: the blend of the denoised and the noisy image, that blend with no gradient through the noisy image, or the denoised image.")
+    fast_sampler.add_argument("--pag_scale", "-pag", type=float, default=0,
+                              help="Perturbed attention guidance. One more model call per guided step.")
+    fast_sampler.add_argument("--contrast_scale", "-contrast", type=float, default=0,
+                              help="Push away from the second closest ImageNet class. One more model call per guided step.")
+    fast_sampler.add_argument("--class_rank", "-class", type=int, default=0,
+                              help="Condition on this closest ImageNet class, 0 being the closest.")
+    fast_sampler.add_argument("--secondary", "-sec", action="store_true",
+                              help="Take guidance through a small U-Net instead of the diffusion model: from 5.3 to 1.9 GiB at 256 and 4.1 to 2.6 at 512, at no measurable loss. It scored lower at 128.")
+    fast_sampler.add_argument("--solver", "-solver", choices=sampling.SOLVERS, default=sampling.SOLVERS[0],
+                              help="The sampler's solver.")
+
+    backbone = p.add_argument_group("modern backbones", "Draw with a modern one-step model and correct it with CLIP by optimising its noise, instead of guiding an ImageNet model. "
+                                                        "Of the options above, this uses the prompts, the size, offsets, batch size, seed, CLIP options, --aesthetic_scale, --upscale and --candidates.")
+    backbone.add_argument("--backbone", "-bb", choices=tuple(modern.BACKBONES), default=None,
+                          help="The model to draw with.")
+    backbone.add_argument("--iterations", "-iters", type=int, default=modern.DEFAULT_ITERATIONS,
+                          help="Steps of noise optimisation. 0 is the plain model.")
+    backbone.add_argument("--lr", "-lr", type=float, default=modern.DEFAULT_LR,
+                          help="Learning rate of the noise optimisation.")
+    backbone.add_argument("--noise_penalty", "-np", type=float, default=modern.DEFAULT_NOISE_PENALTY,
+                          help="How hard to keep the noise on the prior.")
+    backbone.add_argument("--render_steps", "-steps", type=int, default=1,
+                          help="Model calls for the final image.")
+    backbone.add_argument("--full_decoder", "-fulldec", action="store_true",
+                          help="Backpropagate through the real decoder instead of a tiny one. No better by score, for about twice the time and 1 GiB more at 512.")
     args = p.parse_args()
 
     _class_cond = not args.uncond
@@ -369,52 +456,109 @@ def main():
 
     prompts = [prompt for prompt in f"{args.prompt}|{args.prompts}".split('|') if prompt]
     image_prompts = [image_prompt for image_prompt in args.image_prompts.split('|') if image_prompt]
-    cgd_generator = clip_guided_diffusion(
-        prompts=prompts,
-        image_prompts=image_prompts,
-        batch_size=args.batch_size,
-        tv_scale=args.tv_scale,
-        init_scale=args.init_scale,
-        range_scale=args.range_scale,
-        sat_scale=args.sat_scale,
-        image_size=args.image_size,
-        class_cond=_class_cond,
-        randomize_class=(_class_cond),
-        save_frequency=save_frequency,
-        clip_guidance_scale=args.clip_guidance_scale,
-        cutout_power=args.cutout_power,
-        num_cutouts=args.num_cutouts,
-        timestep_respacing=args.timestep_respacing,
-        seed=args.seed,
-        skip_timesteps=args.skip_timesteps,
-        init_image=args.init_image,
-        checkpoints_dir=args.checkpoints_dir,
-        clip_model_name=args.clip_model,
-        clip_fp16=args.clip_fp16,
-        device=args.device,
-        prefix_path=prefix_path,
-        wandb_project=args.wandb_project,
-        wandb_entity=args.wandb_entity,
-        height_offset=args.height_offset,
-        width_offset=args.width_offset,
-        progress=not args.quiet,
-        sample_steps=args.sample_steps,
-        guidance_rate=args.guidance_rate,
-    )
+    clip_model = args.clip_model or (modern.DEFAULT_CLIP_MODEL if args.backbone else DEFAULT_CLIP_MODEL)
+
+    def generate(seed, prefix):
+        if args.backbone:
+            return modern.generate(
+                prompts=prompts,
+                image_prompts=image_prompts,
+                backbone=args.backbone,
+                image_size=args.image_size,
+                height_offset=args.height_offset,
+                width_offset=args.width_offset,
+                clip_model_name=clip_model,
+                clip_fp16=args.clip_fp16,
+                clip_loss=args.clip_loss,
+                aesthetic_scale=modern.DEFAULT_AESTHETIC_SCALE if args.aesthetic_scale is None else args.aesthetic_scale,
+                num_cutouts=args.num_cutouts or modern.DEFAULT_NUM_CUTOUTS,
+                cutout_power=args.cutout_power,
+                iterations=args.iterations,
+                lr=args.lr,
+                noise_penalty_scale=args.noise_penalty,
+                render_steps=args.render_steps,
+                tiny_decoder=not args.full_decoder,
+                batch_size=args.batch_size,
+                seed=seed,
+                prefix_path=prefix,
+                save_frequency=save_frequency,
+                device=args.device,
+                progress=not args.quiet,
+            )
+        return clip_guided_diffusion(
+            prompts=prompts,
+            image_prompts=image_prompts,
+            batch_size=args.batch_size,
+            tv_scale=args.tv_scale,
+            init_scale=args.init_scale,
+            range_scale=args.range_scale,
+            sat_scale=args.sat_scale,
+            image_size=args.image_size or DEFAULT_IMAGE_SIZE,
+            class_cond=_class_cond,
+            randomize_class=(_class_cond),
+            save_frequency=save_frequency,
+            clip_guidance_scale=args.clip_guidance_scale,
+            cutout_power=args.cutout_power,
+            num_cutouts=args.num_cutouts,
+            timestep_respacing=args.timestep_respacing,
+            seed=seed,
+            skip_timesteps=args.skip_timesteps,
+            init_image=args.init_image,
+            checkpoints_dir=args.checkpoints_dir,
+            clip_model_name=clip_model,
+            clip_fp16=args.clip_fp16,
+            device=args.device,
+            prefix_path=prefix,
+            wandb_project=args.wandb_project,
+            wandb_entity=args.wandb_entity,
+            height_offset=args.height_offset,
+            width_offset=args.width_offset,
+            progress=not args.quiet,
+            sample_steps=args.sample_steps,
+            guidance_rate=args.guidance_rate,
+            guidance_schedule=args.guidance_schedule,
+            x0_threshold=args.x0_threshold,
+            guidance_limit=args.guidance_limit,
+            clip_loss=args.clip_loss,
+            aesthetic_scale=args.aesthetic_scale or 0,
+            clip_view=args.clip_view,
+            pag_scale=args.pag_scale,
+            contrast_scale=args.contrast_scale,
+            class_rank=args.class_rank,
+            secondary_guidance=args.secondary,
+            solver=args.solver,
+        )
+
+    if args.candidates < 1:
+        p.error("--candidates must be at least 1.")
     frames = {}  # Only this run's frames: the folder may hold older ones for the same prompt.
     try:
-        for batch_idx, frame_path in cgd_generator:
-            frames.setdefault(batch_idx, []).append(frame_path)
+        if args.candidates > 1:
+            frames = judged_candidates(generate, args.candidates, args.seed, prefix_path, prompts, image_prompts)
+        else:
+            for batch_idx, frame_path in generate(args.seed, prefix_path):
+                frames.setdefault(batch_idx, []).append(frame_path)
     except script_util.ConfigError as error:
         p.error(str(error))
-    except th.cuda.OutOfMemoryError:
+    except RuntimeError as error:
+        if not is_out_of_memory(error):
+            raise
         advice = (f"Ran out of GPU memory. Try lowering --image_size/-size, --batch_size/-bs or --num_cutouts/-cutn.\n"
-                  f"--clip_model/-clip (currently {args.clip_model}) has a large impact on VRAM: RN50 uses the least, ViT-B/32 the second least.\n")
-        if args.clip_model in clip_util.OPEN_CLIP_MODELS and not args.clip_fp16:
+                  f"--clip_model/-clip (currently {clip_model}) has a large impact on VRAM: RN50 uses the least, ViT-B/32 the second least.\n")
+        if any(member in clip_util.OPEN_CLIP_MODELS for member in clip_util.ensemble_members(clip_model)) and not args.clip_fp16:
             advice += "--clip_fp16/-fp16 halves what this model needs.\n"
+        if args.backbone:
+            advice += "--iterations/-iters 0 is the plain model, which needs far less than correcting it with CLIP.\n"
         p.exit(1, advice)
 
+    upscaler = None
+    if args.upscale and frames:
+        device = args.device or ('cuda' if th.cuda.is_available() else 'cpu')
+        upscaler = upscale.load_upscaler(device, args.checkpoints_dir)
+
     for batch_idx, paths in frames.items():
+        if upscaler is not None:
+            print(f"Saved {upscale.upscale_file(upscaler, paths[-1], device)}")
         run_dir = Path(paths[0]).parent
         outputs = []
         if args.save_as_gif:
