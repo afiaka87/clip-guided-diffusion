@@ -1,0 +1,254 @@
+{
+"sd15": {
+"denoiser_M": 859.5,
+"vae_M": 83.7,
+"decoder_M": 49.5,
+"tiny_dec_M": 1.22,
+"denoiser_gib": 1.601,
+"decoder_gib": 0.092,
+"tiny_dec_gib": 0.002
+},
+"sd21": {
+"denoiser_M": 865.9,
+"vae_M": 83.7,
+"decoder_M": 49.5,
+"tiny_dec_M": 1.22,
+"denoiser_gib": 1.613,
+"decoder_gib": 0.092,
+"tiny_dec_gib": 0.002
+},
+"sdturbo": {
+"denoiser_M": 865.9,
+"vae_M": 83.7,
+"decoder_M": 49.5,
+"tiny_dec_M": 1.22,
+"denoiser_gib": 1.613,
+"decoder_gib": 0.092,
+"tiny_dec_gib": 0.002
+},
+"sdxl": {
+"denoiser_M": 2567.5,
+"vae_M": 83.7,
+"decoder_M": 49.5,
+"tiny_dec_M": 1.22,
+"denoiser_gib": 4.782,
+"decoder_gib": 0.092,
+"tiny_dec_gib": 0.002
+},
+"ssd1b": {
+"denoiser_M": 1331.3,
+"vae_M": 83.7,
+"decoder_M": 49.5,
+"tiny_dec_M": 1.22,
+"denoiser_gib": 2.48,
+"decoder_gib": 0.092,
+"tiny_dec_gib": 0.002
+},
+"vega": {
+"denoiser_M": 745.2,
+"vae_M": 83.7,
+"decoder_M": 49.5,
+"tiny_dec_M": 1.22,
+"denoiser_gib": 1.388,
+"decoder_gib": 0.092,
+"tiny_dec_gib": 0.002
+},
+"kolors": {
+"denoiser_M": 2579.5,
+"vae_M": 83.7,
+"decoder_M": 49.5,
+"tiny_dec_M": 1.22,
+"denoiser_gib": 4.805,
+"decoder_gib": 0.092,
+"tiny_dec_gib": 0.002
+},
+"kandinsky22": {
+"denoiser_M": 1253.1,
+"vae_M": 67.8,
+"decoder_M": 40.4,
+"tiny_dec_M": 0.0,
+"denoiser_gib": 2.334,
+"decoder_gib": 0.075,
+"tiny_dec_gib": 0.0
+},
+"pixart_a512": {
+"denoiser_M": 610.9,
+"vae_M": 83.7,
+"decoder_M": 49.5,
+"tiny_dec_M": 1.22,
+"denoiser_gib": 1.138,
+"decoder_gib": 0.092,
+"tiny_dec_gib": 0.002
+},
+"pixart_s512": {
+"denoiser_M": 610.9,
+"vae_M": 83.7,
+"decoder_M": 49.5,
+"tiny_dec_M": 1.22,
+"denoiser_gib": 1.138,
+"decoder_gib": 0.092,
+"tiny_dec_gib": 0.002
+},
+"pixart_s1024": {
+"denoiser_M": 610.9,
+"vae_M": 83.7,
+"decoder_M": 49.5,
+"tiny_dec_M": 1.22,
+"denoiser_gib": 1.138,
+"decoder_gib": 0.092,
+"tiny_dec_gib": 0.002
+},
+"sana600_512": {
+"denoiser_M": 591.7,
+"vae_M": 312.3,
+"decoder_M": 159.2,
+"tiny_dec_M": 0.0,
+"denoiser_gib": 1.102,
+"decoder_gib": 0.297,
+"tiny_dec_gib": 0.0
+},
+"sana1600_512": {
+"denoiser_M": 1604.5,
+"vae_M": 312.3,
+"decoder_M": 159.2,
+"tiny_dec_M": 0.0,
+"denoiser_gib": 2.989,
+"decoder_gib": 0.297,
+"tiny_dec_gib": 0.0
+},
+"sana1600_1024": {
+"denoiser_M": 1604.5,
+"vae_M": 312.3,
+"decoder_M": 159.2,
+"tiny_dec_M": 0.0,
+"denoiser_gib": 2.989,
+"decoder_gib": 0.297,
+"tiny_dec_gib": 0.0
+},
+"sprint600": {
+"denoiser_M": 593.5,
+"vae_M": 312.3,
+"decoder_M": 159.2,
+"tiny_dec_M": 0.0,
+"denoiser_gib": 1.105,
+"decoder_gib": 0.297,
+"tiny_dec_gib": 0.0
+},
+"sprint1600": {
+"denoiser_M": 1610.2,
+"vae_M": 312.3,
+"decoder_M": 159.2,
+"tiny_dec_M": 0.0,
+"denoiser_gib": 2.999,
+"decoder_gib": 0.297,
+"tiny_dec_gib": 0.0
+},
+"sd35m": {
+"denoiser_M": 2243.2,
+"vae_M": 83.8,
+"decoder_M": 49.5,
+"tiny_dec_M": 1.23,
+"denoiser_gib": 4.178,
+"decoder_gib": 0.092,
+"tiny_dec_gib": 0.002
+},
+"sd3m": {
+"denoiser_M": 2028.3,
+"vae_M": 83.8,
+"decoder_M": 49.5,
+"tiny_dec_M": 1.23,
+"denoiser_gib": 3.778,
+"decoder_gib": 0.092,
+"tiny_dec_gib": 0.002
+},
+"flux1": {
+"denoiser_M": 11891.2,
+"vae_M": 83.8,
+"decoder_M": 49.5,
+"tiny_dec_M": 1.23,
+"denoiser_gib": 22.149,
+"decoder_gib": 0.092,
+"tiny_dec_gib": 0.002
+},
+"klein4b": {
+"denoiser_M": 3875.5,
+"vae_M": 84.0,
+"decoder_M": 49.6,
+"tiny_dec_M": 1.24,
+"denoiser_gib": 7.219,
+"decoder_gib": 0.092,
+"tiny_dec_gib": 0.002
+},
+"zimage": {
+"denoiser_M": 6154.9,
+"vae_M": 83.8,
+"decoder_M": 49.5,
+"tiny_dec_M": 1.23,
+"denoiser_gib": 11.464,
+"decoder_gib": 0.092,
+"tiny_dec_gib": 0.002
+},
+"auraflow": {
+"denoiser_M": 6858.6,
+"vae_M": 83.7,
+"decoder_M": 49.5,
+"tiny_dec_M": 1.22,
+"denoiser_gib": 12.775,
+"decoder_gib": 0.092,
+"tiny_dec_gib": 0.002
+},
+"lumina2": {
+"denoiser_M": 2609.8,
+"vae_M": 83.8,
+"decoder_M": 49.5,
+"tiny_dec_M": 1.23,
+"denoiser_gib": 4.861,
+"decoder_gib": 0.092,
+"tiny_dec_gib": 0.002
+},
+"dit256": {
+"denoiser_M": 749.8,
+"vae_M": 83.7,
+"decoder_M": 49.5,
+"tiny_dec_M": 1.22,
+"denoiser_gib": 1.397,
+"decoder_gib": 0.092,
+"tiny_dec_gib": 0.002
+},
+"dit512": {
+"denoiser_M": 749.8,
+"vae_M": 83.7,
+"decoder_M": 49.5,
+"tiny_dec_M": 1.22,
+"denoiser_gib": 1.397,
+"decoder_gib": 0.092,
+"tiny_dec_gib": 0.002
+},
+"prx512": {
+"denoiser_M": 1170.7,
+"vae_M": 362.6,
+"decoder_M": 218.1,
+"tiny_dec_M": 0.0,
+"denoiser_gib": 2.181,
+"decoder_gib": 0.406,
+"tiny_dec_gib": 0.0
+},
+"edm2s_proxy": {
+"denoiser_M": 264.9,
+"vae_M": 83.7,
+"decoder_M": 49.5,
+"tiny_dec_M": 1.22,
+"denoiser_gib": 0.493,
+"decoder_gib": 0.092,
+"tiny_dec_gib": 0.002
+},
+"edm2xs_proxy": {
+"denoiser_M": 117.8,
+"vae_M": 83.7,
+"decoder_M": 49.5,
+"tiny_dec_M": 1.22,
+"denoiser_gib": 0.219,
+"decoder_gib": 0.092,
+"tiny_dec_gib": 0.002
+}
+}

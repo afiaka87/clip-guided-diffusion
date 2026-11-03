@@ -1,0 +1,6 @@
+baseline base256; pooled change on 3 held-out judges, CI over 12 prompts
+arm                                  pooled   +-ci  wins seeds |   b16   vith   sig2 | aes16  aes32   sat  cli
+ens256                               +0.0150 0.014  7/12  2    | 0.316  0.320  0.132 |  5.11   5.34  0.50  4.1
+base256                              +0.0000 0.000  0/12  2    | 0.314  0.295  0.114 |  4.84   5.11  0.52  4.5
+sec256                               -0.0048 0.023  6/12  2    | 0.299  0.300  0.111 |  4.98   5.08  0.51  3.3
+exit 0

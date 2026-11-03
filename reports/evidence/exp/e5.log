@@ -1,0 +1,25 @@
+  from pkg_resources import packaging
+  @th.cuda.amp.custom_fwd
+  @th.cuda.amp.custom_bwd
+waiting for gpu: True
+done a red fox in the snow
+done a pencil sketch of an old man with a beard
+done a plate of sushi on a black slate
+done a lighthouse on a rocky coast at sunset
+done an oil painting of a sailboat in a storm
+done a bowl of ramen with chopsticks
+step  sigma eps in x_in | pair raw pair unet pair blend | hf raw hf unet hf blend | id/unet cos(b,u)
+   8  0.997       0.003 |    0.252     0.833      0.830 |  0.603   0.032    0.035 |   0.035    0.999
+  11  0.977       0.023 |    0.146     0.673      0.638 |  0.685   0.029    0.069 |   0.230    0.973
+  13  0.922       0.072 |    0.246     0.719      0.629 |  0.686   0.072    0.192 |   0.479    0.914
+  15  0.782       0.170 |    0.233     0.582      0.432 |  0.647   0.175    0.400 |   1.072    0.782
+  16  0.673       0.220 |    0.188     0.505      0.301 |  0.672   0.225    0.532 |   1.908    0.641
+  17  0.550       0.247 |    0.220     0.449      0.261 |  0.649   0.269    0.577 |   3.257    0.565
+  18  0.431       0.245 |    0.181     0.355      0.204 |  0.661   0.321    0.622 |   5.389    0.518
+  19  0.327       0.220 |    0.177     0.300      0.186 |  0.681   0.348    0.657 |   8.385    0.469
+
+== resampler: gradient spectrum, repeatability and what CLIP reads, at the last guided step ==
+area       pair=0.3873 hf_grad=0.5487 hf_input=0.0059 similarity=0.3033
+bilinear   pair=0.5047 hf_grad=0.4417 hf_input=0.0043 similarity=0.2946
+bicubic    pair=0.5074 hf_grad=0.5116 hf_input=0.0044 similarity=0.2875
+lanczos3   pair=0.5114 hf_grad=0.5501 hf_input=0.0042 similarity=0.2846

@@ -1,0 +1,6 @@
+baseline repo default; pooled change on 3 held-out judges, CI over 12 prompts
+arm                                  pooled   +-ci  wins seeds |   b16   vith   sig2 | aes16  aes32   sat  clip%
+iters 200                            +0.0057 0.004  9/12  1    | 0.370  0.383  0.195 |  6.37   6.35  0.43  7.6
+iters 100                            +0.0024 0.002  8/12  3    | 0.363  0.384  0.195 |  6.40   6.24  0.37  4.0
+repo default                         +0.0000 0.000  0/12  3    | 0.357  0.385  0.193 |  6.35   6.30  0.36  2.3
+whole+3 .44-.7                       -0.0032 0.003  3/12  3    | 0.352  0.381  0.191 |  6.55   6.41  0.37  2.5

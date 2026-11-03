@@ -1,0 +1,97 @@
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]Loading pipeline components...:  20%|██        | 1/5 [00:00<00:00,  5.00it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 5435.63it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00,  5.36it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00,  8.97it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00,  9.70it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 11037.80it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 11.32it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 18.26it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 11146.86it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 11.07it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 18.17it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+RESULT sd-turbo 512 seconds per run incl load [5.3, 1.6, 1.6] peak 2.47 GiB
+Loading pipeline components...:   0%|          | 0/6 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/196 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 196/196 [00:00<00:00, 3951.07it/s]
+Loading pipeline components...:  33%|███▎      | 2/6 [00:00<00:00,  7.81it/s]
+Loading weights:   0%|          | 0/517 [00:00<?, ?it/s][A
+Loading weights:  91%|█████████ | 471/517 [00:00<00:00, 4656.39it/s][ALoading weights: 100%|██████████| 517/517 [00:00<00:00, 4779.48it/s]
+Loading pipeline components...: 100%|██████████| 6/6 [00:00<00:00, 12.27it/s]Loading pipeline components...: 100%|██████████| 6/6 [00:00<00:00, 11.61it/s]
+No LoRA keys associated to CLIPTextModel found with the prefix='text_encoder'. This is safe to ignore if LoRA state dict didn't originally have any CLIPTextModel related params. You can also try specifying `prefix=None` to resolve the warning. Otherwise, open an issue if you think it's unexpected: https://github.com/huggingface/diffusers/issues/new
+No LoRA keys associated to CLIPTextModelWithProjection found with the prefix='text_encoder_2'. This is safe to ignore if LoRA state dict didn't originally have any CLIPTextModelWithProjection related params. You can also try specifying `prefix=None` to resolve the warning. Otherwise, open an issue if you think it's unexpected: https://github.com/huggingface/diffusers/issues/new
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+Loading pipeline components...:   0%|          | 0/6 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/196 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 196/196 [00:00<00:00, 10485.09it/s]
+Loading pipeline components...:  33%|███▎      | 2/6 [00:00<00:00,  9.93it/s]
+Loading weights:   0%|          | 0/517 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 517/517 [00:00<00:00, 9816.28it/s]
+Loading pipeline components...: 100%|██████████| 6/6 [00:00<00:00, 15.89it/s]Loading pipeline components...: 100%|██████████| 6/6 [00:00<00:00, 14.98it/s]
+No LoRA keys associated to CLIPTextModel found with the prefix='text_encoder'. This is safe to ignore if LoRA state dict didn't originally have any CLIPTextModel related params. You can also try specifying `prefix=None` to resolve the warning. Otherwise, open an issue if you think it's unexpected: https://github.com/huggingface/diffusers/issues/new
+No LoRA keys associated to CLIPTextModelWithProjection found with the prefix='text_encoder_2'. This is safe to ignore if LoRA state dict didn't originally have any CLIPTextModelWithProjection related params. You can also try specifying `prefix=None` to resolve the warning. Otherwise, open an issue if you think it's unexpected: https://github.com/huggingface/diffusers/issues/new
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+Loading pipeline components...:   0%|          | 0/6 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/196 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 196/196 [00:00<00:00, 13062.63it/s]
+Loading pipeline components...:  33%|███▎      | 2/6 [00:00<00:00, 11.57it/s]
+Loading weights:   0%|          | 0/517 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 517/517 [00:00<00:00, 9927.55it/s]
+Loading pipeline components...: 100%|██████████| 6/6 [00:00<00:00, 16.80it/s]Loading pipeline components...: 100%|██████████| 6/6 [00:00<00:00, 16.07it/s]
+No LoRA keys associated to CLIPTextModel found with the prefix='text_encoder'. This is safe to ignore if LoRA state dict didn't originally have any CLIPTextModel related params. You can also try specifying `prefix=None` to resolve the warning. Otherwise, open an issue if you think it's unexpected: https://github.com/huggingface/diffusers/issues/new
+No LoRA keys associated to CLIPTextModelWithProjection found with the prefix='text_encoder_2'. This is safe to ignore if LoRA state dict didn't originally have any CLIPTextModelWithProjection related params. You can also try specifying `prefix=None` to resolve the warning. Otherwise, open an issue if you think it's unexpected: https://github.com/huggingface/diffusers/issues/new
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+RESULT vega 768 seconds per run incl load [8.8, 4.7, 4.8] peak 2.90 GiB
+Loading pipeline components...:   0%|          | 0/6 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/196 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 196/196 [00:00<00:00, 10794.02it/s]
+Loading pipeline components...:  33%|███▎      | 2/6 [00:00<00:00, 10.15it/s]
+Loading weights:   0%|          | 0/517 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 517/517 [00:00<00:00, 9164.10it/s]
+Loading pipeline components...: 100%|██████████| 6/6 [00:00<00:00, 15.21it/s]Loading pipeline components...: 100%|██████████| 6/6 [00:00<00:00, 14.49it/s]
+No LoRA keys associated to CLIPTextModel found with the prefix='text_encoder'. This is safe to ignore if LoRA state dict didn't originally have any CLIPTextModel related params. You can also try specifying `prefix=None` to resolve the warning. Otherwise, open an issue if you think it's unexpected: https://github.com/huggingface/diffusers/issues/new
+No LoRA keys associated to CLIPTextModelWithProjection found with the prefix='text_encoder_2'. This is safe to ignore if LoRA state dict didn't originally have any CLIPTextModelWithProjection related params. You can also try specifying `prefix=None` to resolve the warning. Otherwise, open an issue if you think it's unexpected: https://github.com/huggingface/diffusers/issues/new
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+Loading pipeline components...:   0%|          | 0/6 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/196 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 196/196 [00:00<00:00, 9624.47it/s]
+Loading pipeline components...:  33%|███▎      | 2/6 [00:00<00:00,  8.43it/s]
+Loading weights:   0%|          | 0/517 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 517/517 [00:00<00:00, 9101.21it/s]
+Loading pipeline components...: 100%|██████████| 6/6 [00:00<00:00, 14.40it/s]Loading pipeline components...: 100%|██████████| 6/6 [00:00<00:00, 13.45it/s]
+No LoRA keys associated to CLIPTextModel found with the prefix='text_encoder'. This is safe to ignore if LoRA state dict didn't originally have any CLIPTextModel related params. You can also try specifying `prefix=None` to resolve the warning. Otherwise, open an issue if you think it's unexpected: https://github.com/huggingface/diffusers/issues/new
+No LoRA keys associated to CLIPTextModelWithProjection found with the prefix='text_encoder_2'. This is safe to ignore if LoRA state dict didn't originally have any CLIPTextModelWithProjection related params. You can also try specifying `prefix=None` to resolve the warning. Otherwise, open an issue if you think it's unexpected: https://github.com/huggingface/diffusers/issues/new
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+Loading pipeline components...:   0%|          | 0/6 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/196 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 196/196 [00:00<00:00, 9476.80it/s]
+Loading pipeline components...:  33%|███▎      | 2/6 [00:00<00:00,  8.66it/s]
+Loading weights:   0%|          | 0/517 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 517/517 [00:00<00:00, 9285.31it/s]
+Loading pipeline components...: 100%|██████████| 6/6 [00:00<00:00, 14.54it/s]Loading pipeline components...: 100%|██████████| 6/6 [00:00<00:00, 13.61it/s]
+No LoRA keys associated to CLIPTextModel found with the prefix='text_encoder'. This is safe to ignore if LoRA state dict didn't originally have any CLIPTextModel related params. You can also try specifying `prefix=None` to resolve the warning. Otherwise, open an issue if you think it's unexpected: https://github.com/huggingface/diffusers/issues/new
+No LoRA keys associated to CLIPTextModelWithProjection found with the prefix='text_encoder_2'. This is safe to ignore if LoRA state dict didn't originally have any CLIPTextModelWithProjection related params. You can also try specifying `prefix=None` to resolve the warning. Otherwise, open an issue if you think it's unexpected: https://github.com/huggingface/diffusers/issues/new
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+RESULT vega 1024 seconds per run incl load [5.3, 5.3, 5.6] peak 3.93 GiB
+Loading pipeline components...:   0%|          | 0/6 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/196 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 196/196 [00:00<00:00, 10831.43it/s]
+Loading pipeline components...:  33%|███▎      | 2/6 [00:00<00:00,  4.52it/s]
+Loading weights:   0%|          | 0/517 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 517/517 [00:00<00:00, 9075.24it/s]
+Loading pipeline components...: 100%|██████████| 6/6 [00:00<00:00, 10.28it/s]Loading pipeline components...: 100%|██████████| 6/6 [00:00<00:00,  9.12it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+Loading pipeline components...:   0%|          | 0/6 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/196 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 196/196 [00:00<00:00, 10009.66it/s]
+Loading pipeline components...:  33%|███▎      | 2/6 [00:00<00:00,  4.27it/s]
+Loading weights:   0%|          | 0/517 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 517/517 [00:00<00:00, 8993.26it/s]
+Loading pipeline components...: 100%|██████████| 6/6 [00:00<00:00,  9.95it/s]Loading pipeline components...: 100%|██████████| 6/6 [00:00<00:00,  8.78it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+Loading pipeline components...:   0%|          | 0/6 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/196 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 196/196 [00:00<00:00, 7747.90it/s]
+Loading pipeline components...:  33%|███▎      | 2/6 [00:00<00:00,  4.66it/s]
+Loading weights:   0%|          | 0/517 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 517/517 [00:00<00:00, 9818.41it/s]
+Loading pipeline components...: 100%|██████████| 6/6 [00:00<00:00, 10.58it/s]Loading pipeline components...: 100%|██████████| 6/6 [00:00<00:00,  9.39it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+RESULT sdxl-lightning 768 seconds per run incl load [6.1, 5.0, 4.9] peak 6.29 GiB
+exit 0

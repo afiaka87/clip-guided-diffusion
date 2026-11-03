@@ -1,0 +1,6 @@
+72 images to score
+baseline base; pooled change on 3 held-out judges, CI over 12 prompts
+arm                                  pooled   +-ci  wins seeds |   b16   vith   sig2 | aes16  aes32   sat  clip%
+tiny                                 +0.0010 0.003  8/12  3    | 0.357  0.385  0.193 |  6.35   6.30  0.36  2.3
+base                                 +0.0000 0.000  0/12  3    | 0.355  0.384  0.193 |  6.52   6.47  0.33  0.9
+plain                                -0.0110 0.005  0/12  3    | 0.342  0.373  0.184 |  6.48   6.46  0.32  0.5

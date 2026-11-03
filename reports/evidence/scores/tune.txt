@@ -1,0 +1,17 @@
+120 images to score
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+WARNING:huggingface_hub.utils._http:Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+baseline base; pooled change on 3 held-out judges, CI over 12 prompts
+arm                                  pooled   +-ci  wins seeds |   b16   vith   sig2 | aes16  aes32   sat  clip%
+last                                 +0.0012 0.002  5/12  1    | 0.357  0.384  0.192 |  6.48   6.45  0.36  1.1
+tiny                                 +0.0005 0.008  9/12  1    | 0.357  0.384  0.191 |  6.47   6.32  0.41  2.6
+base                                 +0.0000 0.000  0/12  1    | 0.356  0.382  0.193 |  6.49   6.47  0.36  1.1
+n16                                  -0.0017 0.005  6/12  1    | 0.355  0.378  0.192 |  6.61   6.39  0.35  0.8
+penalty .1                           -0.0021 0.008  5/12  1    | 0.353  0.379  0.192 |  6.55   6.36  0.35  0.7
+lr 2.5                               -0.0026 0.007  6/12  1    | 0.352  0.378  0.192 |  6.60   6.44  0.35  0.7
+n1                                   -0.0038 0.008  3/12  1    | 0.348  0.378  0.193 |  6.62   6.53  0.38  1.7
+cut .3                               -0.0039 0.006  2/12  1    | 0.349  0.378  0.192 |  6.55   6.36  0.37  1.4
+render 4                             -0.0064 0.006  4/12  1    | 0.347  0.377  0.187 |  6.24   6.14  0.35  0.5
+contrastive                          -0.0085 0.006  3/12  1    | 0.344  0.373  0.188 |  6.47   6.38  0.35  0.5
+iters 25                             -0.0097 0.006  1/12  1    | 0.348  0.371  0.183 |  6.49   6.40  0.35  0.6
+plain                                -0.0143 0.010  3/12  1    | 0.343  0.367  0.178 |  6.42   6.45  0.35  0.4

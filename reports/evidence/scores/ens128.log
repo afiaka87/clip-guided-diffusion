@@ -1,0 +1,3 @@
+RESULT base 2.9s/img peak 2.33 GiB
+RESULT ens 5.9s/img peak 2.69 GiB
+exit 0

@@ -1,0 +1,7 @@
+sec256 s1 5.8s/img peak 1.91 GiB
+sec256 s2 5.8s/img peak 1.91 GiB
+sec512 s1 11.2s/img peak 2.64 GiB
+base128t s1 2.9s/img peak 2.36 GiB
+ens128t s1 25.5s/img peak 2.69 GiB
+done
+exit 0

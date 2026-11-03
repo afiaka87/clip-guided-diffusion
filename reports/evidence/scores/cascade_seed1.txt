@@ -1,0 +1,4 @@
+baseline base512; pooled change on 3 held-out judges, CI over 12 prompts
+arm                                  pooled   +-ci  wins seeds |   b16   vith   sig2 | aes16  aes32   sat  clip%
+base512                              +0.0000 0.000  0/12  1    | 0.322  0.304  0.121 |  5.32   5.47  0.40  4.1
+128+up                               -0.0135 0.028  6/12  1    | 0.290  0.303  0.114 |  4.83   4.91  0.48  10.4

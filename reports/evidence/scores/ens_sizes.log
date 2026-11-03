@@ -1,0 +1,7 @@
+base256 s1 7.8s/img peak 5.28 GiB
+base256 s2 7.7s/img peak 5.28 GiB
+ens256 s1 10.7s/img peak 5.64 GiB
+ens256 s2 10.6s/img peak 5.64 GiB
+base512 s1 18.8s/img peak 4.08 GiB
+ens512 s1 21.6s/img peak 4.43 GiB
+done

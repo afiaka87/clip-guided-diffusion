@@ -1,0 +1,95 @@
+run.py finished Sun Nov  1 03:41:05 PM CST 2026
+Installed 32 packages in 259ms
+warning: `numpy==2.4.0` is yanked (reason: "Backward compatibility bug")
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/guided_diffusion/nn.py:143: FutureWarning: `torch.cuda.amp.custom_fwd(args...)` is deprecated. Please use `torch.amp.custom_fwd(args..., device_type='cuda')` instead.
+  @th.cuda.amp.custom_fwd
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/guided_diffusion/nn.py:153: FutureWarning: `torch.cuda.amp.custom_bwd(args...)` is deprecated. Please use `torch.amp.custom_bwd(args..., device_type='cuda')` instead.
+  @th.cuda.amp.custom_bwd
+esrgan ESRGAN scale 4 half True params 16697987
+Traceback (most recent call last):
+  File "/tmp/claude-1000/-home-sam-GitHub-clip-guided-diffusion/34d680cf-d9a7-412c-9f94-d042cb1cd642/scratchpad/cascade_exp/gan.py", line 16, in <module>
+    desc.model = model
+    ^^^^^^^^^^
+AttributeError: property 'model' of 'ImageModelDescriptor' object has no setter
+gan finished Sun Nov  1 03:41:12 PM CST 2026 rc=0
+Traceback (most recent call last):
+  File "/tmp/claude-1000/-home-sam-GitHub-clip-guided-diffusion/34d680cf-d9a7-412c-9f94-d042cb1cd642/scratchpad/cascade_exp/variants.py", line 2, in <module>
+    from common import *
+ModuleNotFoundError: No module named 'common'
+variants finished Sun Nov  1 03:41:12 PM CST 2026 rc=0
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/clip/clip.py:6: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  from pkg_resources import packaging
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/guided_diffusion/nn.py:143: FutureWarning: `torch.cuda.amp.custom_fwd(args...)` is deprecated. Please use `torch.amp.custom_fwd(args..., device_type='cuda')` instead.
+  @th.cuda.amp.custom_fwd
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/guided_diffusion/nn.py:153: FutureWarning: `torch.cuda.amp.custom_bwd(args...)` is deprecated. Please use `torch.amp.custom_bwd(args..., device_type='cuda')` instead.
+  @th.cuda.amp.custom_bwd
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/guided_diffusion/nn.py:143: FutureWarning: `torch.cuda.amp.custom_fwd(args...)` is deprecated. Please use `torch.amp.custom_fwd(args..., device_type='cuda')` instead.
+  @th.cuda.amp.custom_fwd
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/guided_diffusion/nn.py:153: FutureWarning: `torch.cuda.amp.custom_bwd(args...)` is deprecated. Please use `torch.amp.custom_bwd(args..., device_type='cuda')` instead.
+  @th.cuda.amp.custom_bwd
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/clip/clip.py:6: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  from pkg_resources import packaging
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/guided_diffusion/nn.py:143: FutureWarning: `torch.cuda.amp.custom_fwd(args...)` is deprecated. Please use `torch.amp.custom_fwd(args..., device_type='cuda')` instead.
+  @th.cuda.amp.custom_fwd
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/guided_diffusion/nn.py:153: FutureWarning: `torch.cuda.amp.custom_bwd(args...)` is deprecated. Please use `torch.amp.custom_bwd(args..., device_type='cuda')` instead.
+  @th.cuda.amp.custom_bwd
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/clip/clip.py:6: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  from pkg_resources import packaging
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/guided_diffusion/nn.py:143: FutureWarning: `torch.cuda.amp.custom_fwd(args...)` is deprecated. Please use `torch.amp.custom_fwd(args..., device_type='cuda')` instead.
+  @th.cuda.amp.custom_fwd
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/guided_diffusion/nn.py:153: FutureWarning: `torch.cuda.amp.custom_bwd(args...)` is deprecated. Please use `torch.amp.custom_bwd(args..., device_type='cuda')` instead.
+  @th.cuda.amp.custom_bwd
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/clip/clip.py:6: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  from pkg_resources import packaging
+judged 8 candidates per prompt on the CPU, sec per image 0.3600833045311447
+candidates done
+64_256_upsampler.pt strict load ok <All keys matched successfully> params 311795910
+sr256 done
+i2i done
+128_512_upsampler.pt strict load ok <All keys matched successfully> params 308835270
+all done
+run2 finished Sun Nov  1 04:10:48 PM CST 2026 rc=0
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/guided_diffusion/nn.py:143: FutureWarning: `torch.cuda.amp.custom_fwd(args...)` is deprecated. Please use `torch.amp.custom_fwd(args..., device_type='cuda')` instead.
+  @th.cuda.amp.custom_fwd
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/guided_diffusion/nn.py:153: FutureWarning: `torch.cuda.amp.custom_bwd(args...)` is deprecated. Please use `torch.amp.custom_bwd(args..., device_type='cuda')` instead.
+  @th.cuda.amp.custom_bwd
+esrgan ESRGAN scale 4 half True params 16697987
+ultrasharp ESRGAN scale 4 half True params 16697987
+/home/sam/.cache/uv/archive-v0/63IzQ540cZyESUus/lib/python3.13/site-packages/torch/functional.py:505: UserWarning: torch.meshgrid: in an upcoming release, it will be required to pass the indexing argument. (Triggered internally at /pytorch/aten/src/ATen/native/TensorShape.cpp:4317.)
+  return _VF.meshgrid(tensors, **kwargs)  # type: ignore[attr-defined]
+swinirL SwinIR scale 4 half False params 28013059
+hat HAT scale 4 half False params 20772507
+hat d512 failed gave up
+hat d512 failed gave up
+hat d512 failed gave up
+compact RealESRGAN Compact scale 4 half True params 1213296
+gan done
+gan finished Sun Nov  1 04:16:12 PM CST 2026 rc=0
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/guided_diffusion/nn.py:143: FutureWarning: `torch.cuda.amp.custom_fwd(args...)` is deprecated. Please use `torch.amp.custom_fwd(args..., device_type='cuda')` instead.
+  @th.cuda.amp.custom_fwd
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/guided_diffusion/nn.py:153: FutureWarning: `torch.cuda.amp.custom_bwd(args...)` is deprecated. Please use `torch.amp.custom_bwd(args..., device_type='cuda')` instead.
+  @th.cuda.amp.custom_bwd
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/clip/clip.py:6: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  from pkg_resources import packaging
+secondary params 13841547
+256 variants done
+all variants done
+variants finished Sun Nov  1 04:33:43 PM CST 2026 rc=0
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/clip/clip.py:6: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  from pkg_resources import packaging
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/guided_diffusion/nn.py:143: FutureWarning: `torch.cuda.amp.custom_fwd(args...)` is deprecated. Please use `torch.amp.custom_fwd(args..., device_type='cuda')` instead.
+  @th.cuda.amp.custom_fwd
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/guided_diffusion/nn.py:153: FutureWarning: `torch.cuda.amp.custom_bwd(args...)` is deprecated. Please use `torch.amp.custom_bwd(args..., device_type='cuda')` instead.
+  @th.cuda.amp.custom_bwd
+ViT-B/16 scored 519
+SigLIP2-L scored 519
+ViT-H scored 519
+519 scored
+score finished Sun Nov  1 05:25:49 PM CST 2026 rc=0
+chain2 complete
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/guided_diffusion/nn.py:143: FutureWarning: `torch.cuda.amp.custom_fwd(args...)` is deprecated. Please use `torch.amp.custom_fwd(args..., device_type='cuda')` instead.
+  @th.cuda.amp.custom_fwd
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/guided_diffusion/nn.py:153: FutureWarning: `torch.cuda.amp.custom_bwd(args...)` is deprecated. Please use `torch.amp.custom_bwd(args..., device_type='cuda')` instead.
+  @th.cuda.amp.custom_bwd
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/clip/clip.py:6: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  from pkg_resources import packaging

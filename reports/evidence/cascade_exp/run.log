@@ -1,0 +1,16 @@
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/guided_diffusion/nn.py:143: FutureWarning: `torch.cuda.amp.custom_fwd(args...)` is deprecated. Please use `torch.amp.custom_fwd(args..., device_type='cuda')` instead.
+  @th.cuda.amp.custom_fwd
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/guided_diffusion/nn.py:153: FutureWarning: `torch.cuda.amp.custom_bwd(args...)` is deprecated. Please use `torch.amp.custom_bwd(args..., device_type='cuda')` instead.
+  @th.cuda.amp.custom_bwd
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/clip/clip.py:6: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  from pkg_resources import packaging
+direct done
+64_256_upsampler.pt strict load ok <All keys matched successfully> params 311795910
+Traceback (most recent call last):
+  File "/tmp/claude-1000/-home-sam-GitHub-clip-guided-diffusion/34d680cf-d9a7-412c-9f94-d042cb1cd642/scratchpad/cascade_exp/run.py", line 132, in <module>
+    upsample("sr256_u", model, diffusion, 256, paths("d64"), False)
+                                               ~~~~~^^^^^^^
+  File "/tmp/claude-1000/-home-sam-GitHub-clip-guided-diffusion/34d680cf-d9a7-412c-9f94-d042cb1cd642/scratchpad/cascade_exp/run.py", line 71, in paths
+    return {r["prompt"]: r["path"] for r in map(json.loads, open(os.path.join(HERE, "results.jsonl"))) if r["pipe"] == name}
+                                                                                                          ~^^^^^^^^
+KeyError: 'pipe'

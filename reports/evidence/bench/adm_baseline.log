@@ -1,0 +1,10 @@
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/guided_diffusion/nn.py:143: FutureWarning: `torch.cuda.amp.custom_fwd(args...)` is deprecated. Please use `torch.amp.custom_fwd(args..., device_type='cuda')` instead.
+  @th.cuda.amp.custom_fwd
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/guided_diffusion/nn.py:153: FutureWarning: `torch.cuda.amp.custom_bwd(args...)` is deprecated. Please use `torch.amp.custom_bwd(args..., device_type='cuda')` instead.
+  @th.cuda.amp.custom_bwd
+WARNING:root:No pretrained weights loaded for model 'ViT-B-32'. Model initialized randomly.
+128 params_M 421.5 peak_alloc 2.57 peak_res 2.59 s 1.04
+WARNING:root:No pretrained weights loaded for model 'ViT-B-32'. Model initialized randomly.
+256 params_M 553.8 peak_alloc 5.52 peak_res 5.61 s 0.35
+WARNING:root:No pretrained weights loaded for model 'ViT-B-32'. Model initialized randomly.
+512 params_M 559.0 peak_alloc 4.3 peak_res 5.16 s 0.94

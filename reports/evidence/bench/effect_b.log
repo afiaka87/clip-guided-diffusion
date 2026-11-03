@@ -1,0 +1,15 @@
+{"part": "B", "prompt": 0, "seed": 0, "path": "none", "rate": 0.2, "guide_clip": 0.3467, "held_out": 0.3179}
+{"part": "B", "prompt": 0, "seed": 0, "path": "xt_vae", "rate": 0.2, "guide_clip": 0.3686, "held_out": 0.3031}
+{"part": "B", "prompt": 0, "seed": 0, "path": "xt_tiny", "rate": 0.2, "guide_clip": 0.3537, "held_out": 0.2946}
+{"part": "B", "prompt": 0, "seed": 0, "path": "x0_vae", "rate": 0.2, "guide_clip": 0.3526, "held_out": 0.3338}
+{"part": "B", "prompt": 0, "seed": 0, "path": "x0_tiny", "rate": 0.2, "guide_clip": 0.3538, "held_out": 0.3449}
+{"part": "B", "prompt": 1, "seed": 0, "path": "none", "rate": 0.2, "guide_clip": 0.3598, "held_out": 0.3247}
+{"part": "B", "prompt": 1, "seed": 0, "path": "xt_vae", "rate": 0.2, "guide_clip": 0.4055, "held_out": 0.3342}
+{"part": "B", "prompt": 1, "seed": 0, "path": "xt_tiny", "rate": 0.2, "guide_clip": 0.3858, "held_out": 0.333}
+{"part": "B", "prompt": 1, "seed": 0, "path": "x0_vae", "rate": 0.2, "guide_clip": 0.3716, "held_out": 0.3214}
+{"part": "B", "prompt": 1, "seed": 0, "path": "x0_tiny", "rate": 0.2, "guide_clip": 0.3738, "held_out": 0.3197}
+SUMMARY_B {"path": "none", "n": 2, "guide_clip": 0.3533, "held_out": 0.3213, "guide_delta": 0.0, "held_delta": 0.0}
+SUMMARY_B {"path": "xt_vae", "n": 2, "guide_clip": 0.3871, "held_out": 0.3186, "guide_delta": 0.0338, "held_delta": -0.0027}
+SUMMARY_B {"path": "xt_tiny", "n": 2, "guide_clip": 0.3698, "held_out": 0.3138, "guide_delta": 0.0165, "held_delta": -0.0075}
+SUMMARY_B {"path": "x0_vae", "n": 2, "guide_clip": 0.3621, "held_out": 0.3276, "guide_delta": 0.0088, "held_delta": 0.0063}
+SUMMARY_B {"path": "x0_tiny", "n": 2, "guide_clip": 0.3638, "held_out": 0.3323, "guide_delta": 0.0106, "held_delta": 0.011}

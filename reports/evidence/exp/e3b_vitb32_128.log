@@ -1,0 +1,54 @@
+  from pkg_resources import packaging
+  @th.cuda.amp.custom_fwd
+  @th.cuda.amp.custom_bwd
+waiting for gpu: True
+captured a red fox in the snow [8, 13, 16, 19]
+captured a pencil sketch of an old man with a beard [8, 13, 16, 19]
+captured a plate of sushi on a black slate [8, 13, 16, 19]
+captured a lighthouse on a rocky coast at sunset [8, 13, 16, 19]
+a red fox in the snow          step 8 s=.997 truth self-check cos=0.974
+a red fox in the snow          step 13 s=.92 truth self-check cos=0.981
+a red fox in the snow          step 16 s=.67 truth self-check cos=0.972
+a red fox in the snow          step 19 s=.33 truth self-check cos=0.960
+a pencil sketch of an old man  step 8 s=.997 truth self-check cos=0.964
+a pencil sketch of an old man  step 13 s=.92 truth self-check cos=0.981
+a pencil sketch of an old man  step 16 s=.67 truth self-check cos=0.959
+a pencil sketch of an old man  step 19 s=.33 truth self-check cos=0.964
+a plate of sushi on a black sl step 8 s=.997 truth self-check cos=0.966
+a plate of sushi on a black sl step 13 s=.92 truth self-check cos=0.953
+a plate of sushi on a black sl step 16 s=.67 truth self-check cos=0.950
+a plate of sushi on a black sl step 19 s=.33 truth self-check cos=0.956
+a lighthouse on a rocky coast  step 8 s=.997 truth self-check cos=0.969
+a lighthouse on a rocky coast  step 13 s=.92 truth self-check cos=0.980
+a lighthouse on a rocky coast  step 16 s=.67 truth self-check cos=0.949
+a lighthouse on a rocky coast  step 19 s=.33 truth self-check cos=0.957
+
+=== mean over prompts ===
+iid area (repo)              s=.997  k1: p0.064 s0.184 j0.061 j0.009 | k2: p0.117 s0.247 j0.068 j0.021 | k4: p0.186 s0.323 j0.089 j0.031 | k8: p0.337 s0.439 j0.126 j0.038 | k16: p0.495 s0.535 j0.153 j0.050 | k32: p0.651 s0.612 j0.181 j0.054
+iid area (repo)              s=.92   k1: p0.087 s0.253 j0.048 j0.054 | k2: p0.156 s0.336 j0.072 j0.058 | k4: p0.300 s0.470 j0.099 j0.094 | k8: p0.420 s0.552 j0.122 j0.114 | k16: p0.600 s0.661 j0.149 j0.133 | k32: p0.760 s0.741 j0.172 j0.143
+iid area (repo)              s=.67   k1: p0.073 s0.239 j0.031 j0.028 | k2: p0.144 s0.318 j0.035 j0.036 | k4: p0.183 s0.337 j0.061 j0.045 | k8: p0.308 s0.439 j0.083 j0.052 | k16: p0.483 s0.544 j0.104 j0.062 | k32: p0.645 s0.654 j0.116 j0.080
+iid area (repo)              s=.33   k1: p0.059 s0.221 j0.021 j0.027 | k2: p0.113 s0.280 j0.032 j0.036 | k4: p0.184 s0.365 j0.044 j0.048 | k8: p0.311 s0.464 j0.066 j0.059 | k16: p0.465 s0.569 j0.072 j0.074 | k32: p0.634 s0.653 j0.086 j0.086
+LHS area                     s=.997  k1: p0.061 s0.183 j0.049 j0.006 | k2: p0.106 s0.254 j0.067 j0.025 | k4: p0.209 s0.356 j0.104 j0.038 | k8: p0.341 s0.454 j0.137 j0.045 | k16: p0.504 s0.546 j0.158 j0.046 | k32: p0.678 s0.626 j0.183 j0.053
+LHS area                     s=.92   k1: p0.103 s0.285 j0.062 j0.054 | k2: p0.167 s0.359 j0.074 j0.076 | k4: p0.287 s0.454 j0.100 j0.085 | k8: p0.453 s0.574 j0.126 j0.113 | k16: p0.619 s0.670 j0.152 j0.131 | k32: p0.768 s0.748 j0.170 j0.142
+LHS area                     s=.67   k1: p0.058 s0.210 j0.024 j0.021 | k2: p0.115 s0.272 j0.051 j0.037 | k4: p0.202 s0.368 j0.057 j0.041 | k8: p0.328 s0.456 j0.079 j0.057 | k16: p0.493 s0.569 j0.095 j0.066 | k32: p0.660 s0.652 j0.116 j0.076
+LHS area                     s=.33   k1: p0.051 s0.196 j0.017 j0.018 | k2: p0.113 s0.271 j0.031 j0.028 | k4: p0.198 s0.372 j0.045 j0.044 | k8: p0.303 s0.442 j0.062 j0.053 | k16: p0.478 s0.574 j0.071 j0.072 | k32: p0.648 s0.663 j0.084 j0.084
+iid bicubic                  s=.997  k1: p0.109 s0.324 j0.082 j0.041 | k2: p0.156 s0.383 j0.107 j0.050 | k4: p0.297 s0.534 j0.133 j0.058 | k8: p0.443 s0.652 j0.166 j0.073 | k16: p0.610 s0.768 j0.195 j0.086 | k32: p0.755 s0.854 j0.225 j0.092
+iid bicubic                  s=.92   k1: p0.110 s0.327 j0.056 j0.059 | k2: p0.221 s0.469 j0.080 j0.073 | k4: p0.347 s0.577 j0.106 j0.093 | k8: p0.512 s0.695 j0.127 j0.112 | k16: p0.672 s0.806 j0.152 j0.136 | k32: p0.809 s0.882 j0.172 j0.142
+iid bicubic                  s=.67   k1: p0.103 s0.315 j0.021 j0.032 | k2: p0.164 s0.394 j0.026 j0.032 | k4: p0.279 s0.507 j0.034 j0.049 | k8: p0.412 s0.630 j0.039 j0.062 | k16: p0.554 s0.726 j0.066 j0.071 | k32: p0.717 s0.827 j0.074 j0.084
+iid bicubic                  s=.33   k1: p0.102 s0.306 j0.018 j0.036 | k2: p0.165 s0.391 j0.028 j0.047 | k4: p0.259 s0.492 j0.029 j0.055 | k8: p0.378 s0.600 j0.046 j0.077 | k16: p0.556 s0.733 j0.046 j0.089 | k32: p0.716 s0.824 j0.044 j0.100
+LHS bicubic                  s=.997  k1: p0.109 s0.309 j0.065 j0.032 | k2: p0.183 s0.417 j0.103 j0.036 | k4: p0.300 s0.542 j0.141 j0.060 | k8: p0.473 s0.674 j0.174 j0.077 | k16: p0.645 s0.790 j0.205 j0.087 | k32: p0.780 s0.868 j0.226 j0.097
+LHS bicubic                  s=.92   k1: p0.161 s0.391 j0.070 j0.058 | k2: p0.235 s0.468 j0.077 j0.080 | k4: p0.369 s0.592 j0.104 j0.099 | k8: p0.541 s0.720 j0.132 j0.119 | k16: p0.698 s0.818 j0.151 j0.141 | k32: p0.825 s0.893 j0.170 j0.144
+LHS bicubic                  s=.67   k1: p0.112 s0.296 j0.018 j0.026 | k2: p0.168 s0.402 j0.024 j0.034 | k4: p0.265 s0.499 j0.039 j0.052 | k8: p0.422 s0.634 j0.053 j0.064 | k16: p0.590 s0.752 j0.059 j0.078 | k32: p0.745 s0.842 j0.071 j0.083
+LHS bicubic                  s=.33   k1: p0.100 s0.293 j0.009 j0.033 | k2: p0.171 s0.396 j0.021 j0.048 | k4: p0.253 s0.491 j0.038 j0.051 | k8: p0.422 s0.638 j0.038 j0.080 | k16: p0.587 s0.751 j0.044 j0.093 | k32: p0.746 s0.842 j0.048 j0.105
+R3 bicubic                   s=.997  k1: p0.080 s0.305 j0.080 j0.034 | k2: p0.158 s0.404 j0.099 j0.044 | k4: p0.303 s0.544 j0.135 j0.060 | k8: p0.459 s0.674 j0.170 j0.074 | k16: p0.624 s0.785 j0.204 j0.085 | k32: p0.774 s0.870 j0.227 j0.096
+R3 bicubic                   s=.92   k1: p0.120 s0.347 j0.054 j0.075 | k2: p0.235 s0.476 j0.093 j0.081 | k4: p0.376 s0.603 j0.112 j0.101 | k8: p0.543 s0.729 j0.138 j0.119 | k16: p0.692 s0.823 j0.154 j0.134 | k32: p0.811 s0.890 j0.169 j0.146
+R3 bicubic                   s=.67   k1: p0.088 s0.302 j0.017 j0.029 | k2: p0.155 s0.391 j0.020 j0.040 | k4: p0.259 s0.508 j0.036 j0.049 | k8: p0.419 s0.636 j0.044 j0.064 | k16: p0.564 s0.741 j0.060 j0.073 | k32: p0.733 s0.840 j0.068 j0.086
+R3 bicubic                   s=.33   k1: p0.078 s0.290 j0.013 j0.038 | k2: p0.143 s0.384 j0.020 j0.047 | k4: p0.267 s0.511 j0.036 j0.068 | k8: p0.413 s0.634 j0.042 j0.071 | k16: p0.578 s0.751 j0.044 j0.087 | k32: p0.735 s0.842 j0.052 j0.104
+antithetic bicubic           s=.997  k1: p0.100 s0.317 j0.079 j0.035 | k2: p0.174 s0.413 j0.103 j0.042 | k4: p0.300 s0.542 j0.138 j0.060 | k8: p0.429 s0.646 j0.169 j0.073 | k16: p0.622 s0.774 j0.200 j0.081 | k32: p0.755 s0.855 j0.226 j0.094
+antithetic bicubic           s=.92   k1: p0.139 s0.369 j0.068 j0.057 | k2: p0.183 s0.430 j0.089 j0.077 | k4: p0.389 s0.604 j0.112 j0.096 | k8: p0.519 s0.707 j0.127 j0.112 | k16: p0.687 s0.812 j0.150 j0.135 | k32: p0.796 s0.878 j0.166 j0.139
+antithetic bicubic           s=.67   k1: p0.100 s0.299 j0.026 j0.028 | k2: p0.158 s0.389 j0.022 j0.040 | k4: p0.286 s0.513 j0.031 j0.053 | k8: p0.362 s0.599 j0.044 j0.061 | k16: p0.557 s0.730 j0.053 j0.072 | k32: p0.717 s0.825 j0.069 j0.084
+antithetic bicubic           s=.33   k1: p0.075 s0.270 j0.020 j0.033 | k2: p0.191 s0.420 j0.013 j0.046 | k4: p0.270 s0.492 j0.031 j0.063 | k8: p0.410 s0.628 j0.037 j0.077 | k16: p0.578 s0.740 j0.048 j0.092 | k32: p0.718 s0.828 j0.052 j0.098
+overview+inner bicubic       s=.997  k1: p1.000 s0.346 j0.073 j0.039 | k2: p0.517 s0.428 j0.102 j0.048 | k4: p0.400 s0.524 j0.133 j0.064 | k8: p0.509 s0.661 j0.170 j0.075 | k16: p0.648 s0.777 j0.194 j0.080 | k32: p0.767 s0.858 j0.224 j0.093
+overview+inner bicubic       s=.92   k1: p1.000 s0.464 j0.073 j0.058 | k2: p0.593 s0.518 j0.087 j0.085 | k4: p0.495 s0.611 j0.111 j0.091 | k8: p0.598 s0.722 j0.128 j0.119 | k16: p0.694 s0.812 j0.154 j0.129 | k32: p0.815 s0.885 j0.167 j0.144
+overview+inner bicubic       s=.67   k1: p1.000 s0.364 j0.007 j0.038 | k2: p0.575 s0.432 j0.018 j0.038 | k4: p0.416 s0.508 j0.036 j0.050 | k8: p0.500 s0.641 j0.045 j0.069 | k16: p0.602 s0.740 j0.061 j0.074 | k32: p0.732 s0.830 j0.067 j0.081
+overview+inner bicubic       s=.33   k1: p1.000 s0.355 j0.014 j0.047 | k2: p0.537 s0.416 j0.022 j0.056 | k4: p0.450 s0.540 j0.017 j0.061 | k8: p0.473 s0.629 j0.040 j0.077 | k16: p0.590 s0.737 j0.051 j0.090 | k32: p0.733 s0.827 j0.055 j0.098

@@ -1,0 +1,12 @@
+turbo_plain exit 0 wall 6.396523350 s
+turbo_clip exit 0 wall 27.205978539 s
+vega768_plain exit 0 wall 9.469177775 s
+vega768_clip exit 0 wall 36.024487256 s
+vega1024_plain exit 0 wall 9.854793669 s
+vega1024_clip exit 0 wall 49.773444375 s
+light768_plain exit 0 wall 10.426107169 s
+light768_clip exit 0 wall 57.577157403 s
+light1024_plain exit 0 wall 10.178359961 s
+light1024_clip exit 1 wall 12.456061020 s
+turbo_up exit 0 wall 31.570329383 s
+adm_up exit 0 wall 7.469474919 s

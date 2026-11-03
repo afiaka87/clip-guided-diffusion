@@ -1,0 +1,54 @@
+  from pkg_resources import packaging
+  @th.cuda.amp.custom_fwd
+  @th.cuda.amp.custom_bwd
+waiting for gpu: True
+captured a red fox in the snow [8, 13, 16, 19]
+captured a pencil sketch of an old man with a beard [8, 13, 16, 19]
+captured a plate of sushi on a black slate [8, 13, 16, 19]
+captured a lighthouse on a rocky coast at sunset [8, 13, 16, 19]
+a red fox in the snow          step 8 s=.997 truth self-check cos=0.967
+a red fox in the snow          step 13 s=.92 truth self-check cos=0.900
+a red fox in the snow          step 16 s=.67 truth self-check cos=0.830
+a red fox in the snow          step 19 s=.33 truth self-check cos=0.838
+a pencil sketch of an old man  step 8 s=.997 truth self-check cos=0.953
+a pencil sketch of an old man  step 13 s=.92 truth self-check cos=0.924
+a pencil sketch of an old man  step 16 s=.67 truth self-check cos=0.828
+a pencil sketch of an old man  step 19 s=.33 truth self-check cos=0.834
+a plate of sushi on a black sl step 8 s=.997 truth self-check cos=0.945
+a plate of sushi on a black sl step 13 s=.92 truth self-check cos=0.939
+a plate of sushi on a black sl step 16 s=.67 truth self-check cos=0.935
+a plate of sushi on a black sl step 19 s=.33 truth self-check cos=0.887
+a lighthouse on a rocky coast  step 8 s=.997 truth self-check cos=0.983
+a lighthouse on a rocky coast  step 13 s=.92 truth self-check cos=0.904
+a lighthouse on a rocky coast  step 16 s=.67 truth self-check cos=0.884
+a lighthouse on a rocky coast  step 19 s=.33 truth self-check cos=0.829
+
+=== mean over prompts ===
+iid area (repo)              s=.997  k1: p0.068 s0.187 j0.029 | k2: p0.114 s0.253 j0.033 | k4: p0.192 s0.331 j0.046 | k8: p0.332 s0.434 j0.055 | k16: p0.486 s0.529 j0.069 | k32: p0.638 s0.605 j0.081
+iid area (repo)              s=.92   k1: p0.042 s0.169 j0.034 | k2: p0.086 s0.233 j0.051 | k4: p0.129 s0.296 j0.064 | k8: p0.214 s0.377 j0.082 | k16: p0.370 s0.506 j0.106 | k32: p0.539 s0.606 j0.130
+iid area (repo)              s=.67   k1: p0.033 s0.139 j0.013 | k2: p0.057 s0.193 j0.034 | k4: p0.096 s0.248 j0.033 | k8: p0.161 s0.302 j0.045 | k16: p0.300 s0.423 j0.066 | k32: p0.447 s0.521 j0.071
+iid area (repo)              s=.33   k1: p0.021 s0.107 j0.008 | k2: p0.039 s0.159 j0.011 | k4: p0.064 s0.192 j0.013 | k8: p0.139 s0.275 j0.023 | k16: p0.233 s0.370 j0.030 | k32: p0.364 s0.457 j0.032
+LHS area                     s=.997  k1: p0.062 s0.191 j0.020 | k2: p0.118 s0.268 j0.037 | k4: p0.218 s0.353 j0.041 | k8: p0.341 s0.447 j0.059 | k16: p0.479 s0.528 j0.072 | k32: p0.651 s0.615 j0.079
+LHS area                     s=.92   k1: p0.035 s0.159 j0.038 | k2: p0.065 s0.213 j0.045 | k4: p0.128 s0.294 j0.063 | k8: p0.236 s0.399 j0.084 | k16: p0.384 s0.511 j0.111 | k32: p0.548 s0.609 j0.131
+LHS area                     s=.67   k1: p0.029 s0.134 j0.010 | k2: p0.064 s0.186 j0.025 | k4: p0.096 s0.248 j0.034 | k8: p0.163 s0.324 j0.053 | k16: p0.289 s0.415 j0.059 | k32: p0.445 s0.524 j0.075
+LHS area                     s=.33   k1: p0.018 s0.109 j0.011 | k2: p0.040 s0.146 j0.009 | k4: p0.073 s0.206 j0.015 | k8: p0.127 s0.270 j0.023 | k16: p0.233 s0.367 j0.030 | k32: p0.367 s0.459 j0.036
+iid bicubic                  s=.997  k1: p0.108 s0.314 j0.037 | k2: p0.193 s0.419 j0.049 | k4: p0.302 s0.532 j0.061 | k8: p0.451 s0.653 j0.067 | k16: p0.614 s0.763 j0.084 | k32: p0.749 s0.847 j0.096
+iid bicubic                  s=.92   k1: p0.046 s0.208 j0.039 | k2: p0.084 s0.283 j0.050 | k4: p0.150 s0.368 j0.068 | k8: p0.269 s0.496 j0.091 | k16: p0.406 s0.613 j0.120 | k32: p0.589 s0.734 j0.135
+iid bicubic                  s=.67   k1: p0.043 s0.188 j0.023 | k2: p0.065 s0.223 j0.023 | k4: p0.121 s0.322 j0.048 | k8: p0.205 s0.417 j0.051 | k16: p0.313 s0.514 j0.067 | k32: p0.464 s0.636 j0.090
+iid bicubic                  s=.33   k1: p0.029 s0.154 j0.013 | k2: p0.050 s0.206 j0.015 | k4: p0.081 s0.264 j0.027 | k8: p0.132 s0.336 j0.034 | k16: p0.248 s0.459 j0.047 | k32: p0.397 s0.578 j0.057
+LHS bicubic                  s=.997  k1: p0.099 s0.304 j0.033 | k2: p0.201 s0.424 j0.044 | k4: p0.289 s0.520 j0.060 | k8: p0.458 s0.657 j0.071 | k16: p0.617 s0.768 j0.088 | k32: p0.763 s0.854 j0.096
+LHS bicubic                  s=.92   k1: p0.044 s0.201 j0.036 | k2: p0.093 s0.282 j0.057 | k4: p0.157 s0.373 j0.071 | k8: p0.266 s0.496 j0.092 | k16: p0.429 s0.626 j0.114 | k32: p0.594 s0.738 j0.136
+LHS bicubic                  s=.67   k1: p0.035 s0.162 j0.011 | k2: p0.063 s0.233 j0.027 | k4: p0.118 s0.312 j0.049 | k8: p0.194 s0.408 j0.055 | k16: p0.317 s0.516 j0.060 | k32: p0.490 s0.649 j0.083
+LHS bicubic                  s=.33   k1: p0.049 s0.154 j0.012 | k2: p0.050 s0.211 j0.024 | k4: p0.083 s0.265 j0.027 | k8: p0.148 s0.352 j0.033 | k16: p0.245 s0.457 j0.042 | k32: p0.402 s0.582 j0.057
+R3 bicubic                   s=.997  k1: p0.101 s0.316 j0.036 | k2: p0.194 s0.431 j0.044 | k4: p0.294 s0.522 j0.063 | k8: p0.450 s0.657 j0.076 | k16: p0.612 s0.769 j0.087 | k32: p0.747 s0.850 j0.096
+R3 bicubic                   s=.92   k1: p0.039 s0.193 j0.039 | k2: p0.081 s0.274 j0.052 | k4: p0.155 s0.376 j0.069 | k8: p0.274 s0.505 j0.094 | k16: p0.409 s0.617 j0.115 | k32: p0.571 s0.729 j0.139
+R3 bicubic                   s=.67   k1: p0.030 s0.168 j0.022 | k2: p0.054 s0.216 j0.028 | k4: p0.106 s0.301 j0.045 | k8: p0.184 s0.402 j0.052 | k16: p0.306 s0.517 j0.073 | k32: p0.460 s0.636 j0.084
+R3 bicubic                   s=.33   k1: p0.024 s0.146 j0.014 | k2: p0.053 s0.208 j0.017 | k4: p0.085 s0.272 j0.031 | k8: p0.146 s0.359 j0.033 | k16: p0.248 s0.466 j0.043 | k32: p0.397 s0.586 j0.058
+antithetic bicubic           s=.997  k1: p0.102 s0.303 j0.036 | k2: p0.183 s0.422 j0.047 | k4: p0.294 s0.521 j0.059 | k8: p0.450 s0.654 j0.070 | k16: p0.614 s0.766 j0.085 | k32: p0.746 s0.844 j0.098
+antithetic bicubic           s=.92   k1: p0.038 s0.192 j0.038 | k2: p0.076 s0.266 j0.046 | k4: p0.161 s0.379 j0.075 | k8: p0.253 s0.481 j0.088 | k16: p0.412 s0.615 j0.115 | k32: p0.578 s0.729 j0.137
+antithetic bicubic           s=.67   k1: p0.037 s0.180 j0.013 | k2: p0.060 s0.228 j0.030 | k4: p0.108 s0.303 j0.036 | k8: p0.193 s0.407 j0.054 | k16: p0.315 s0.517 j0.076 | k32: p0.469 s0.634 j0.078
+antithetic bicubic           s=.33   k1: p0.024 s0.143 j0.010 | k2: p0.061 s0.212 j0.019 | k4: p0.074 s0.249 j0.023 | k8: p0.146 s0.353 j0.037 | k16: p0.263 s0.471 j0.042 | k32: p0.405 s0.585 j0.058
+overview+inner bicubic       s=.997  k1: p1.000 s0.327 j0.041 | k2: p0.531 s0.421 j0.052 | k4: p0.421 s0.526 j0.064 | k8: p0.506 s0.651 j0.072 | k16: p0.640 s0.768 j0.086 | k32: p0.761 s0.850 j0.096
+overview+inner bicubic       s=.92   k1: p1.000 s0.175 j0.049 | k2: p0.453 s0.255 j0.051 | k4: p0.283 s0.363 j0.077 | k8: p0.311 s0.476 j0.093 | k16: p0.432 s0.612 j0.114 | k32: p0.585 s0.725 j0.133
+overview+inner bicubic       s=.67   k1: p1.000 s0.183 j0.005 | k2: p0.439 s0.242 j0.016 | k4: p0.248 s0.321 j0.034 | k8: p0.256 s0.408 j0.058 | k16: p0.334 s0.518 j0.068 | k32: p0.476 s0.632 j0.088
+overview+inner bicubic       s=.33   k1: p1.000 s0.190 j0.001 | k2: p0.434 s0.228 j0.011 | k4: p0.253 s0.286 j0.022 | k8: p0.224 s0.369 j0.030 | k16: p0.278 s0.464 j0.044 | k32: p0.417 s0.584 j0.051

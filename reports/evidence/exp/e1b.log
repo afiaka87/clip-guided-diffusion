@@ -1,0 +1,54 @@
+== is it the conv or the pad? ==
+conv2d groups=3, no pad                                      identical
+conv2d groups=3, built-in padding=2 (zeros)                  identical
+conv2d groups=3, stride 2, no pad                            identical
+conv2d groups=3 + tf.pad constant                            identical
+conv2d groups=3 + tf.pad circular                            identical
+conv2d groups=3 + tf.pad reflect                             DIFFERS 29/29, 5.4e-07
+conv2d groups=3 + tf.pad replicate                           DIFFERS 29/29, 1.1e-06
+== tf.pad alone, by width (a border pixel gets width+1 adds) ==
+tf.pad replicate width 1                                     DIFFERS 29/29, 5.9e-07
+tf.pad replicate width 2                                     DIFFERS 29/29, 2.4e-06
+tf.pad replicate width 4                                     DIFFERS 29/29, 2.9e-06
+tf.pad replicate width 16                                    DIFFERS 29/29, 3.6e-05
+tf.pad reflect width 1                                       DIFFERS 29/29, 3.7e-07
+tf.pad reflect width 2                                       DIFFERS 29/29, 5.9e-07
+tf.pad reflect width 4                                       DIFFERS 29/29, 1.2e-06
+tf.pad reflect width 16                                      DIFFERS 29/29, 1.1e-06
+== reflect and replicate through advanced indexing ==
+advanced index pad replicate width 2                         identical
+advanced index pad replicate width 16                        identical
+advanced index pad reflect width 2                           identical
+advanced index pad reflect width 16                          identical
+conv2d + advanced index reflect pad                          identical
+gaussian blur as W @ x @ W.T                                 identical
+== tf.interpolate by input side, to 224 ==
+bilinear 89->224                                             DIFFERS 29/29, 1.4e-06
+bilinear 112->224                                            DIFFERS 29/29, 1.2e-06
+bilinear 128->224                                            DIFFERS 29/29, 1.0e-06
+bilinear 179->224                                            DIFFERS 29/29, 7.2e-07
+bilinear 223->224                                            DIFFERS 29/29, 9.0e-07
+bilinear 224->224                                            identical
+bilinear 225->224                                            DIFFERS 29/29, 9.1e-07
+bilinear 256->224                                            DIFFERS 29/29, 5.3e-07
+bilinear 358->224                                            DIFFERS 29/29, 2.0e-07
+bilinear 448->224                                            identical
+bilinear 512->224                                            identical
+bicubic 89->224                                              DIFFERS 29/29, 2.8e-06
+bicubic 112->224                                             DIFFERS 29/29, 2.8e-06
+bicubic 128->224                                             DIFFERS 29/29, 2.4e-06
+bicubic 179->224                                             DIFFERS 29/29, 1.3e-06
+bicubic 223->224                                             DIFFERS 29/29, 1.2e-06
+bicubic 224->224                                             identical
+bicubic 225->224                                             DIFFERS 29/29, 1.4e-06
+bicubic 256->224                                             DIFFERS 29/29, 1.2e-06
+bicubic 358->224                                             DIFFERS 29/29, 1.9e-06
+bicubic 448->224                                             DIFFERS 29/29, 8.3e-07
+bicubic 512->224                                             DIFFERS 29/29, 1.1e-06
+== tf.interpolate to 448 ==
+bilinear 128->448                                            DIFFERS 29/29, 2.6e-06
+bilinear 256->448                                            DIFFERS 29/29, 1.0e-06
+bilinear 512->448                                            DIFFERS 29/29, 5.3e-07
+bicubic 128->448                                             DIFFERS 29/29, 6.0e-06
+bicubic 256->448                                             DIFFERS 29/29, 2.6e-06
+bicubic 512->448                                             DIFFERS 29/29, 1.6e-06

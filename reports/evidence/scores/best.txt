@@ -1,0 +1,4 @@
+ADM 128: best of 4: held-out ViT-H +0.0154 +-0.0070 (11/12), aes16 +0.212 +-0.190
+ADM 128 ens: best of 4: held-out ViT-H +0.0245 +-0.0114 (12/12), aes16 +0.229 +-0.256
+Turbo tiny, no aes: best of 3: held-out ViT-H +0.0053 +-0.0052 (8/12), aes16 -0.082 +-0.093
+Turbo aes .1: best of 3: held-out ViT-H +0.0061 +-0.0057 (7/12), aes16 -0.065 +-0.079
