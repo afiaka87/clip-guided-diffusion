@@ -34,7 +34,7 @@ That is the classic pipeline: an ImageNet model steered by CLIP, with no extra d
 - `-size 256`, twice the default size.
 - `-n 90`, three times the default steps.
 - `-clip ViT-B/32+PE-Core-B-16`, an [ensemble](#ensembles), the one option that measurably improves the image.
-- `-gl 0.99`, which [holds back](#other-options) the part of CLIP's update that would clip, for natural colour.
+- `-gl 0.99`, which [holds back](#--guidance-limit---gl) the part of CLIP's update that would clip, for natural colour.
 - `-freq 3`, which keeps every third step, so the GIF stays small.
 
 That took 37 s on an RTX 2070 SUPER. For the best images this repo makes, use [a modern backbone](#modern-backbones), here in 48 s:
@@ -46,25 +46,24 @@ That took 37 s on an RTX 2070 SUPER. For the best images this repo makes, use [a
 Every GIF in this README is its command's real output, with the default seed. The one exception is the [upscaling](#upscaling) comparison, which is made from a command's two outputs.
 
 - The path of the finished image is printed at the end. See [Speed](#speed) for how long that takes.
-- `./outputs` will contain intermediate outputs, every 10 steps by default. Change this with `--save_frequency` / `-freq`.
+- `./outputs` will contain intermediate outputs, every 10 steps by default. Change this with `--save-frequency` / `-freq`.
 - `current.png` will contain the current generation.
 - The same `--seed` and arguments reproduce the image byte for byte on the same machine and library versions.
-- Use `--save-as-gif` / `-gif` to save a high-quality GIF of every step, at 10 frames a second, and delete the frames. The frames of the batch's first image are in `outputs/<prompt>/00/`, and its GIF is `outputs/<prompt>/00.gif`.
-- Use `--save-as-video` / `-mp4` to save a high-quality MP4 of every step the same way, as `outputs/<prompt>/00.mp4`.
+- Use `--gif` / `-gif` to save a high-quality GIF of every step, at 10 frames a second, and delete the frames. The frames of the batch's first image are in `outputs/<prompt>/00/`, and its GIF is `outputs/<prompt>/00.gif`.
+- Use `--mp4` / `-mp4` to save a high-quality MP4 of every step the same way, as `outputs/<prompt>/00.mp4`.
 - The classic pipeline's animation shows its estimate of the finished image at each step, so it runs from a blur to the image. A backbone's shows each step of CLIP reshaping an image that is finished from the first frame, and ends on the image from the full decoder.
 - Animation exports require FFmpeg. Frames stream to the encoder without buffering the whole
   animation in memory. MP4 uses H.264/yuv420p, padding odd dimensions for playback compatibility.
   Exports replace the destination only after successful encoding; failures preserve source
   frames and any previous export. The final image remains available as `current.png`.
-- (optional) Provide **`--wandb_project <project_name>`** to enable logging intermediate outputs to wandb. Requires free account. URL to run will be provided in CLI - [example run](https://wandb.ai/dalle-pytorch-replicate/red_ball_cgd/reports/CLIP-Guided-Diffusion--VmlldzoxMDc1MjMz)
 - `~/.cache/clip-guided-diffusion/` will contain downloaded checkpoints from OpenAI/Katherine Crowson.
 
 ## Usage - CLI
 
 ### Text to image generation
 
-- `--prompts` / `-txts`, or just pass the prompt first
-- `--image_size` / `-size`
+- The prompt, in quotes
+- `--image-size` / `-size`
 
 `uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 "A great grey owl perched on a branch"`
 
@@ -74,7 +73,7 @@ Every GIF in this README is its command's real output, with the default seed. Th
 
 - multiple prompts can be specified with the `|` character.
 - you may optionally specify a weight for each prompt using a `:` character.
-- e.g. `uv run cgd --prompts "Noun to visualize:1.0|style:0.1|location:0.1|something you dont want:-0.1"`
+- e.g. `uv run cgd "Noun to visualize:1.0|style:0.1|location:0.1|something you dont want:-0.1"`
 - weights must not sum to 0
 
 `uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 "A steam locomotive crossing a stone bridge"`
@@ -89,7 +88,7 @@ A negative weight takes the smoke away:
 
 ### Image prompts
 
-`--image_prompts` / `-imgs` take paths or URLs, and the same `|` and `:` syntax. They can replace the text prompt or add to it.
+`--image-prompts` / `-imgs` take paths or URLs, and the same `|` and `:` syntax. They can replace the text prompt or add to it.
 
 `uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 -imgs "images/goose_on_the_run.png"`
 
@@ -116,47 +115,34 @@ There's no need to specify a device: without `--device`, it uses CUDA whenever P
 
 ### Steps
 
-`--sample_steps` / `-n` (default: `30`)
+`--steps` / `-n` (default: `30`)
 
 - The number of model calls. Fewer is faster.
 - `30` matches the original sampler on prompts held out from tuning. `20` is a third faster, but doubles the share of clipped pixels. Below `15` quality falls off quickly.
-- `--uncond` defaults to `60`. Without a class label it needs the extra steps, see [Speed](#speed).
 
-`--guidance_rate` / `-rate` (default: `0.08`)
+`--guidance-rate` / `-rate` (default: `0.08`)
 
 - The most CLIP may move the image each step, relative to the noise. Higher follows the prompt harder, but saturates and clips the image.
 
-### Original sampler
-
-`--timestep_respacing` / `-respace`
-
-- Runs the original guided-diffusion sampler instead of the fast one, with its original look, 16 cutouts and a random ImageNet class every step. Slow: `-respace 1000` takes minutes per image.
-- A number of steps over the same schedule, e.g. `25`, `50`, `250`, `1000`. Fewer sacrifices accuracy/alignment for quicker runtime.
-- prepending a number with `ddim` will use the ddim scheduler. e.g. `ddim25` will use the 25 timestep ddim scheduler. This method may be better at shorter timestep_respacing values.
-
 ### Existing image
 
-#### `--init_image`/`-init`
+#### `--init-image` / `-init`
 
 - Start from an image instead of pure noise.
 
-#### `--skip_timesteps`/`-skip`
+#### `--skip-timesteps` / `-skip`
 
-How much of the schedule to skip. Higher stays closer to the image. Defaults to half of it, which is `500`.
-This counts the 1000 steps of the full schedule, or the steps of `--timestep_respacing` when that is set.
+How much of the 1000 step schedule to skip. Higher stays closer to the image. Defaults to half of it, `500`.
 
-- `-skip 500`
-- `-respace 250 -skip 125`
-
-#### (optional)`--init_scale`/`-is`
+#### `--init-scale` / `-is` (optional)
 
 Adds a VGG perceptual loss ([LPIPS](https://github.com/richzhang/PerceptualSimilarity)) between the image and the init image, which keeps the init's composition. 1000 seems to work well. In this example `0` sank the cap into tall grass and lost the stem, `3000` kept the fence behind the mushroom but barely turned it red, and `1000` sits between them.
 
 ```sh
 uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 \
-  --init_image images/32K_HUHD_Mushroom.png \
-  --init_scale 1000 \
-  --skip_timesteps 300 \
+  --init-image images/32K_HUHD_Mushroom.png \
+  --init-scale 1000 \
+  --skip-timesteps 300 \
   "A red mushroom in the grass"
 ```
 
@@ -169,14 +155,11 @@ The init image is [this mushroom](images/32K_HUHD_Mushroom.png), a generation fr
 - options: `64, 128, 256, 512 pixels (square)`, or any multiple of 8 with [`--backbone`](#modern-backbones)
 - Every size runs in 8 GB of VRAM with the default CLIP model. See [Speed](#speed) for the time and memory each one takes, and [CLIP models](#clip-models) for the models that need more.
 - Above 256x256 pixels per batch, the U-Net recomputes its activations during guidance instead of storing them. That takes about 1.5x the time per guided step and under half the memory, and it is automatic.
-- `--uncond` uses the unconditional checkpoints, 256x256 and 512x512 only. It is less reliable than the default, because nothing but CLIP brings the subject.
-- **Note about 64x64 with `--timestep_respacing`** the 64x64 checkpoint uses the cosine noise schedule, which requires different values for `--clip_guidance_scale` and `--tv_scale` in the original sampler. I recommend starting with `-cgs 5 -tvs 0.00001` and experimenting from around there. The default sampler needs no changes.
-- For all other checkpoints, clip_guidance_scale seems to work well around 1000-2000 and tv_scale at 0, 100, 150 or 200
 
 ```sh
-uv run cgd -gif --init_image=images/32K_HUHD_Mushroom.png \
-    --skip_timesteps=500 \
-    --image_size 64 \
+uv run cgd -gif --init-image images/32K_HUHD_Mushroom.png \
+    --skip-timesteps 500 \
+    --image-size 64 \
     "8K HUHD Mushroom"
 ```
 
@@ -193,16 +176,16 @@ uv run cgd -gif -freq 2 -size 512 -clip ViT-B/32+PE-Core-B-16 -n 60 -gl 0.99 "A 
 
 **Non-square generations**
 
-Generate portrait or landscape images by specifying a number to offset the width and/or height, with `--width_offset` / `-wd` and `--height_offset` / `-ht`.
+Generate portrait or landscape images by specifying a number to offset the width and/or height, with `--width-offset` / `-wd` and `--height-offset` / `-ht`.
 
 - height and width must be multiples of an eighth of the image size: 8 at 64x64, 16 at 128x128, 32 at 256x256, 64 at 512x512. With [`--backbone`](#modern-backbones), any multiple of 8.
-- None of 12 runs from 80x64 to 640x512, on both samplers, produced NaN or Inf. By eye, the default sampler's images were as clean as square ones. `-respace ddim50` gave saturated, broken images, but it did that at square sizes too.
+- None of 12 runs from 80x64 to 640x512 produced NaN or Inf, and by eye the images were as clean as square ones.
 - a positive offset will require more memory.
 - a _negative_ offset uses less memory and is faster.
 
 ```sh
 uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 \
-    --width_offset 128 \
+    --width-offset 128 \
     "A castle on a hill at sunset"
 ```
 
@@ -243,8 +226,6 @@ The swap is by far the biggest gain measured here, over four times the best chan
 At 768, on one seed and with `-aes 0.1` on the whole frame, CLIP added 0.010 to `vega`, which still scored 0.005 below `sd-turbo` at 512 and looks softer and less saturated. `sdxl-lightning` was the sharpest by eye, and CLIP added nothing measurable to it, so `-iters 0` is its best setting unless you want the [aesthetic term](#aesthetic). At 1024 only time and memory were measured.
 
 - `--iterations` / `-iters` (default `50`): `100` takes twice as long and adds 0.002. `200` adds 0.006 on one seed, and starts to look adversarial. `25` loses 0.010.
-- `--full_decoder` / `-fulldec`: backpropagates through the real decoder. No better by score (0.001 ± 0.003), for twice the time and 1 GiB more at 512.
-- `--render_steps` / `-steps`: more model calls for the final image. `4` scored 0.006 lower on one seed, so the default stays at `1`.
 - The prompt conditions the model as well as CLIP, except for negative weights, which only CLIP sees.
 
 ## Speed
@@ -257,30 +238,26 @@ Wall clock for `uv run cgd`, including startup and model loading, on an RTX 2070
 | 128 | default | 30 | 6.5 s | 2.4 GiB |
 | 256 | default | 30 | 11.4 s | 5.3 GiB |
 | 512 | default | 30 | 22.4 s | 4.1 GiB |
-| 256 | `--uncond` | 60 | 20.0 s | 5.3 GiB |
-| 512 | `--uncond` | 60 | 48.1 s | 4.1 GiB |
-| 128 | `-respace 1000` | 1000 | 2 min 16 s | |
-| 256 | `--uncond -respace 1000` | 1000 | 6 min | |
+| 128 | the original, since removed | 1000 | 2 min 16 s | |
 
 Quality was measured on prompts held out from tuning, as the ViT-B/16 CLIP similarity to the prompt. Guidance uses ViT-B/32, so this model is not the one being optimised.
 
-- **Default, 128px, 12 prompts:** a tie with `-respace 1000`, 0.292 against 0.292 (difference 95% CI -0.018 to +0.016), with fewer clipped pixels, 6% against 7%. The look is different though, and any single image is not the same image.
-- **`--uncond`, 256px, 6 prompts:** behind `-respace 1000`, 0.316 against 0.331 (difference 95% CI -0.040 to +0.014), and the original scored higher on 5 of the 6. Use the original sampler when an unconditional result matters more than the 18x speedup.
+- **128px, 12 prompts:** a tie with the original 1000 step sampler, 0.292 against 0.292 (difference 95% CI -0.018 to +0.016), with fewer clipped pixels, 6% against 7%. The look is different though, and any single image is not the same image.
+- **The unconditional checkpoints, 256px, 6 prompts:** behind the original sampler, 0.316 against 0.331 (difference 95% CI -0.040 to +0.014), and the original scored higher on 5 of the 6. With no class to bring the subject, CLIP had to set the composition too. Both were removed: the class conditional models with the fast sampler are the better trade.
 
-The original pipeline takes 1000 ancestral steps, because CLIP has to build the whole image while the U-Net follows a random class that changes every step. The default sampler in `cgd/sampling.py` gets there in 30 model calls:
+The original pipeline takes 1000 ancestral steps, because CLIP has to build the whole image while the U-Net follows a random class that changes every step. The sampler in `cgd/sampler.py` gets there in 30 model calls:
 
 - The U-Net is conditioned on the ImageNet class closest to your prompt, so it brings the subject and CLIP only steers.
 - A second-order stochastic solver, DPM-Solver++(2M) SDE, covers the schedule in uniform logSNR steps.
 - Guidance is capped relative to the noise, so it stays stable with steps 33x larger than the original's.
 - Guidance only runs from 10% to 80% of the schedule, where it helps. The other steps also skip backpropagating through the U-Net, the most expensive part of guidance.
 - CLIP sees 4 random cutouts. At 128px they span 70-100% of the frame, where the original's 16 cutouts were all the same full frame. At 512px they span 44-100%, because a cutout is never smaller than CLIP's 224px input. See [Cutouts](#cutouts).
-- `--uncond` has no class to bring the subject, so CLIP also sets the composition. Guidance starts right at the beginning of the schedule, and the sampler takes twice the steps so that does not overshoot.
 
 Model loading is faster too: checkpoints are memory mapped instead of copied, nothing is randomly initialised just to be overwritten, and the ImageNet class features are cached on disk.
 
 ## CLIP models
 
-`--clip_model` / `-clip` (default: `ViT-B/32`)
+`--clip-model` / `-clip` (default: `ViT-B/32`)
 
 `uv run cgd -gif -freq 3 -clip PE-Core-L-14-336 -size 256 -n 90 -gl 0.99 "A red fox in the snow"`
 
@@ -336,7 +313,7 @@ Each cell is the change in CLIP similarity to the prompt against `ViT-B/32`, on 
 | `PE-Core-B-16` | fp32 | -0.002 (4) | +0.018 (7) | +0.031 (12) |
 | `PE-Core-L-14-336` | fp32 | -0.004 (5) | +0.020 (9) | +0.032 (10) |
 | `ViT-SO400M-16-SigLIP2-384` | fp32 | -0.021 (3) | +0.018 (8) | +0.035 (11) |
-| `ViT-gopt-16-SigLIP2-384` | `-fp16 -cutn 2` | -0.041 (3) | -0.014 (5) | -0.003 (5) |
+| `ViT-gopt-16-SigLIP2-384` | `-fp16`, 2 cutouts | -0.041 (3) | -0.014 (5) | -0.003 (5) |
 
 `-fp16` moved scores in both directions, by less than the noise, which is why it counts as no measurable difference.
 
@@ -364,11 +341,11 @@ Time to sample one image and peak VRAM, the median of 3 prompts on an RTX 2070 S
 
 | VRAM | What fits |
 |---|---|
-| 8 GB | Everything through `ViT-SO400M-16-SigLIP2-384`, at every size, though that one at 256 fp32 needs a nearly empty card. `ViT-gopt-16-SigLIP2-384` at 128, at 512 with `-fp16`, or at 256 with `-fp16 -cutn 2` (31.5 s, 7.3 GiB). `PE-Core-bigG-14-448` at 128 with `-fp16`. |
+| 8 GB | Everything through `ViT-SO400M-16-SigLIP2-384`, at every size, though that one at 256 fp32 needs a nearly empty card. `ViT-gopt-16-SigLIP2-384` at 128, or at 512 with `-fp16`. `PE-Core-bigG-14-448` at 128 with `-fp16`. |
 | 12 GB (estimated) | `ViT-gopt-16-SigLIP2-384` at every size. `PE-Core-bigG-14-448` at every size with `-fp16`. |
 | 16 GB (estimated) | Everything, at every size. |
 
-### `--clip_fp16` / `-fp16`
+### `--clip-fp16` / `-fp16`
 
 Runs the vision tower of a PE-Core or SigLIP2 model at half precision: up to 3x faster and half the CLIP VRAM. fp32 stays the default because it is the exact computation, but use `-fp16` whenever time or VRAM matters: it made no measurable difference to quality, see [Which one to use](#which-one-to-use). It saves little on `PE-Core-B-16`, and that one combination has no quality measurement.
 
@@ -376,7 +353,7 @@ The gradient does change. Its cosine similarity to the fp32 gradient varied by m
 
 ## What improves the image
 
-Everything here was measured against the default on 12 prompts held out from tuning, as the change in CLIP similarity to the prompt pooled over the three models above, with its 95% interval across prompts, and how many of the 12 improved. ADM at 128 over 4 seeds unless noted, and SD-Turbo at 512 over 3. A difference smaller than the interval is a tie. Most options are off because they lost. They stay because a score is not an image: these models cannot see fine detail, and they reward caption match, not looks. Full evidence is in [the report](<reports/CLIP guided diffusion quality improvements.md>).
+Everything here was measured against the default on 12 prompts held out from tuning, as the change in CLIP similarity to the prompt pooled over the three models above, with its 95% interval across prompts, and how many of the 12 improved. ADM at 128 over 4 seeds unless noted, and SD-Turbo at 512 over 3. A difference smaller than the interval is a tie. Options that lost were removed, see [Tried and removed](#tried-and-removed). `-gl` and `-aes` stay off by default but stay available, because a score is not an image: these models cannot see fine detail, and they reward caption match, not looks. Full evidence is in [the report](<reports/CLIP guided diffusion quality improvements.md>).
 
 ### Ensembles
 
@@ -392,7 +369,7 @@ The one change that clearly helps ADM, and the default with `-bb`. Each model ba
 | 256 | +0.015 ± 0.014 (7), 2 seeds | 7.8 s, 5.3 GiB | 10.7 s, 5.6 GiB |
 | 512 | +0.012 ± 0.015 (9), 1 seed | 18.8 s, 4.1 GiB | 21.6 s, 4.4 GiB |
 
-That includes loading both models for every image, which a single `cgd` run only does once. `PE-Core-B-16` on its own only ties (+0.001 ± 0.015), so it takes the pair. It is not the ADM default because that would change every existing seed's image, and it needs a 1.7 GiB download. Adding `-solver er-sde` keeps the gain and makes it steadier: +0.017 ± 0.008, and all 12 prompts improved.
+That includes loading both models for every image, which a single `cgd` run only does once. `PE-Core-B-16` on its own only ties (+0.001 ± 0.015), so it takes the pair. It is not the ADM default because that would change every existing seed's image, and it needs a 1.7 GiB download.
 
 ### Keep the best of several seeds
 
@@ -418,7 +395,7 @@ Also saves a copy of the finished image 4x larger, made with [Real-ESRGAN x4plus
 
 ### Aesthetic
 
-`--aesthetic_scale` / `-aes` (default `0.05` with `-bb`, otherwise `0`)
+`--aesthetic-scale` / `-aes` (default `0.05` with `-bb`, otherwise `0`)
 
 `uv run cgd -bb sd-turbo -aes 0.1 -gif "A red fox in the snow"`
 
@@ -441,75 +418,64 @@ The rating is a `ViT-B/16` predictor that did not guide the image. The rating an
 
 ### Cutouts
 
-Leave them alone: the default 4 random cutouts tied or beat everything tried. On ADM at 128, 8, 16, 32 and 64 cutouts scored -0.002 ± 0.009, +0.005 ± 0.011, +0.002 ± 0.007 and 0.000 ± 0.010. On 2 seeds, stratified layouts, mirrored cutouts and adding a whole frame tied, while keeping only the whole frame lost (-0.017 ± 0.010), and so did the Disco Diffusion mix of whole frame and small crops (-0.017 ± 0.010), reflect padding (-0.022 ± 0.023) and sizes that change during sampling (-0.007 to -0.012). On SD-Turbo at 512, where the idea should work best, eleven layouts all stayed within 0.007 of the default, on one seed, and the whole frame plus small crops lost a little on three (-0.003 ± 0.003). Cutout gradients are noisy, but removing the noise changes nothing, because the guidance step is capped and the model discards most of the gradient anyway.
+CLIP sees 4 random cutouts, fixed, because that tied or beat everything tried. On ADM at 128, 8, 16, 32 and 64 cutouts scored -0.002 ± 0.009, +0.005 ± 0.011, +0.002 ± 0.007 and 0.000 ± 0.010. On 2 seeds, stratified layouts, mirrored cutouts and adding a whole frame tied, while keeping only the whole frame lost (-0.017 ± 0.010), and so did the Disco Diffusion mix of whole frame and small crops (-0.017 ± 0.010), reflect padding (-0.022 ± 0.023) and sizes that change during sampling (-0.007 to -0.012). On SD-Turbo at 512, where the idea should work best, eleven layouts all stayed within 0.007 of the default, on one seed, and the whole frame plus small crops lost a little on three (-0.003 ± 0.003). Cutout gradients are noisy, but removing the noise changes nothing, because the guidance step is capped and the model discards most of the gradient anyway.
 
-### Other options
+### `--guidance-limit` / `-gl`
 
-| Option | Result | Notes |
+Holds back the part of CLIP's update that would push more than this quantile of pixels out of range. At `0.99` clipped pixels fall from 2.8% to 0.6%, with natural colour: the best way to lose the CLIP look. By score it loses, -0.016 ± 0.012 (1), and with the ensemble it ties, +0.000 ± 0.016 (5).
+
+### Tried and removed
+
+These were options once. They tied or lost, so they went, to keep the command simple.
+
+| What | Result | Notes |
 |---|---|---|
-| `-solver er-sde` | +0.004 ± 0.014 (8) | A tie alone, and a steadier ensemble |
-| `-view x0` | +0.002 ± 0.009 (7) | CLIP sees only the denoised image. `-view detached` keeps the blend without its gradient: -0.004 ± 0.011 (4) |
-| `-gl 0.99` | -0.016 ± 0.012 (1), +0.000 ± 0.016 (5) with the ensemble | Holds back the part of CLIP's update that would clip. Clipped pixels fall from 2.8% to 0.6%, with natural colour. The best way to lose the CLIP look |
-| `-dt 0.995` | -0.019 ± 0.014 (2) | Dynamic thresholding. No clipped pixels, but saturation falls from 0.46 to 0.20. Closer to 1 is lower still, and greyer |
-| `-gs sine` | -0.006 ± 0.009 (4) | `rising`: -0.011 ± 0.012 (2) |
-| `-contrast 0.5` | -0.007 ± 0.011 (5) | One more model call per guided step |
-| `-pag 1` | -0.013 ± 0.009 (3) | Perturbed attention guidance. One more model call per guided step |
-| `-loss contrastive` | -0.010 ± 0.015 (3) | Also lost on SD-Turbo: -0.009 ± 0.006, on one seed |
-| `-class 1` | -0.013 ± 0.035 (3) | The second closest class. Useful when the closest is wrong |
-| `-sec` | -0.005 ± 0.023 (6) at 256, 2 seeds; -0.009 ± 0.022 (6) at 512, 1 seed; -0.019 ± 0.022 (2) at 128 | Takes guidance through a small U-Net: 5.3 to 1.9 GiB and 7.8 to 5.8 s at 256, 4.1 to 2.6 GiB and 18.8 to 11.2 s at 512. A tie at those sizes, so use it when VRAM is short |
+| The ER-SDE solver | +0.004 ± 0.014 (8) | A tie alone. With the ensemble, +0.017 ± 0.008 and all 12 prompts improved: steadier, not higher |
+| CLIP seeing only the denoised image | +0.002 ± 0.009 (7) | Instead of a blend of it and the noisy image. The blend without its gradient: -0.004 ± 0.011 (4) |
+| Dynamic thresholding at 0.995 | -0.019 ± 0.014 (2) | No clipped pixels, but saturation fell from 0.46 to 0.20. Closer to 1 was lower still, and greyer |
+| A sine guidance schedule | -0.006 ± 0.009 (4) | A rising one: -0.011 ± 0.012 (2) |
+| Pushing away from the second closest class, at 0.5 | -0.007 ± 0.011 (5) | One more model call per guided step |
+| Perturbed attention guidance, at 1 | -0.013 ± 0.009 (3) | One more model call per guided step |
+| A contrastive loss | -0.010 ± 0.015 (3) | Also lost on SD-Turbo: -0.009 ± 0.006, on one seed |
+| The second closest class | -0.013 ± 0.035 (3) | |
+| Guidance through a small U-Net | -0.005 ± 0.023 (6) at 256, 2 seeds; -0.009 ± 0.022 (6) at 512, 1 seed; -0.019 ± 0.022 (2) at 128 | 5.3 to 1.9 GiB and 7.8 to 5.8 s at 256, 4.1 to 2.6 GiB and 18.8 to 11.2 s at 512 |
+| A backbone backpropagating through its real decoder | 0.001 ± 0.003 | Twice the time and 1 GiB more at 512 |
+| 4 model calls for a backbone's final image | -0.006, on one seed | |
+
+The CLIP guidance and TV loss scales, the number of cutouts, and the backbone's learning rate and noise penalty are fixed at the values everything here was tuned with.
 
 ## Full Usage - Python
 
 Run from the repository root, so the image paths resolve.
 
 ```python
-from cgd.cgd import clip_guided_diffusion
-from cgd.script_util import create_gif_ffmpeg
+from cgd.adm import generate
+from cgd.outputs import save_gif
 
-cgd_generator = clip_guided_diffusion(
-    prompts=["A volcano erupting at night"],
-    image_prompts=[],
-    init_image=None,
-    init_scale=0,
-    skip_timesteps=0,
+saved = generate(
+    ["A volcano erupting at night"],
     image_size=256,
-    class_cond=True,
-    batch_size=1,
-    sample_steps=90,
-    guidance_rate=0.08,
+    steps=90,
     guidance_limit=0.99,
-    clip_guidance_scale=1000,
-    tv_scale=150,
-    range_scale=50,
-    sat_scale=0,
-    cutout_power=1.0,
-    clip_model_name="ViT-B/32+PE-Core-B-16",
-    clip_fp16=False,
-    solver="dpm++2m-sde",
-    seed=0,
-    device="cuda",
-    prefix_path="outputs",
+    clip_model="ViT-B/32+PE-Core-B-16",
     save_frequency=3,
-    wandb_project=None,
-    wandb_entity=None,
-    progress=True,
 )
-frames = [image_path for batch_idx, image_path in cgd_generator]  # Every saved step. The last is the result.
-create_gif_ffmpeg(frames, "outputs/A_volcano_erupting_at_night.gif")
+frames = [path for batch_index, path in saved]  # Every saved step. The last is the result.
+save_gif(frames, "outputs/A_volcano_erupting_at_night.gif")
 ```
 
 ![A volcano erupting at night](images/A_volcano_erupting_at_night.gif)
 
-These are the settings of `uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 "A volcano erupting at night"`, and the GIF is the same as that command's, byte for byte. With `save_frequency=3` it has 31 frames: every third of the 90 steps, then the result.
+These are the settings of `uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 "A volcano erupting at night"`, and the GIF is the same as that command's, byte for byte. With `save_frequency=3` it has 31 frames: every third of the 90 steps, then the result. The other keyword arguments are the options' long names, with underscores, and `progress=False` is `--quiet`.
 
-`modern.generate()` is the same with a backbone. With the same settings it makes the same image as the CLI, byte for byte, so this is the GIF from [Modern backbones](#modern-backbones) again:
+`cgd.backbone.generate()` is the same with a backbone. With the same settings it makes the same image as the command, byte for byte, so this is the GIF from [Modern backbones](#modern-backbones) again:
 
 ```python
-from cgd.modern import generate
-from cgd.script_util import create_gif_ffmpeg
+from cgd.backbone import generate
+from cgd.outputs import save_gif
 
-frames = [image_path for batch_idx, image_path in generate(prompts=["A red fox in the snow"], backbone="sd-turbo", seed=0, save_frequency=1)]
-create_gif_ffmpeg(frames, "outputs/A_red_fox_in_the_snow_sd-turbo.gif")
+frames = [path for batch_index, path in generate(["A red fox in the snow"], backbone="sd-turbo", save_frequency=1)]
+save_gif(frames, "outputs/A_red_fox_in_the_snow_sd-turbo.gif")
 ```
 
 ![A red fox in the snow, drawn by SD-Turbo](images/A_red_fox_in_the_snow_sd-turbo.gif)
@@ -517,211 +483,109 @@ create_gif_ffmpeg(frames, "outputs/A_red_fox_in_the_snow_sd-turbo.gif")
 ## Full Usage - CLI
 
 ```sh
-usage: cgd [-h] [--prompts PROMPTS] [--image_prompts IMAGE_PROMPTS]
-           [--image_size IMAGE_SIZE] [--init_image INIT_IMAGE]
-           [--init_scale INIT_SCALE] [--skip_timesteps SKIP_TIMESTEPS]
-           [--prefix PREFIX] [--checkpoints_dir CHECKPOINTS_DIR]
-           [--batch_size BATCH_SIZE]
-           [--clip_guidance_scale CLIP_GUIDANCE_SCALE] [--tv_scale TV_SCALE]
-           [--range_scale RANGE_SCALE] [--sat_scale SAT_SCALE] [--seed SEED]
-           [--save_frequency SAVE_FREQUENCY]
-           [--timestep_respacing TIMESTEP_RESPACING]
-           [--sample_steps SAMPLE_STEPS] [--guidance_rate GUIDANCE_RATE]
-           [--num_cutouts NUM_CUTOUTS] [--cutout_power CUTOUT_POWER]
-           [--clip_model CLIP_MODEL] [--clip_fp16] [--uncond]
-           [--device DEVICE] [--wandb_project WANDB_PROJECT]
-           [--wandb_entity WANDB_ENTITY] [--height_offset HEIGHT_OFFSET]
-           [--width_offset WIDTH_OFFSET] [--quiet] [--save-as-gif]
-           [--save-as-video] [--clip_loss {spherical,contrastive}]
-           [--aesthetic_scale AESTHETIC_SCALE] [--upscale]
-           [--candidates CANDIDATES] [--x0_threshold X0_THRESHOLD]
-           [--guidance_limit GUIDANCE_LIMIT]
-           [--guidance_schedule {flat,sine,rising}]
-           [--clip_view {blend,detached,x0}] [--pag_scale PAG_SCALE]
-           [--contrast_scale CONTRAST_SCALE] [--class_rank CLASS_RANK]
-           [--secondary] [--solver {dpm++2m-sde,er-sde}]
-           [--backbone {sd-turbo,vega,sdxl-lightning}]
-           [--iterations ITERATIONS] [--lr LR] [--noise_penalty NOISE_PENALTY]
-           [--render_steps RENDER_STEPS] [--full_decoder]
-           [prompt]
+usage: cgd [-h] [-imgs IMAGE_PROMPTS] [-size IMAGE_SIZE] [-wd WIDTH_OFFSET]
+           [-ht HEIGHT_OFFSET] [-bs BATCH_SIZE] [-seed SEED]
+           [-clip CLIP_MODEL] [-fp16] [-aes AESTHETIC_SCALE]
+           [-best CANDIDATES] [-dev DEVICE] [-n STEPS] [-rate GUIDANCE_RATE]
+           [-gl GUIDANCE_LIMIT] [-init INIT_IMAGE] [-skip SKIP_TIMESTEPS]
+           [-is INIT_SCALE] [-bb {sd-turbo,vega,sdxl-lightning}]
+           [-iters ITERATIONS] [-dir OUTPUT_DIR] [-freq SAVE_FREQUENCY] [-gif]
+           [-mp4] [-up] [-q]
+           [prompts]
 
-CLIP Guided Diffusion: generate images from text and image prompts.
+cgd: make images from text and image prompts with CLIP guided diffusion.
 
 positional arguments:
-  prompt                the prompt/s to reward, same format as --prompts
-                        (default: )
+  prompts               Text prompts, joined with |. Each can take a weight,
+                        negative to avoid it: 'a fox:2|blurry:-1'.
 
 options:
   -h, --help            show this help message and exit
-  --prompts, -txts PROMPTS
-                        the prompt/s to reward paired with weights. e.g. 'My
-                        text:0.5|Other text:-0.5' (default: )
-  --image_prompts, -imgs IMAGE_PROMPTS
-                        the image prompt/s to reward paired with weights. e.g.
-                        'img1.png:0.5|img2.png:-0.5' (default: )
-  --image_size, -size IMAGE_SIZE
-                        Image size. Without --backbone one of 64, 128, 256 or
-                        512, defaulting to 128. With it, any multiple of 8,
-                        defaulting to what the model was trained for.
-                        (default: None)
-  --init_image, -init INIT_IMAGE
-                        Start from this image instead of pure noise. (default:
-                        )
-  --init_scale, -is INIT_SCALE
-                        (optional) Perceptual loss scale for init image.
-                        (default: 0)
-  --skip_timesteps, -skip SKIP_TIMESTEPS
-                        How much of the schedule to skip with an init image.
-                        Higher stays closer to it. 0 skips half. (default: 0)
-  --prefix, -dir PREFIX
-                        output directory (default: outputs)
-  --checkpoints_dir, -ckpts CHECKPOINTS_DIR
-                        Path subdirectory containing checkpoints. (default:
-                        ~/.cache/clip-guided-diffusion)
-  --batch_size, -bs BATCH_SIZE
-                        the batch size (default: 1)
-  --clip_guidance_scale, -cgs CLIP_GUIDANCE_SCALE
-                        Scale for CLIP spherical distance loss. Values will
-                        need tinkering for different settings. (default: 1000)
-  --tv_scale, -tvs TV_SCALE
-                        Controls the smoothness of the final output. (default:
-                        150.0)
-  --range_scale, -rs RANGE_SCALE
-                        Controls how far out of RGB range values may get.
-                        (default: 50.0)
-  --sat_scale, -sats SAT_SCALE
-                        Controls how much saturation is allowed. Used for
-                        ddim. From @nshepperd. (default: 0.0)
-  --seed, -seed SEED    Random number seed (default: 0)
-  --save_frequency, -freq SAVE_FREQUENCY
-                        Save a frame every n steps. The final image is always
-                        saved. Defaults to 10, or 1 with --save-as-gif/--save-
-                        as-video. (default: None)
-  --timestep_respacing, -respace TIMESTEP_RESPACING
-                        Use the original guided-diffusion sampler with this
-                        respacing, e.g. 1000 or ddim50. Much slower. (default:
-                        None)
-  --sample_steps, -n SAMPLE_STEPS
-                        Model calls for the fast sampler. Defaults to 30, or
-                        60 with --uncond. Ignored when --timestep_respacing is
-                        set. (default: None)
-  --guidance_rate, -rate GUIDANCE_RATE
-                        Fast sampler guidance strength, as the most CLIP may
-                        move each step relative to the noise. Higher follows
-                        the prompt harder but saturates. (default: 0.08)
-  --num_cutouts, -cutn NUM_CUTOUTS
-                        Number of randomly cut patches to distort from
-                        diffusion. Defaults to 4, or 16 with
-                        --timestep_respacing. (default: None)
-  --cutout_power, -cutpow CUTOUT_POWER
-                        Cutout size power (default: 1.0)
-  --clip_model, -clip CLIP_MODEL
-                        clip model name. Should be one of: ('ViT-B/16',
-                        'ViT-B/32', 'RN50', 'RN101', 'RN50x4', 'RN50x16',
-                        'ViT-L/14', 'PE-Core-B-16', 'ViT-L-16-SigLIP2-256',
-                        'PE-Core-L-14-336', 'ViT-SO400M-16-SigLIP2-384', 'ViT-
-                        gopt-16-SigLIP2-384', 'PE-Core-bigG-14-448') or a
-                        checkpoint filename ending in `.pt`. Join several with
-                        + to guide with all of them. Defaults to ViT-B/32, or
-                        ViT-B/32+PE-Core-B-16 with --backbone. (default: None)
-  --clip_fp16, -fp16    Run a PE-Core or SigLIP2 model at half precision: up
+  -imgs, --image-prompts IMAGE_PROMPTS
+                        Image prompts, paths or URLs, joined with | and
+                        weighted the same way.
+  -size, --image-size IMAGE_SIZE
+                        Image size. 64, 128, 256 or 512, default 128. With
+                        --backbone, any multiple of 8, defaulting to what the
+                        model was trained for.
+  -wd, --width-offset WIDTH_OFFSET
+                        Make the image this much wider. Default 0.
+  -ht, --height-offset HEIGHT_OFFSET
+                        Make the image this much taller. Default 0.
+  -bs, --batch-size BATCH_SIZE
+                        Images to make at once. Default 1.
+  -seed, --seed SEED    Random seed. Default 0.
+  -clip, --clip-model CLIP_MODEL
+                        CLIP model to guide with, one of ViT-B/16, ViT-B/32,
+                        RN50, RN101, RN50x4, RN50x16, ViT-L/14,
+                        ViT-L/14@336px, PE-Core-B-16, ViT-L-16-SigLIP2-256,
+                        PE-Core-L-14-336, ViT-SO400M-16-SigLIP2-384, ViT-
+                        gopt-16-SigLIP2-384, PE-Core-bigG-14-448, or a
+                        checkpoint file. Join several with + to guide with all
+                        of them. Default ViT-B/32, or ViT-B/32+PE-Core-B-16
+                        with --backbone. The README has what each costs.
+  -fp16, --clip-fp16    Run a PE-Core or SigLIP2 model at half precision: up
                         to 3x faster for half the CLIP VRAM. Less exact, but
                         it scored about the same. OpenAI's models always do.
-                        (default: False)
-  --uncond, -uncond     Use finetuned unconditional checkpoints from OpenAI
-                        (256px) and Katherine Crowson (512px) (default: False)
-  --device, -dev DEVICE
-                        Device to use. Either cpu or cuda. (default: )
-  --wandb_project, -proj WANDB_PROJECT
-                        Name W&B will use when saving results. e.g.
-                        `--wandb_project "my_project"` (default: None)
-  --wandb_entity, -ent WANDB_ENTITY
-                        (optional) Name of W&B team/entity to log to.
-                        (default: None)
-  --height_offset, -ht HEIGHT_OFFSET
-                        Height offset for image (default: 0)
-  --width_offset, -wd WIDTH_OFFSET
-                        Width offset for image (default: 0)
-  --quiet, -q           Suppress output. (default: False)
-  --save-as-gif, -gif   Save output as high-quality GIF using ffmpeg. Deletes
-                        individual frames. (default: False)
-  --save-as-video, -mp4
-                        Save output as high-quality MP4 video using ffmpeg.
-                        Deletes individual frames. (default: False)
-  --clip_loss, -loss {spherical,contrastive}
-                        spherical is distance to the prompt. contrastive also
-                        pushes away from the text of the ImageNet classes.
-                        (default: spherical)
-  --aesthetic_scale, -aes AESTHETIC_SCALE
+  -aes, --aesthetic-scale AESTHETIC_SCALE
                         Also reward what people rate highly, per point of a 1
                         to 10 rating. Default 0, or 0.05 with --backbone. The
-                        README has what it trades away. (default: None)
-  --upscale, -up        Also save a copy 4x larger, made with Real-ESRGAN
-                        x4plus. Adds little time or VRAM. (default: False)
-  --candidates, -best CANDIDATES
-                        Run this many seeds, starting at --seed, and report
-                        the one that models which did not guide it score best.
-                        Takes this many times as long. (default: 1)
+                        README has what it trades away.
+  -best, --candidates CANDIDATES
+                        Make this many images from seeds counting up from
+                        --seed, and keep the one that CLIP models which did
+                        not guide them score best. Takes this many times as
+                        long. Default 1.
+  -dev, --device DEVICE
+                        cpu, cuda or cuda:<index>. Default cuda when there is
+                        a GPU.
 
-fast sampler:
-  Options of the fast sampler. Ignored with --timestep_respacing or
-  --backbone.
+ImageNet model:
+  The default pipeline: CLIP guides OpenAI's ImageNet diffusion model.
 
-  --x0_threshold, -dt X0_THRESHOLD
-                        Dynamic thresholding quantile, e.g. 0.999, instead of
-                        clamping each denoised image. Keeps contrast in what
-                        guidance saturates. (default: None)
-  --guidance_limit, -gl GUIDANCE_LIMIT
+  -n, --steps STEPS     Model calls. Default 30.
+  -rate, --guidance-rate GUIDANCE_RATE
+                        Guidance strength: the most CLIP may move each step,
+                        relative to the noise. Higher follows the prompt
+                        harder but saturates. Default 0.08.
+  -gl, --guidance-limit GUIDANCE_LIMIT
                         Hold back whatever part of CLIP's update would push
                         more than this quantile of pixels out of range, e.g.
                         0.99. Natural colour and almost no clipped pixels,
                         though the judges prefer the saturated default.
-                        (default: None)
-  --guidance_schedule, -gs {flat,sine,rising}
-                        Shape of --guidance_rate over the guidance window,
-                        keeping its total. (default: flat)
-  --clip_view, -view {blend,detached,x0}
-                        What CLIP sees: the blend of the denoised and the
-                        noisy image, that blend with no gradient through the
-                        noisy image, or the denoised image. (default: blend)
-  --pag_scale, -pag PAG_SCALE
-                        Perturbed attention guidance. One more model call per
-                        guided step. (default: 0)
-  --contrast_scale, -contrast CONTRAST_SCALE
-                        Push away from the second closest ImageNet class. One
-                        more model call per guided step. (default: 0)
-  --class_rank, -class CLASS_RANK
-                        Condition on this closest ImageNet class, 0 being the
-                        closest. (default: 0)
-  --secondary, -sec     Take guidance through a small U-Net instead of the
-                        diffusion model: from 5.3 to 1.9 GiB at 256 and 4.1 to
-                        2.6 at 512, at no measurable loss. It scored lower at
-                        128. (default: False)
-  --solver, -solver {dpm++2m-sde,er-sde}
-                        The sampler's solver. (default: dpm++2m-sde)
+  -init, --init-image INIT_IMAGE
+                        Start from this image, a path or URL, instead of pure
+                        noise.
+  -skip, --skip-timesteps SKIP_TIMESTEPS
+                        How much of the 1000 step schedule an init image
+                        skips. Higher stays closer to it. Default 500.
+  -is, --init-scale INIT_SCALE
+                        Also keep the image perceptually close to the init
+                        image, by LPIPS, e.g. 1000. Default 0.
 
-modern backbones:
-  Draw with a modern one-step model and correct it with CLIP by optimising
-  its noise, instead of guiding an ImageNet model. Of the options above,
-  this uses the prompts, the size, offsets, batch size, seed, CLIP options,
-  --aesthetic_scale, --upscale and --candidates.
+Modern backbones:
+  Draw with a one-step model and correct it with CLIP by optimising its
+  noise, instead of guiding the ImageNet model. The best images this makes.
 
-  --backbone, -bb {sd-turbo,vega,sdxl-lightning}
-                        The model to draw with. (default: None)
-  --iterations, -iters ITERATIONS
+  -bb, --backbone {sd-turbo,vega,sdxl-lightning}
+                        The model to draw with.
+  -iters, --iterations ITERATIONS
                         Steps of noise optimisation. 0 is the plain model.
-                        (default: 50)
-  --lr, -lr LR          Learning rate of the noise optimisation. (default:
-                        5.0)
-  --noise_penalty, -np NOISE_PENALTY
-                        How hard to keep the noise on the prior. (default:
-                        0.01)
-  --render_steps, -steps RENDER_STEPS
-                        Model calls for the final image. (default: 1)
-  --full_decoder, -fulldec
-                        Backpropagate through the real decoder instead of a
-                        tiny one. No better by score, for about twice the time
-                        and 1 GiB more at 512. (default: False)
+                        Default 50.
+
+Output:
+  -dir, --output-dir OUTPUT_DIR
+                        Where images go, in a folder named after the prompts.
+                        Default outputs.
+  -freq, --save-frequency SAVE_FREQUENCY
+                        Save a frame every this many steps. The result is
+                        always saved. Default 10, or 1 with --gif or --mp4.
+  -gif, --gif           Also save the frames as a GIF, then delete them.
+  -mp4, --mp4           Also save the frames as an H.264 video, then delete
+                        them.
+  -up, --upscale        Also save a copy 4x larger, made with Real-ESRGAN
+                        x4plus. Adds little time or VRAM.
+  -q, --quiet           No progress bars or status messages.
 ```
 
 ## Development
@@ -732,10 +596,13 @@ cd clip-guided-diffusion
 uv sync
 ```
 
-### Run integration tests
-
-- Most tests run on a real GPU with the real models. Give them a free one: they fail with a genuine out of memory error if another process holds the VRAM.
+### Tests
 
 ```sh
-uv run pytest
+uv run pytest tests/unit  # Seconds, on the CPU.
+uv run pytest             # Everything.
 ```
+
+- `tests/unit` checks the pure parts on small inputs: the sampler on data whose exact answer is known, the cutouts, losses, the noise optimisation, tiling, prompts and the command line.
+- `tests/integration` runs the real models on a GPU, and skips without one. Give them a free one: they fail with a genuine out of memory error if another process holds the VRAM.
+- `uv run ruff check`, `uv run ruff format --check` and `uv run pylint cgd tests` should all pass.
