@@ -1,1 +1,0 @@
-from cgd.ResizeRight.interp_methods import *
