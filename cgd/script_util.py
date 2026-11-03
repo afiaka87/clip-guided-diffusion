@@ -1,3 +1,4 @@
+import hashlib
 import io
 import math
 import os
@@ -176,6 +177,15 @@ def create_video_ffmpeg(frames: list, output: str, fps: int = 10):
                           "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",
                           "-c:v", "libx264", "-preset", "slow", "-crf", "18",
                           "-pix_fmt", "yuv420p", "-movflags", "+faststart")
+
+
+def download_verified(url: str, filename: str, sha256: str, root: str = CACHE_PATH) -> str:
+    """download(), and refuse a file that is not the one these results were measured with."""
+    path = download(url, filename, root=root)
+    digest = hashlib.sha256(Path(path).read_bytes()).hexdigest()
+    if digest != sha256:
+        raise RuntimeError(f"{path} has sha256 {digest}, expected {sha256}. Delete it to download it again.")
+    return path
 
 
 def download(url: str, filename: str, root: str = CACHE_PATH, max_retries: int = 3) -> str:
