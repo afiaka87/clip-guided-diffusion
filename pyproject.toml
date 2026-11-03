@@ -34,7 +34,6 @@ dependencies = [
     "clip-anytorch",
     "requests",
     "lpips",
-    "wandb",
     "guided-diffusion @ git+https://github.com/crowsonkb/guided-diffusion.git",
     "open-clip-torch>=3.3.0",
     "transformers>=5.20.2",
@@ -42,10 +41,14 @@ dependencies = [
     "diffusers>=0.41.0",
     "accelerate>=1.15.0",
     "peft>=0.21.2",
+    "numpy>=2.2.6",
+    "pillow>=12.0.0",
+    "huggingface-hub>=1.33.0",
+    "safetensors>=0.8.0",
 ]
 
 [project.scripts]
-cgd = "cgd.cgd:main"
+cgd = "cgd.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/afiaka87/clip-guided-diffusion"
@@ -54,13 +57,51 @@ Homepage = "https://github.com/afiaka87/clip-guided-diffusion"
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["cgd", "data"]
+packages = ["cgd"]
 
 [tool.pytest.ini_options]
-python_files = ["test.py", "test_*.py"]
-filterwarnings = ["ignore::UserWarning:clip", "ignore::DeprecationWarning"]
+testpaths = ["tests"]
+addopts = ["--strict-markers", "-ra", "--import-mode=importlib"]  # So unit and integration tests can share a name.
+markers = ["cuda: runs real models on a CUDA GPU, with their checkpoints cached or downloaded"]
+filterwarnings = ["ignore::UserWarning:clip", "ignore::DeprecationWarning", "ignore::FutureWarning:guided_diffusion"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+extend-exclude = ["reports", "research_notes"]  # Records of runs against code that no longer exists, kept as they ran.
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "N", "B", "UP", "SIM", "C4", "PIE", "RET", "PTH", "PERF", "PL", "RUF", "ARG", "PT"]
+ignore = [
+    "PLC0415",  # The heavy libraries only some options need are imported where they are used.
+    "PLR0913",  # The pipelines take each setting as a keyword argument, as the command line does.
+    "PLR2004",  # Numerical code is full of constants that only mean something where they are used.
+    "PERF203",  # Retrying a download needs a try in the loop, which costs nothing next to the download.
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["cgd"]
+
+[tool.pylint.main]
+py-version = "3.10"
+ignore-paths = ["^reports/.*$", "^research_notes/.*$"]  # As ruff's extend-exclude above.
+
+[tool.pylint.basic]
+no-docstring-rgx = "^(_|test_|Test)"  # A test's name says what it checks.
+
+[tool.pylint.design]
+max-attributes = 9  # Records such as a backbone's spec hold what describes one thing.
+
+[tool.pylint."messages control"]
+disable = [
+    "import-outside-toplevel",  # As PLC0415 above.
+    "too-many-arguments",  # As PLR0913 above. Positional arguments are still limited.
+    "line-too-long",  # Ruff checks it, and leaves out lines that are long because of a URL.
+]
 
 [dependency-groups]
 dev = [
+    "pylint>=4.1.3",
     "pytest>=9.2.0",
+    "ruff>=0.17.3",
 ]
