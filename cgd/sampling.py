@@ -29,9 +29,11 @@ The defaults were tuned on 128px and validated on prompts held out from tuning, 
 the unconditional ones likewise on 256px.
 """
 import math
+from contextlib import contextmanager
 
 import numpy as np
 import torch as th
+from guided_diffusion.unet import AttentionBlock
 from tqdm.auto import tqdm
 
 DEFAULT_STEPS = 30
@@ -40,6 +42,10 @@ DEFAULT_ETA = 0.5  # Fresh noise per step: 0 is an ODE, 1 is fully ancestral.
 DEFAULT_GUIDANCE_RATE = 0.08  # Max RMS of the guidance relative to the noise.
 GUIDANCE_WINDOW = (0.1, 0.8)  # Guide between these fractions of the schedule.
 UNCOND_GUIDANCE_WINDOW = (0.1, 1.0)
+GUIDANCE_SCHEDULES = ("flat", "sine", "rising")
+SOLVERS = ("dpm++2m-sde", "er-sde")
+ER_SDE_INTEGRATION_POINTS = 200
+GUIDANCE_LIMIT_SEARCH_STEPS = 8
 X0_CLAMP = 1.2  # Bound on x0. Slightly loose so guidance can still move extremes.
 
 
@@ -94,6 +100,92 @@ def _rms(tensor: th.Tensor) -> th.Tensor:
     return tensor.square().mean(dim=(1, 2, 3), keepdim=True).sqrt()
 
 
+def dynamic_threshold(x0: th.Tensor, quantile: float) -> th.Tensor:
+    """Imagen's dynamic thresholding: pull each image's extreme pixels back into range.
+
+    A clamp flattens whatever CLIP pushes past it into saturated plateaus, which the
+    U-Net then has to build on. Rescaling keeps the relative contrast, so clipped pixels
+    all but disappear.
+    """
+    threshold = th.quantile(x0.abs().float().flatten(1), quantile, dim=1).clamp(min=1).view(-1, 1, 1, 1)
+    return x0.clamp(-threshold, threshold) / threshold
+
+
+def limit_guidance(x0: th.Tensor, update: th.Tensor, quantile: float) -> th.Tensor:
+    """x0 plus as much of `update` as keeps its pixels in range, up to `quantile` of them.
+
+    Dynamic thresholding keeps structure but rescales the model's image along with the
+    guidance, and doing that every step fades it to grey. The model's image was never
+    the problem. This only holds back what CLIP adds to it.
+    """
+    low, high = th.zeros_like(update[:, :1, :1, :1]), th.ones_like(update[:, :1, :1, :1])
+    for _ in range(GUIDANCE_LIMIT_SEARCH_STEPS):
+        share = (low + high) / 2
+        extreme = th.quantile((x0 + share * update).abs().float().flatten(1), quantile, dim=1).view(-1, 1, 1, 1)
+        low, high = th.where(extreme > 1, low, share), th.where(extreme > 1, share, high)
+    extreme = th.quantile((x0 + update).abs().float().flatten(1), quantile, dim=1).view(-1, 1, 1, 1)
+    return x0 + th.where(extreme > 1, low, th.ones_like(low)) * update
+
+
+@contextmanager
+def perturbed_attention(model):
+    """Replace the U-Net's deepest encoder attention with the identity (PAG, Ahn et al.).
+
+    The difference between the normal and the perturbed prediction points towards
+    structure, without needing a null token or a text condition.
+    """
+    last = None
+    for name, module in model.named_modules():
+        if name.startswith("input_blocks") and isinstance(module, AttentionBlock):
+            last = module
+
+    def attend_to_self(attention, inputs, _):
+        qkv = inputs[0]
+        batch, width, length = qkv.shape
+        channels = width // (3 * attention.n_heads)
+        values = qkv.reshape(batch * attention.n_heads, channels * 3, length).split(channels, dim=1)[2]
+        return values.reshape(batch, -1, length)
+
+    handle = last.attention.register_forward_hook(attend_to_self)
+    try:
+        yield
+    finally:
+        handle.remove()
+
+
+def schedule_weight(schedule: str, progress: float) -> float:
+    """Multiplier on the guidance rate, `progress` of the way through the window, averaging 1."""
+    if schedule == "flat":
+        return 1.0
+    if schedule == "sine":
+        return math.pi / 2 * math.sin(math.pi * progress)
+    if schedule == "rising":
+        return 2.0 * progress
+    raise ValueError(f"Unknown guidance schedule {schedule!r}. Choose one of {list(GUIDANCE_SCHEDULES)}.")
+
+
+def er_sde_noise(noise_ratio: float) -> float:
+    """ER-SDE's default noise scale function, of sigma / alpha."""
+    return noise_ratio * (math.exp(noise_ratio ** 0.3) + 10)
+
+
+def er_sde_step(x, x0, guided_x0, slope, alpha, sigma, alpha_next, sigma_next):
+    """One step of VP ER-SDE-Solver-2 (Cui et al. 2023), from t to t_next.
+
+    slope is the change in x0 per unit of sigma / alpha, or None on the first step. As in
+    the other solver it is unguided, so that the correction never extrapolates guidance.
+    """
+    ratio, ratio_next = sigma / alpha, sigma_next / alpha_next
+    decay = er_sde_noise(ratio_next) / er_sde_noise(ratio)
+    x_next = alpha_next / alpha * decay * x + alpha_next * (1 - decay) * guided_x0
+    if slope is not None:
+        grid = np.linspace(ratio_next, ratio, ER_SDE_INTEGRATION_POINTS)
+        integral = np.trapezoid([1 / er_sde_noise(value) for value in grid], grid)
+        x_next = x_next + alpha_next * (ratio_next - ratio + integral * er_sde_noise(ratio_next)) * slope
+    variance = max(ratio_next ** 2 - (decay * ratio) ** 2, 0.0)
+    return x_next + alpha_next * math.sqrt(variance) * th.randn_like(x)
+
+
 def sample_loop_progressive(
     model,
     diffusion,
@@ -104,6 +196,12 @@ def sample_loop_progressive(
     guidance_rate: float = DEFAULT_GUIDANCE_RATE,
     guidance_window: tuple = GUIDANCE_WINDOW,
     x0_clamp: float = X0_CLAMP,
+    x0_threshold: float = None,
+    guidance_limit: float = None,
+    guidance_schedule: str = "flat",
+    eps_adjustment=None,
+    guide_model=None,
+    solver: str = SOLVERS[0],
     init_image: th.Tensor = None,
     start_timestep: float = None,
     model_kwargs: dict = None,
@@ -115,6 +213,15 @@ def sample_loop_progressive(
     loss_fn(x, pred_xstart, fac) returns a scalar guidance loss, where fac is the
     blend between pred_xstart and x that CLIP should see. Its gradient is taken
     with respect to x, through the U-Net.
+
+    x0_threshold is a dynamic_threshold() quantile that replaces the clamp.
+    guidance_limit is a limit_guidance() quantile.
+    guidance_schedule shapes the rate over the window, with the same total guidance.
+    eps_adjustment(x, batch_t, eps) returns a term to add to the noise estimate during
+    the guidance window, for guidance that comes from the U-Net itself. Its output is
+    treated as a constant.
+    guide_model(x, alpha, sigma) is a denoiser to take guidance through instead of model,
+    which then runs without a gradient.
     """
     model_kwargs = model_kwargs or {}
     levels = NoiseLevels(diffusion.alphas_cumprod)
@@ -129,7 +236,7 @@ def sample_loop_progressive(
         alpha, sigma = levels.alpha_sigma(ts[0])
         x = alpha * init_image + sigma * x
 
-    previous_x0, previous_h = None, None
+    previous_x0, previous_h, previous_ratio = None, None, None
     bar = tqdm(range(len(ts) - 1), disable=not progress)
     for i in bar:
         t, t_next = ts[i], ts[i + 1]
@@ -137,20 +244,37 @@ def sample_loop_progressive(
         batch_t = th.full((shape[0],), t * scale_t, device=device, dtype=th.float32)
 
         guide = guided_run and guide_from <= t <= guide_to
-        x = x.detach().requires_grad_(guide)
-        with th.set_grad_enabled(guide):
+        through_model = guide and guide_model is None
+        x = x.detach().requires_grad_(through_model)
+        with th.set_grad_enabled(through_model):
             eps = model(x, batch_t, **model_kwargs)[:, :shape[1]]
+            if eps_adjustment is not None and guide_from <= t <= guide_to:
+                with th.no_grad():
+                    adjustment = eps_adjustment(x, batch_t, eps.detach())
+                eps = eps + adjustment  # Outside no_grad, or guidance loses its path through the U-Net.
             x0 = (x - sigma * eps) / alpha
 
         guided_x0 = x0.detach()
         if guide:
-            loss = loss_fn(x, x0, sigma)
+            guide_x, guide_x0 = x, x0
+            if guide_model is not None:
+                guide_x = x.detach().requires_grad_()
+                guide_x0 = guide_model(guide_x, alpha, sigma)
+            loss = loss_fn(guide_x, guide_x0, sigma)
             bar.set_postfix(loss=f"{loss.item():.0f}", refresh=False)
-            gradient = -loss_gradient(loss, x)
+            gradient = -loss_gradient(loss, guide_x)
             ratio = _rms(sigma * gradient) / _rms(eps.detach())
-            gradient = gradient * (guidance_rate / ratio).clamp(max=1)
-            guided_x0 = guided_x0 + sigma ** 2 / alpha * gradient
-        guided_x0 = guided_x0.clamp(-x0_clamp, x0_clamp)
+            rate = guidance_rate * schedule_weight(guidance_schedule, (guide_to - t) / (guide_to - guide_from))
+            gradient = gradient * (rate / ratio).clamp(max=1)
+            update = sigma ** 2 / alpha * gradient
+            if guidance_limit is None:
+                guided_x0 = guided_x0 + update
+            else:
+                guided_x0 = limit_guidance(guided_x0, update, guidance_limit)
+        if x0_threshold is None:
+            guided_x0 = guided_x0.clamp(-x0_clamp, x0_clamp)
+        else:
+            guided_x0 = dynamic_threshold(guided_x0, x0_threshold)
         x, x0 = x.detach(), x0.detach()
 
         if i == len(ts) - 2:  # Last model call: the denoised image is the result.
@@ -159,14 +283,18 @@ def sample_loop_progressive(
 
         alpha_next, sigma_next = levels.alpha_sigma(t_next)
         h = math.log(alpha_next / sigma_next) - math.log(alpha / sigma)
-        eta_h = eta * h
-        x0_weight = alpha_next * -math.expm1(-h - eta_h)
-        x_next = sigma_next / sigma * math.exp(-eta_h) * x + x0_weight * guided_x0
-        if previous_x0 is not None:
-            x_next = x_next + 0.5 * x0_weight * (h / previous_h) * (x0 - previous_x0)
-        if eta_h > 0:
-            x_next = x_next + sigma_next * math.sqrt(-math.expm1(-2 * eta_h)) * th.randn_like(x)
+        if solver == "er-sde":
+            slope = None if previous_x0 is None else (x0 - previous_x0) / (sigma / alpha - previous_ratio)
+            x_next = er_sde_step(x, x0, guided_x0, slope, alpha, sigma, alpha_next, sigma_next)
+        else:
+            eta_h = eta * h
+            x0_weight = alpha_next * -math.expm1(-h - eta_h)
+            x_next = sigma_next / sigma * math.exp(-eta_h) * x + x0_weight * guided_x0
+            if previous_x0 is not None:
+                x_next = x_next + 0.5 * x0_weight * (h / previous_h) * (x0 - previous_x0)
+            if eta_h > 0:
+                x_next = x_next + sigma_next * math.sqrt(-math.expm1(-2 * eta_h)) * th.randn_like(x)
 
-        previous_x0, previous_h = x0, h
+        previous_x0, previous_h, previous_ratio = x0, h, sigma / alpha
         x = x_next
         yield {"sample": x, "pred_xstart": guided_x0, "final": False}
