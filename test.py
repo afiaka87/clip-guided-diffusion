@@ -16,8 +16,12 @@ from cgd import sampling
 import numpy as np
 import torch as th
 import torchvision.transforms.functional as tvf
+from cgd import cgd
+from cgd import modern
 from cgd import modules
-from cgd.cgd import clip_guided_diffusion
+from cgd import secondary
+from cgd import upscale
+from cgd.cgd import clip_guided_diffusion, judged_candidates
 from data.imagenet1000_clsidx_to_labels import IMAGENET_CLASSES
 from guided_diffusion import respace
 from PIL import Image
@@ -382,7 +386,11 @@ class TestFastSampler(unittest.TestCase):
                            self.clip_similarity(image_path, "a bowl of ramen on a wooden table"))
 
     def test_same_seed_reproduces_the_image_exactly(self):
-        for name, options in (("fast", dict(sample_steps=12)), ("original", dict(timestep_respacing="ddim10"))):
+        for name, options in (("fast", dict(sample_steps=12)), ("original", dict(timestep_respacing="ddim10")),
+                              ("ensemble", dict(sample_steps=12, clip_model_name="ViT-B/32+PE-Core-B-16")),
+                              ("secondary", dict(sample_steps=12, secondary_guidance=True)),
+                              ("er-sde", dict(sample_steps=12, solver="er-sde")), ("limit", dict(sample_steps=12, guidance_limit=0.99)),
+                              ("pag", dict(sample_steps=12, pag_scale=1.0)), ("aesthetic", dict(sample_steps=12, aesthetic_scale=0.2))):
             with self.subTest(sampler=name):
                 first = self.generate(image_size=128, seed=3, prefix_path=f"{self.prefix}/{name}a", **options)[-1][1]
                 second = self.generate(image_size=128, seed=3, prefix_path=f"{self.prefix}/{name}b", **options)[-1][1]
@@ -724,6 +732,11 @@ class TestCommandLine(unittest.TestCase):
         self.assertIn("Ran out of GPU memory", result.stderr)
         self.assertNotIn("Traceback", result.stderr)
 
+    def test_both_of_pytorchs_memory_errors_count_as_out_of_memory(self):
+        self.assertTrue(cgd.is_out_of_memory(th.cuda.OutOfMemoryError("CUDA out of memory. Tried to allocate 14.00 MiB.")))
+        self.assertTrue(cgd.is_out_of_memory(th.AcceleratorError("CUDA error: out of memory", 2)))
+        self.assertFalse(cgd.is_out_of_memory(RuntimeError("mat1 and mat2 shapes cannot be multiplied")))
+
     @unittest.skipUnless(shutil.which("ffprobe"), "needs ffmpeg")
     def test_gif_holds_every_saved_frame_even_with_gaps_and_stale_frames(self):
         stale = self.run_cgd("Loose seal.", *self.OPTIONS[:2], "-n", "8", "-clip", "RN50", "-q", "-freq", "1")
@@ -764,6 +777,51 @@ class TestCommandLine(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(len(self.frames("photon")), 2)  # Steps 0 and the final step 5.
 
+    def test_upscale_saves_a_larger_copy_beside_the_image(self):
+        result = self.run_cgd("Loose seal.", *self.OPTIONS, "-up")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Saved outputs/Loose_seal/00/0005_x4.png", result.stdout)
+        self.assertEqual(Image.open(self.frames()[-1]).size, (256, 256))
+
+    def test_upscaled_copy_survives_an_animation_replacing_the_frames(self):
+        result = self.run_cgd("Loose seal.", *self.OPTIONS, "-up", "-gif")
+        if "ffmpeg not found" in result.stdout:
+            self.skipTest("needs ffmpeg")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual([path.name for path in self.frames()], ["0005_x4.png"])
+
+    def test_candidates_report_the_winning_seed(self):
+        result = self.run_cgd("Loose seal.", *self.OPTIONS, "-best", "2", "-seed", "7")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertRegex(result.stdout, r"Saved outputs/seed_[78]/Loose_seal/00/0005.png")
+
+    def test_a_bad_candidate_count_is_explained(self):
+        result = self.run_cgd("Loose seal.", *self.OPTIONS, "-best", "0")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("--candidates", result.stderr)
+
+    def test_fast_sampler_options_reach_the_sampler(self):
+        result = self.run_cgd("Loose seal.", *self.OPTIONS, "-dt", "0.995", "-gl", "0.99", "-gs", "sine", "-loss", "contrastive", "-view", "detached",
+                              "-pag", "0.5", "-contrast", "0.5", "-class", "1", "-sec", "-solver", "er-sde", "-aes", "0.2")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Saved outputs/Loose_seal/00/0005.png", result.stdout)
+
+    def test_a_size_with_no_checkpoint_is_explained(self):
+        result = self.run_cgd("Loose seal.", "-size", "100", "-q")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("No class conditional checkpoint", result.stderr)
+
+    def test_backbone_runs_at_any_multiple_of_eight(self):
+        result = self.run_cgd("Loose seal.", "-bb", "sd-turbo", "-size", "136", "-iters", "2", "-clip", "ViT-B/32", "-q")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("Saved outputs/Loose_seal/00/0002.png", result.stdout)
+        self.assertEqual(Image.open(self.frames()[-1]).size, (136, 136))
+
+    def test_unknown_backbone_is_rejected(self):
+        result = self.run_cgd("Loose seal.", "-bb", "dall-e", "-q")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("invalid choice", result.stderr)
+
 
 class TestLegacySampler(unittest.TestCase):
     def test_respacing_selects_the_original_sampler_and_saves_the_final_frame_after_skipping(self):
@@ -781,3 +839,316 @@ class TestCheckpointSchedule(unittest.TestCase):
             image_size=64, class_cond=True, timestep_respacing="",
             use_fp16=False, device="cpu")
         self.assertLess(diffusion.betas[0], 1e-4 / 2)  # linear starts at 1e-4, cosine far below it
+
+
+class TestGuidanceTricks(unittest.TestCase):
+    PROMPT = "a photograph of a red fox in the snow"
+
+    def setUp(self):
+        self.test_dir = tempfile.TemporaryDirectory()
+        self.prefix = self.test_dir.name
+        self.addCleanup(self.test_dir.cleanup)
+
+    def generate(self, **kwargs):
+        options = dict(prompts=[self.PROMPT], image_size=128, prefix_path=self.prefix, save_frequency=1000, progress=False, device="cuda")
+        return list(clip_guided_diffusion(**{**options, **kwargs}))[-1][1]
+
+    def test_dynamic_threshold_leaves_an_in_range_image_alone(self):
+        image = th.rand(2, 3, 16, 16) * 2 - 1
+        self.assertTrue(th.equal(sampling.dynamic_threshold(image, 0.995), image))
+
+    def test_dynamic_threshold_rescales_only_the_image_past_the_range(self):
+        fine, loud = th.rand(1, 3, 32, 32) - 0.5, (th.rand(1, 3, 32, 32) - 0.5) * 8
+        result = sampling.dynamic_threshold(th.cat([fine, loud]), 0.99)
+        self.assertTrue(th.equal(result[0], fine[0]))
+        self.assertLessEqual(result[1].abs().max().item(), 1.0)
+        self.assertGreater(result[1].abs().max().item(), 0.99)  # Rescaled rather than flattened.
+
+    def test_limit_guidance_keeps_an_update_that_stays_in_range(self):
+        x0, update = th.full((1, 3, 8, 8), 0.2), th.full((1, 3, 8, 8), 0.3)
+        self.assertTrue(th.equal(sampling.limit_guidance(x0, update, 0.99), x0 + update))
+
+    def test_limit_guidance_holds_back_only_as_much_as_it_must(self):
+        x0, update = th.full((2, 3, 8, 8), 0.5), th.full((2, 3, 8, 8), 1.0)
+        update[1] = 0.1
+        result = sampling.limit_guidance(x0, update, 0.99)
+        self.assertAlmostEqual(result[0].max().item(), 1.0, delta=0.01)
+        self.assertLessEqual(result[0].max().item(), 1.0)
+        self.assertAlmostEqual(result[1].max().item(), 0.6, places=5)  # The other image of the batch is untouched.
+
+    def test_guidance_schedules_keep_the_total_guidance(self):
+        for schedule in sampling.GUIDANCE_SCHEDULES:
+            weights = [sampling.schedule_weight(schedule, (i + 0.5) / 1000) for i in range(1000)]
+            self.assertAlmostEqual(sum(weights) / 1000, 1.0, places=3)
+
+    def test_clip_view_x0_changes_the_image(self):
+        blend, view = self.generate(sample_steps=10), self.generate(sample_steps=10, clip_view="x0", prefix_path=f"{self.prefix}/x0")
+        self.assertNotEqual(Path(blend).read_bytes(), Path(view).read_bytes())
+
+    def test_unknown_options_are_explained(self):
+        for options in (dict(clip_view="sideways"), dict(clip_loss="hinge"), dict(solver="euler"), dict(aesthetic_scale=-1)):
+            with self.assertRaises(script_util.ConfigError):
+                self.generate(image_size=64, sample_steps=2, **options)
+
+    def test_perturbed_attention_changes_the_prediction_only_while_active(self):
+        for size in (64, 128):
+            model, _ = script_util.load_guided_diffusion(script_util.download_guided_diffusion(size, True), size, True, device="cuda")
+            x, t, y = th.randn(1, 3, size, size, device="cuda"), th.tensor([500.0], device="cuda"), th.tensor([278], device="cuda")
+            with th.no_grad():
+                before = model(x, t, y=y)
+                with sampling.perturbed_attention(model):
+                    perturbed = model(x, t, y=y)
+                after = model(x, t, y=y)
+            self.assertTrue(th.equal(before, after))
+            self.assertGreater((before - perturbed).abs().mean().item(), 1e-4)
+
+    def test_contrastive_loss_prefers_the_prompt_to_the_negatives(self):
+        prompt, negatives = tf.normalize(th.randn(1, 512), dim=-1), tf.normalize(th.randn(50, 512), dim=-1)
+        on_prompt = losses.contrastive_loss(prompt.view(1, 1, 1, 512), prompt, negatives)
+        on_negative = losses.contrastive_loss(negatives[:1].view(1, 1, 1, 512), prompt, negatives, exclude=1)
+        self.assertLess(on_prompt.item(), on_negative.item())
+
+    def test_ensemble_gradient_is_the_mean_of_its_members(self):
+        members = ("ViT-B/32", "PE-Core-B-16")
+        images = th.randn(1, 3, 224, 224, device="cuda").mul(0.5).clamp(-1, 1).requires_grad_()
+        gradients = [th.autograd.grad(clip_util.ClipGuide(name, [self.PROMPT], (), 224, 1, "cuda").loss(images), images)[0] for name in members]
+        guide = clip_util.ClipGuide("+".join(members), [self.PROMPT], (), 224, 1, "cuda")
+        ensemble = th.autograd.grad(guide.loss(images), images)[0]
+        # Not exact: halving the loss changes what underflows on the way back through a 16 bit tower.
+        expected = (gradients[0] + gradients[1]) / 2
+        self.assertGreater(tf.cosine_similarity(ensemble.flatten(), expected.flatten(), dim=0).item(), 0.999)
+
+    def test_aesthetic_rating_matches_the_published_head(self):
+        guide = clip_util.ClipGuide("ViT-B/32", [self.PROMPT], (), 224, 1, "cuda", aesthetic_scale=1.0)
+        images = th.rand(2, 3, 224, 224, device="cuda")
+        embeds = tf.normalize(guide.aesthetic_model.encode_image(clip_util.preprocess(guide.aesthetic_model, images)).float(), dim=-1)
+        expected = embeds @ guide.aesthetic_head["linear.weight"].T * 512 ** 0.5 + guide.aesthetic_head["linear.bias"]
+        self.assertEqual(guide.aesthetic(images).shape, (2,))
+        self.assertLess((guide.aesthetic(images) - expected[:, 0]).abs().max().item(), 1e-2)
+
+    def test_following_the_aesthetic_gradient_raises_the_rating(self):
+        guide = clip_util.ClipGuide("ViT-B/32", [self.PROMPT], (), 224, 1, "cuda", aesthetic_scale=1.0)
+        images = th.rand(1, 3, 224, 224, device="cuda").mul(2).sub(1).requires_grad_()
+        pixels = images.detach().add(1).div(2)
+        before = guide.aesthetic(pixels).item()
+        for _ in range(10):
+            gradient = th.autograd.grad(-guide.aesthetic(images.add(1).div(2)).sum(), images)[0]
+            images = (images - 0.02 * gradient.sign()).clamp(-1, 1).detach().requires_grad_()
+        self.assertGreater(guide.aesthetic(images.detach().add(1).div(2)).item(), before + 0.5)
+
+    def test_aesthetic_term_adds_to_the_loss_and_its_gradient(self):
+        images = th.rand(1, 3, 224, 224, device="cuda").mul(2).sub(1).requires_grad_()
+        for model in ("ViT-B/32", "ViT-B/32+PE-Core-B-16"):
+            th.manual_seed(0)
+            plain = clip_util.ClipGuide(model, [self.PROMPT], (), 224, 1, "cuda").loss(images)
+            th.manual_seed(0)
+            guide = clip_util.ClipGuide(model, [self.PROMPT], (), 224, 1, "cuda", aesthetic_scale=0.5)
+            combined = guide.loss(images)
+            rating = guide.aesthetic(images.add(1).div(2)).sum()
+            self.assertLess(abs(combined.item() - (plain.item() - 0.5 * rating.item())), 1e-2)
+            self.assertGreater(th.autograd.grad(combined, images)[0].abs().sum().item(), 0)
+
+    def test_cutout_rating_keeps_the_images_of_a_batch_apart(self):
+        guide = clip_util.ClipGuide("ViT-B/32", [self.PROMPT], (), 224, 3, "cuda", aesthetic_scale=1.0)
+        images = th.rand(2, 3, 224, 224, device="cuda") * th.tensor([1.0, 0.2], device="cuda").view(2, 1, 1, 1)
+        rating = guide.aesthetic(images)  # A cutout of a 224px image at this fraction is the whole image.
+        self.assertGreater((rating[0] - rating[1]).abs().item(), 0.01)
+        self.assertLess((guide._cutout_rating(images) - rating).abs().max().item(), 1e-3)
+
+    def test_cutout_rating_averages_crops_of_a_larger_image(self):
+        guide = clip_util.ClipGuide("ViT-B/32", [self.PROMPT], (), 512, 4, "cuda", min_cut_fraction=0.7, aesthetic_scale=1.0)
+        images = th.rand(2, 3, 512, 512, device="cuda")
+        th.manual_seed(0)
+        crops = guide.aesthetic_cutouts(images)
+        self.assertEqual(crops.shape, (8, 3, 224, 224))
+        th.manual_seed(0)
+        rating = guide._cutout_rating(images)
+        self.assertEqual(rating.shape, (2,))
+        self.assertLess((rating - guide.aesthetic(crops).view(4, 2).mean(0)).abs().max().item(), 1e-3)
+
+    def test_aesthetic_scale_changes_the_image(self):
+        plain, rated = self.generate(sample_steps=10), self.generate(sample_steps=10, aesthetic_scale=1.0, prefix_path=f"{self.prefix}/rated")
+        self.assertNotEqual(Path(plain).read_bytes(), Path(rated).read_bytes())
+
+    def test_ensemble_runs_through_the_pipeline(self):
+        self.assertTrue(self.generate(clip_model_name="ViT-B/32+PE-Core-B-16", sample_steps=6).endswith("0005.png"))
+
+    def test_score_ranks_the_matching_prompt_first(self):
+        image = tvf.to_tensor(Image.open(self.generate()).convert("RGB")).unsqueeze(0).mul(2).sub(1)
+        fox = clip_util.ClipGuide(cgd.JUDGE_MODELS, [self.PROMPT], device="cpu").score(image)
+        ramen = clip_util.ClipGuide(cgd.JUDGE_MODELS, ["a bowl of ramen on a wooden table"], device="cpu").score(image)
+        self.assertGreater(fox.item(), ramen.item())
+
+    def test_candidates_keep_the_image_the_judges_prefer(self):
+        fox = self.generate()
+
+        def run(seed, prefix):
+            Path(prefix).mkdir(parents=True)
+            path = str(Path(prefix) / "0000.png")
+            if seed == 1:
+                shutil.copy(fox, path)
+            else:
+                Image.new("RGB", (128, 128), "gray").save(path)
+            yield 0, path
+
+        winner = judged_candidates(run, 3, 0, self.prefix, [self.PROMPT], ())
+        self.assertEqual(winner, {0: [str(Path(self.prefix) / "seed_1" / "0000.png")]})
+
+    def test_er_sde_step_keeps_the_marginal_of_a_known_image(self):
+        image, noise = th.full((1, 1000, 1000), 0.5), th.randn(1, 1000, 1000)
+        alpha, sigma, alpha_next, sigma_next = 0.6, 0.8, 0.8, 0.6
+        result = sampling.er_sde_step(alpha * image + sigma * noise, image, image, None, alpha, sigma, alpha_next, sigma_next)
+        self.assertAlmostEqual(result.mean().item(), alpha_next * 0.5, delta=0.01)
+        self.assertAlmostEqual(result.std().item(), sigma_next, delta=0.01)
+
+    def test_er_sde_generates_the_prompt(self):
+        image = tvf.to_tensor(Image.open(self.generate(solver="er-sde")).convert("RGB")).unsqueeze(0).mul(2).sub(1)
+        self.assertGreater(image.std().item(), 0.1)
+        fox = clip_util.ClipGuide("ViT-B/32", [self.PROMPT], device="cuda").score(image.cuda())
+        ramen = clip_util.ClipGuide("ViT-B/32", ["a bowl of ramen on a wooden table"], device="cuda").score(image.cuda())
+        self.assertGreater(fox.item(), ramen.item())
+
+
+class TestSecondaryModel(unittest.TestCase):
+    def test_denoises_a_real_image(self):
+        model = secondary.load_secondary("cuda")
+        image = tvf.to_tensor(Image.open("images/photon.png").convert("RGB").resize((128, 128))).unsqueeze(0).cuda().mul(2).sub(1)
+        alpha, sigma = 0.8, 0.6
+        noisy = alpha * image + sigma * th.randn_like(image)
+        with th.no_grad():
+            denoised = model(noisy, alpha, sigma)
+        self.assertLess((denoised - image).square().mean(), 0.5 * (noisy / alpha - image).square().mean())
+
+    def test_rejects_weights_that_do_not_match_the_pin(self):
+        with tempfile.TemporaryDirectory() as directory:
+            (Path(directory) / secondary.WEIGHTS_FILENAME).write_bytes(b"not the weights")
+            with self.assertRaisesRegex(RuntimeError, "sha256"):
+                secondary.load_secondary("cpu", directory)
+
+    def test_guides_the_sampler_without_a_gradient_through_the_u_net(self):
+        with tempfile.TemporaryDirectory() as prefix:
+            th.cuda.reset_peak_memory_stats()
+            results = list(clip_guided_diffusion(prompts=["a red fox"], image_size=256, sample_steps=8, secondary_guidance=True,
+                                                 prefix_path=prefix, save_frequency=1000, progress=False, device="cuda"))
+            self.assertTrue(results[-1][1].endswith("0007.png"))
+            self.assertLess(th.cuda.max_memory_allocated(), 3 * 2 ** 30)  # The U-Net path takes over 5 GiB.
+
+
+class TestUpscale(unittest.TestCase):
+    def image(self, size):
+        pixels = tvf.to_tensor(Image.open("images/photon.png").convert("RGB").resize((size, size)))
+        return pixels.unsqueeze(0).cuda().mul(2).sub(1)
+
+    def test_output_is_four_times_larger_and_downsamples_to_the_input(self):
+        image = self.image(128)
+        large = upscale.upscale(upscale.load_upscaler("cuda"), image)
+        self.assertEqual(large.shape[-2:], (512, 512))
+        self.assertLess((tf.avg_pool2d(large, upscale.SCALE) - image).abs().mean().item(), 0.1)
+
+    def test_tiling_matches_the_whole_image(self):
+        image = self.image(300)
+        model = upscale.load_upscaler("cuda")
+        with th.no_grad():
+            whole = model(image.add(1).div(2).half()).float().mul(2).sub(1).clamp(-1, 1)
+        tiled = upscale.upscale(model, image)
+        self.assertLess((whole - tiled).abs().mean().item(), 0.01)
+        seam = upscale.TILE_SIZE * upscale.SCALE
+        self.assertLess((whole - tiled)[..., seam - 2:seam + 2, :].abs().mean().item(), 0.02)
+
+    def test_upscale_file_writes_beside_the_image(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / "0001.png")
+            Image.open("images/photon.png").convert("RGB").resize((64, 64)).save(path)
+            output = upscale.upscale_file(upscale.load_upscaler("cuda"), path, "cuda")
+            self.assertEqual(Path(output).name, "0001_x4.png")
+            self.assertEqual(Image.open(output).size, (256, 256))
+
+
+class TestModernBackbones(unittest.TestCase):
+    PROMPT = "a photograph of a red fox in the snow"
+
+    def setUp(self):
+        self.test_dir = tempfile.TemporaryDirectory()
+        self.prefix = self.test_dir.name
+        self.addCleanup(self.test_dir.cleanup)
+
+    def generate(self, **kwargs):
+        options = dict(prompts=[self.PROMPT], image_size=256, clip_model_name="ViT-B/32", iterations=4, prefix_path=self.prefix,
+                       save_frequency=1000, progress=False, device="cuda")
+        return list(modern.generate(**{**options, **kwargs}))
+
+    def test_noise_penalty_is_lowest_on_the_prior(self):
+        z = th.randn(1, 4, 64, 64)
+        z = z / z.norm() * (z.numel() - 1) ** 0.5
+        self.assertLess(modern.noise_penalty(z), modern.noise_penalty(z * 1.1))
+        self.assertLess(modern.noise_penalty(z), modern.noise_penalty(z * 0.9))
+
+    def test_optimising_the_noise_lowers_the_clip_loss_and_keeps_the_best(self):
+        model = modern.load_backbone("sd-turbo", self.PROMPT, "cuda")
+        guide = clip_util.ClipGuide("ViT-B/32", [self.PROMPT], (), 256, 4, "cuda")
+        th.manual_seed(0)
+        shape = model.latent_shape(256, 256)
+        start = th.randn(shape, device="cuda")
+        with th.backends.cudnn.flags(enabled=True, deterministic=True):  # As generate() runs it. Without this, this size varies run to run.
+            steps = list(modern.optimise_noise(model, guide, start, iterations=10, progress=False))
+        values = [step["loss"] for step in steps]
+        self.assertLess(min(values[1:]), values[0])
+        self.assertAlmostEqual(steps[-1]["best_z"].norm().item(), start.norm().item(), delta=0.1 * start.norm().item())
+        best = steps[values.index(min(values))]
+        self.assertTrue(th.equal(steps[-1]["best_z"], best["best_z"]))
+
+    def test_same_seed_reproduces_the_image_exactly(self):
+        for name, options in (("tiny decoder", dict()), ("full decoder", dict(tiny_decoder=False)), ("aesthetic", dict(aesthetic_scale=0.2))):
+            with self.subTest(name):
+                first = self.generate(seed=3, prefix_path=f"{self.prefix}/{name}a", **options)[-1][1]
+                second = self.generate(seed=3, prefix_path=f"{self.prefix}/{name}b", **options)[-1][1]
+                self.assertEqual(Path(first).read_bytes(), Path(second).read_bytes())
+
+    def test_a_different_seed_changes_the_image(self):
+        first = self.generate(seed=3, prefix_path=f"{self.prefix}/a")[-1][1]
+        second = self.generate(seed=4, prefix_path=f"{self.prefix}/b")[-1][1]
+        self.assertNotEqual(Path(first).read_bytes(), Path(second).read_bytes())
+
+    def test_zero_iterations_is_the_plain_model(self):
+        results = self.generate(iterations=0)
+        self.assertEqual(len(results), 1)
+        self.assertTrue(results[0][1].endswith("0000.png"))
+
+    def test_saves_the_frames_it_was_asked_for_and_the_final_image(self):
+        names = [Path(path).name for _, path in self.generate(save_frequency=2)]
+        self.assertEqual(names, ["0000.png", "0002.png", "0004.png"])
+
+    def test_final_image_follows_the_requested_shape(self):
+        path = self.generate(width_offset=64, iterations=1)[-1][1]
+        self.assertEqual(Image.open(path).size, (320, 256))
+
+    def test_batch_yields_distinct_images(self):
+        results = self.generate(batch_size=2, iterations=1)
+        first, second = [path for _, path in results if path.endswith("0001.png")]
+        self.assertNotEqual(Path(first).read_bytes(), Path(second).read_bytes())
+
+    def test_full_decoder_runs(self):
+        self.assertTrue(self.generate(tiny_decoder=False, iterations=2)[-1][1].endswith("0002.png"))
+
+    def test_several_render_steps_run(self):
+        self.assertTrue(self.generate(render_steps=4, iterations=1)[-1][1].endswith("0001.png"))
+
+    def test_image_prompt_alone_runs(self):
+        results = self.generate(prompts=[], image_prompts=["images/photon.png"], iterations=1)
+        self.assertTrue(results[-1][1].endswith("0001.png"))
+
+    def test_the_model_is_only_told_what_to_draw(self):
+        self.assertEqual(modern.conditioning_text(["a fox:2", "a hat", "blurry:-1"]), "a fox, a hat")
+
+    def test_bad_configurations_are_explained(self):
+        for options in (dict(backbone="dall-e"), dict(image_size=100), dict(iterations=-1), dict(render_steps=0),
+                        dict(save_frequency=0), dict(prompts=[]), dict(clip_model_name="ViT-Z/99")):
+            with self.subTest(options=options), self.assertRaises(script_util.ConfigError):
+                self.generate(**options)
+
+    def test_sdxl_backbones_run_with_the_tiny_decoder(self):
+        for backbone in ("vega", "sdxl-lightning"):
+            with self.subTest(backbone=backbone):
+                path = self.generate(backbone=backbone, image_size=512, iterations=1, prefix_path=f"{self.prefix}/{backbone}")[-1][1]
+                self.assertEqual(Image.open(path).size, (512, 512))
+                self.assertGreater(tvf.to_tensor(Image.open(path).convert("RGB")).std().item(), 0.05)
