@@ -3,6 +3,7 @@ from functools import lru_cache
 import os
 import re
 from pathlib import Path
+from typing import NamedTuple
 
 import clip
 import torch as th
@@ -12,11 +13,12 @@ import torchvision.transforms.functional as tvf
 from data.imagenet1000_clsidx_to_labels import IMAGENET_CLASSES
 from PIL import Image
 
-from cgd import script_util
-from cgd.modules import MakeCutouts
+from cgd import losses, script_util
+from cgd.modules import MakeCutouts, adaptive_avg_pool
 from cgd.ResizeRight import resize_right
 from cgd.ResizeRight.interp_methods import lanczos3
 
+CLIP_LOSSES = ("spherical", "contrastive")
 OPENAI_CLIP_MODEL_NAMES = ("ViT-B/16", "ViT-B/32", "RN50", "RN101", "RN50x4", "RN50x16", "ViT-L/14")
 
 # Perception Encoder and SigLIP 2 models from open_clip, lightest first, and the weights
@@ -31,6 +33,12 @@ OPEN_CLIP_MODELS = {
 }
 
 CLIP_MODEL_NAMES = (*OPENAI_CLIP_MODEL_NAMES, *OPEN_CLIP_MODELS)
+
+# A linear head on ViT-B/32 fit to human ratings of AI art (Simulacra Aesthetic Models, MIT).
+AESTHETIC_CLIP_MODEL = "ViT-B/32"
+AESTHETIC_WEIGHTS_URL = "https://github.com/crowsonkb/simulacra-aesthetic-models/raw/master/models/sac_public_2022_06_29_vit_b_32_linear.pth"
+AESTHETIC_WEIGHTS_FILENAME = "sac_public_2022_06_29_vit_b_32_linear.pth"
+AESTHETIC_WEIGHTS_SHA256 = "64315370e2293a08cc2f4816ae9db715f935791569c1a57d84b943e482ea5e12"
 CLIP_CACHE_PATH = os.path.join(script_util.CACHE_PATH, "clip")
 
 # CLIP model URLs from OpenAI
@@ -80,11 +88,17 @@ def skip_weight_init():
             setattr(th.nn.init, name, function)
 
 
+def ensemble_members(model_name: str) -> "list[str]":
+    """The models in a `+` separated ensemble such as `ViT-B/32+PE-Core-B-16`."""
+    return [model_name] if os.path.isfile(model_name) else model_name.split("+")
+
+
 def check_clip_model(model_name: str):
     """Reject a CLIP model that cannot be loaded, before spending time on anything else."""
-    if model_name not in OPEN_CLIP_MODELS and model_name not in clip.available_models() and not os.path.isfile(model_name):
-        raise script_util.ConfigError(f"Unknown CLIP model {model_name!r}. Choose one of {list(CLIP_MODEL_NAMES)}, "
-                                      "or give the path of a checkpoint.")
+    for name in ensemble_members(model_name):
+        if name not in OPEN_CLIP_MODELS and name not in clip.available_models() and not os.path.isfile(name):
+            raise script_util.ConfigError(f"Unknown CLIP model {name!r}. Choose one of {list(CLIP_MODEL_NAMES)}, "
+                                          "or give the path of a checkpoint. Join several with + to guide with all of them.")
 
 
 def _load_open_clip(model_name: str, device: str, fp16: bool):
@@ -218,3 +232,115 @@ def encode_image_prompt(image: str, weight: float, diffusion_size: int, num_cuto
 
 def encode_text_prompt(txt, weight, clip_model_name="ViT-B/32", device="cpu", fp16=False):
     return encode_texts(txt, clip_model_name, device, fp16=fp16), weight
+
+
+class ClipTower(NamedTuple):
+    """One CLIP model of a guide, with what it needs to score an image."""
+    model: th.nn.Module
+    make_cutouts: MakeCutouts
+    targets: th.Tensor
+    negatives: th.Tensor  # ImageNet class text features, for the contrastive loss.
+
+
+class ClipGuide:
+    """Scores images against weighted prompts with one CLIP model or an ensemble of them."""
+
+    def __init__(self, model_name: str, prompts=(), image_prompts=(), image_size: int = 128, num_cutouts: int = 4, device: str = "cpu",
+                 fp16: bool = False, cutout_power: float = 1.0, use_augs: bool = False, min_cut_fraction: float = 1.0,
+                 loss: str = "spherical", aesthetic_scale: float = 0.0):
+        if loss not in CLIP_LOSSES:
+            raise script_util.ConfigError(f"Unknown CLIP loss {loss!r}. Choose one of {list(CLIP_LOSSES)}.")
+        self.loss_name = loss
+        self.aesthetic_scale = aesthetic_scale
+        if aesthetic_scale:
+            self.aesthetic_model = load_clip(AESTHETIC_CLIP_MODEL, device, fp16)[0]
+            weights = script_util.download_verified(AESTHETIC_WEIGHTS_URL, AESTHETIC_WEIGHTS_FILENAME, AESTHETIC_WEIGHTS_SHA256)
+            self.aesthetic_head = {name: value.float() for name, value in th.load(weights, map_location=device, weights_only=True).items()}
+            self.aesthetic_cutouts = MakeCutouts(cut_size=self.aesthetic_model.visual.input_resolution, num_cutouts=num_cutouts,
+                                                 cutout_size_power=cutout_power, use_augs=use_augs, min_cut_fraction=min_cut_fraction)
+        self.towers = []
+        for member in ensemble_members(model_name):
+            clip_model, clip_size = load_clip(member, device, fp16)
+            embeds_list = []
+            weights_list = []
+
+            for prompt in prompts:
+                text, weight = script_util.parse_prompt(prompt)
+                text, weight = encode_text_prompt(text, weight, member, device, fp16)
+                embeds_list.append(text)
+                weights_list.append(weight)
+
+            for image_prompt in image_prompts:
+                img, weight = script_util.parse_prompt(image_prompt)
+                image_prompt, batched_weight = encode_image_prompt(
+                    img, weight, image_size, num_cutouts=num_cutouts, clip_model_name=member, device=device, fp16=fp16)
+                embeds_list.append(image_prompt)
+                weights_list.extend(batched_weight)
+
+            negatives = imagenet_text_features(member, device, fp16).float() if loss == "contrastive" else None
+            make_cutouts = MakeCutouts(cut_size=clip_size, num_cutouts=num_cutouts, cutout_size_power=cutout_power,
+                                       use_augs=use_augs, min_cut_fraction=min_cut_fraction)
+            self.towers.append(ClipTower(clip_model, make_cutouts, th.cat(embeds_list), negatives))
+
+        weights = th.tensor(weights_list, device=device)
+        if weights.sum().abs() < 1e-3:  # smart :)
+            raise script_util.ConfigError('The prompt weights must not sum to 0.')
+        self.weights = weights / weights.sum().abs()
+
+    def query(self) -> th.Tensor:
+        """The prompts as one weighted feature of the first model, for looking things up."""
+        return (self.weights[:, None] * tf.normalize(self.towers[0].targets, dim=-1)).sum(0, keepdim=True)
+
+    def _distance(self, tower: ClipTower, images: th.Tensor) -> th.Tensor:
+        clip_in = preprocess(tower.model, tower.make_cutouts(images))
+        cutout_embeds = tower.model.encode_image(clip_in).float()
+        cutout_embeds = cutout_embeds.view(-1, images.shape[0], cutout_embeds.shape[-1])  # [cutouts, batch, features]
+        if self.loss_name == "contrastive":
+            dists = losses.contrastive_loss(cutout_embeds.unsqueeze(2), tower.targets, tower.negatives)
+        else:
+            dists = losses.spherical_dist_loss(cutout_embeds.unsqueeze(2), tower.targets)
+        return dists.mul(self.weights).sum(2).mean(0)
+
+    @th.no_grad()
+    def score(self, images: th.Tensor) -> th.Tensor:
+        """How well each whole image in [-1, 1] matches the prompts, higher being better."""
+        scores = []
+        for tower in self.towers:
+            size = (tower.make_cutouts.cut_size,) * 2
+            whole = tf.interpolate(images.add(1).div(2).clamp(0, 1), size, mode="bicubic", antialias=True, align_corners=False)
+            embeds = tf.normalize(tower.model.encode_image(preprocess(tower.model, whole.clamp(0, 1))).float(), dim=-1)
+            scores.append(embeds @ (self.weights[:, None] * tf.normalize(tower.targets, dim=-1)).sum(0))
+        return th.stack(scores).mean(0)
+
+    def aesthetic(self, images: th.Tensor) -> th.Tensor:
+        """Predicted human rating of each whole image in [0, 1], from 1 to 10."""
+        model = self.aesthetic_model
+        size = model.visual.input_resolution
+        embeds = model.encode_image(preprocess(model, adaptive_avg_pool(images, size))).float()
+        embeds = tf.normalize(embeds, dim=-1) * embeds.shape[-1] ** 0.5
+        return (embeds @ self.aesthetic_head["linear.weight"].T + self.aesthetic_head["linear.bias"]).squeeze(-1)
+
+    def _cutout_rating(self, images: th.Tensor) -> th.Tensor:
+        """The rating over cutouts, which buys more of it per point of CLIP score than the whole frame."""
+        return self.aesthetic(self.aesthetic_cutouts(images)).view(-1, images.shape[0]).mean(0)
+
+    def loss(self, images: th.Tensor, scale: float = 1.0) -> th.Tensor:
+        """Mean CLIP loss of the batch's images, summed, for images in [-1, 1].
+
+        An ensemble backpropagates each term on its own, so only one tower's activations
+        are ever in memory. The result has the value of the real loss and the gradient the
+        terms accumulated, and everything upstream of `images` only runs backward once.
+        """
+        terms = [lambda pixels, tower=tower: self._distance(tower, pixels) / len(self.towers) for tower in self.towers]
+        if self.aesthetic_scale:
+            terms.append(lambda pixels: -self.aesthetic_scale * self._cutout_rating(pixels))
+        if len(terms) == 1:
+            return terms[0](images.add(1).div(2)).sum() * scale
+        detached = images.detach().requires_grad_()
+        total, gradient = 0.0, th.zeros_like(detached)
+        for term in terms:
+            value = term(detached.add(1).div(2)).sum() * scale
+            gradient = gradient + th.autograd.grad(value, detached)[0]
+            total += value.item()
+        surrogate = (images * gradient).sum()
+        return surrogate - surrogate.detach() + total
