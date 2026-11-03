@@ -2,14 +2,16 @@
 From [@crowsonkb](https://github.com/crowsonkb).
 
 <p>
-<a href="https://replicate.ai/afiaka87/clip-guided-diffusion" target="_blank"><img src="https://img.shields.io/static/v1?label=run&message=clip-guided-diffusion&color=blue"></a>    <a href="https://replicate.ai/afiaka87/pyglide" target="_blank"><img src="https://img.shields.io/static/v1?label=run&message=pyglide&color=green"></a>
+<a href="https://replicate.com/afiaka87/clip-guided-diffusion" target="_blank"><img src="https://img.shields.io/static/v1?label=run&message=clip-guided-diffusion&color=blue"></a>    <a href="https://replicate.com/afiaka87/pyglide" target="_blank"><img src="https://img.shields.io/static/v1?label=run&message=pyglide&color=green"></a>
 </p>
 
-Disclaimer: I'm redirecting efforts to [pyglide](https://replicate.ai/afiaka87/pyglide) and may be slow to address bugs here.
+The Replicate demo runs the version from October 2022, which has none of the speedups, models or options this README measures.
+
+Disclaimer: I'm redirecting efforts to [pyglide](https://replicate.com/afiaka87/pyglide) and may be slow to address bugs here.
 
 I also recommend looking at [@crowsonkb's](https://github.com/crowsonkb) [v-diffusion-pytorch](https://github.com/crowsonkb/v-diffusion-pytorch).
 
-See captions and more generations in the [Gallery](/images/README.md).
+See more generations, each with its command, in the [Gallery](/images/README.md).
 
 ## Install
 
@@ -23,20 +25,33 @@ uv sync
 
 ## Run
 
-`uv run cgd "Alien friend by Odilon Redo"`
+`uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 "A monarch butterfly on a purple flower"`
 
-![Alien friend by Oidlon Redo](images/alien_friend_by_Odilon_Redo_00.gif)
+![A monarch butterfly on a purple flower](images/A_monarch_butterfly_on_a_purple_flower.gif)
 
-That is the classic pipeline: an ImageNet model steered by CLIP, with no extra dependencies to download. For the best images this repo makes, use [a modern backbone](#modern-backbones):
+That is the classic pipeline: an ImageNet model steered by CLIP, with no extra dependencies to download. It conditions the model on the ImageNet class closest to the prompt, and prints it: `monarch butterfly`, here. `uv run cgd -gif "A monarch butterfly on a purple flower"` works too. The options were chosen by eye for a better image, and most examples here use them:
 
-`uv run cgd -bb sd-turbo "Alien friend by Odilon Redo"`
+- `-size 256`, twice the default size.
+- `-n 90`, three times the default steps.
+- `-clip ViT-B/32+PE-Core-B-16`, an [ensemble](#ensembles), the one option that measurably improves the image.
+- `-gl 0.99`, which [holds back](#other-options) the part of CLIP's update that would clip, for natural colour.
+- `-freq 3`, which keeps every third step, so the GIF stays small.
+
+That took 37 s on an RTX 2070 SUPER. For the best images this repo makes, use [a modern backbone](#modern-backbones), here in 48 s:
+
+`uv run cgd -bb sd-turbo -gif "A monarch butterfly on a purple flower"`
+
+![A monarch butterfly on a purple flower, drawn by SD-Turbo](images/A_monarch_butterfly_on_a_purple_flower_sd-turbo.gif)
+
+Every GIF in this README is its command's real output, with the default seed. The one exception is the [upscaling](#upscaling) comparison, which is made from a command's two outputs.
 
 - The path of the finished image is printed at the end. See [Speed](#speed) for how long that takes.
 - `./outputs` will contain intermediate outputs, every 10 steps by default. Change this with `--save_frequency` / `-freq`.
 - `current.png` will contain the current generation.
 - The same `--seed` and arguments reproduce the image byte for byte on the same machine and library versions.
-- Use `--save-as-gif` / `-gif` to save a high-quality GIF of every step and delete frames
-- Use `--save-as-video` / `-mp4` to save a high-quality MP4 of every step and delete frames
+- Use `--save-as-gif` / `-gif` to save a high-quality GIF of every step, at 10 frames a second, and delete the frames. The frames of the batch's first image are in `outputs/<prompt>/00/`, and its GIF is `outputs/<prompt>/00.gif`.
+- Use `--save-as-video` / `-mp4` to save a high-quality MP4 of every step the same way, as `outputs/<prompt>/00.mp4`.
+- The classic pipeline's animation shows its estimate of the finished image at each step, so it runs from a blur to the image. A backbone's shows each step of CLIP reshaping an image that is finished from the first frame, and ends on the image from the full decoder.
 - Animation exports require FFmpeg. Frames stream to the encoder without buffering the whole
   animation in memory. MP4 uses H.264/yuv420p, padding odd dimensions for playback compatibility.
   Exports replace the destination only after successful encoding; failures preserve source
@@ -48,39 +63,56 @@ That is the classic pipeline: an ImageNet model steered by CLIP, with no extra d
 
 ### Text to image generation
 
-`--prompts` / `-txts`, or just pass the prompt first
-`--image_size` / `-size`
+- `--prompts` / `-txts`, or just pass the prompt first
+- `--image_size` / `-size`
 
-`uv run cgd --image_size 256 "32K HUHD Mushroom"`
+`uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 "A great grey owl perched on a branch"`
 
-![32K HUHD Mushroom](/images/32K_HUHD_Mushroom.png?raw=true)
+![A great grey owl perched on a branch](images/A_great_grey_owl_perched_on_a_branch.gif)
 
 ### Text to image generation (multiple prompts with weights)
 
 - multiple prompts can be specified with the `|` character.
 - you may optionally specify a weight for each prompt using a `:` character.
-- e.g. `cgd --prompts "Noun to visualize:1.0|style:0.1|location:0.1|something you dont want:-0.1"`
+- e.g. `uv run cgd --prompts "Noun to visualize:1.0|style:0.1|location:0.1|something you dont want:-0.1"`
 - weights must not sum to 0
 
-`uv run cgd "32K HUHD Mushroom|Green grass:-0.1"`
+`uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 "A steam locomotive crossing a stone bridge"`
 
-<img src="images/32K_HUHD_Mushroom_MIN_green_grass.png"></img>
+![A steam locomotive crossing a stone bridge](images/A_steam_locomotive_crossing_a_stone_bridge.gif)
+
+A negative weight takes the smoke away:
+
+`uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 "A steam locomotive crossing a stone bridge|smoke:-0.5"`
+
+![A steam locomotive crossing a stone bridge, minus smoke at -0.5](images/A_steam_locomotive_crossing_a_stone_bridge_MIN_smoke.gif)
 
 ### Image prompts
 
 `--image_prompts` / `-imgs` take paths or URLs, and the same `|` and `:` syntax. They can replace the text prompt or add to it.
 
-`uv run cgd -imgs "images/goose_on_the_run.png"`
+`uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 -imgs "images/goose_on_the_run.png"`
+
+![images/goose_on_the_run.png as the prompt](images/goose_on_the_run_image_prompt.gif)
+
+The prompt is [this goose](images/goose_on_the_run.png), a generation from 2021. The ImageNet class comes from the image prompts too: `goose`, here.
 
 ### CPU
 
-- **Using a CPU will take a very long time** compared to using a GPU.
+- **Using a CPU takes much longer** than using a GPU. This took 145 s on a Ryzen 9 3900X, and 15 s without `--device cpu` on an RTX 2070 SUPER.
+- The CPU runs the diffusion model at full precision, where the GPU uses half, and the same seed gives a different image on each.
 
-`uv run cgd --device cpu "Some text to be generated"`
+`uv run cgd --device cpu -gif -freq 2 -clip ViT-B/32+PE-Core-B-16 -n 60 -gl 0.99 "A wooden cabin in a snowy forest"`
+
+![A wooden cabin in a snowy forest, on the CPU](images/A_wooden_cabin_in_a_snowy_forest_cpu.gif)
 
 ### CUDA GPU
 
-`uv run cgd "Theres no need to specify a device, it will be chosen automatically"`
+There's no need to specify a device: without `--device`, it uses CUDA whenever PyTorch can.
+
+`uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 "A wooden cabin in a snowy forest"`
+
+![A wooden cabin in a snowy forest](images/A_wooden_cabin_in_a_snowy_forest.gif)
 
 ### Steps
 
@@ -100,7 +132,7 @@ That is the classic pipeline: an ImageNet model steered by CLIP, with no extra d
 
 - Runs the original guided-diffusion sampler instead of the fast one, with its original look, 16 cutouts and a random ImageNet class every step. Slow: `-respace 1000` takes minutes per image.
 - A number of steps over the same schedule, e.g. `25`, `50`, `250`, `1000`. Fewer sacrifices accuracy/alignment for quicker runtime.
-- prepending a number with `ddim` will use the ddim scheduler. e.g. `ddim25` will use the 25 timstep ddim scheduler. This method may be better at shorter timestep_respacing values.
+- prepending a number with `ddim` will use the ddim scheduler. e.g. `ddim25` will use the 25 timestep ddim scheduler. This method may be better at shorter timestep_respacing values.
 
 ### Existing image
 
@@ -118,16 +150,19 @@ This counts the 1000 steps of the full schedule, or the steps of `--timestep_res
 
 #### (optional)`--init_scale`/`-is`
 
-To enable a VGG perceptual loss after the blending, you must specify an `--init_scale` value. 1000 seems to work well.
+Adds a VGG perceptual loss ([LPIPS](https://github.com/richzhang/PerceptualSimilarity)) between the image and the init image, which keeps the init's composition. 1000 seems to work well. In this example `0` sank the cap into tall grass and lost the stem, `3000` kept the fence behind the mushroom but barely turned it red, and `1000` sits between them.
 
 ```sh
-uv run cgd "A mushroom in the style of Vincent Van Gogh" \
-  --init_image "images/32K_HUHD_Mushroom.png" \
+uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 \
+  --init_image images/32K_HUHD_Mushroom.png \
   --init_scale 1000 \
-  --skip_timesteps 350
+  --skip_timesteps 300 \
+  "A red mushroom in the grass"
 ```
 
-<img src="images/a_mushroom_in_the_style_of_vangogh.png?raw=true" width="200"></img>
+![A red mushroom in the grass, started from images/32K_HUHD_Mushroom.png](images/A_red_mushroom_in_the_grass.gif)
+
+The init image is [this mushroom](images/32K_HUHD_Mushroom.png), a generation from 2021. Skipping 300 of the 1000 steps leaves 66 of the 90 model calls, so the GIF has 23 frames.
 
 ### Image size
 
@@ -139,42 +174,47 @@ uv run cgd "A mushroom in the style of Vincent Van Gogh" \
 - For all other checkpoints, clip_guidance_scale seems to work well around 1000-2000 and tv_scale at 0, 100, 150 or 200
 
 ```sh
-uv run cgd --init_image=images/32K_HUHD_Mushroom.png \
+uv run cgd -gif --init_image=images/32K_HUHD_Mushroom.png \
     --skip_timesteps=500 \
     --image_size 64 \
     "8K HUHD Mushroom"
 ```
 
-<img src="images/32K_HUHD_Mushroom_64.png?raw=true" width="200"></img>
+<img src="images/8K_HUHD_Mushroom_64.gif" width="200"></img>
 _resized to 200 pixels for visibility_
 
 ```sh
-uv run cgd --image_size 512 "8K HUHD Mushroom"
+uv run cgd -gif -freq 2 -size 512 -clip ViT-B/32+PE-Core-B-16 -n 60 -gl 0.99 "A sailboat on a calm lake at sunset"
 ```
 
-<img src="images/32K_HUHD_Mushroom_512.png?raw=true"></img>
+![A sailboat on a calm lake at sunset, at 512x512](images/A_sailboat_on_a_calm_lake_at_sunset_512.gif)
 
-**New: Non-square Generations (experimental)**
-Generate portrait or landscape images by specifying a number to offset the width and/or height.
+`-n 60` instead of 90, because each step costs more at 512. That took 53 s.
 
-- height and width must be multiples of an eighth of the image size: 8 at 64x64, 16 at 128x128, 32 at 256x256, 64 at 512x512
-- may cause NaN/Inf errors.
+**Non-square generations**
+
+Generate portrait or landscape images by specifying a number to offset the width and/or height, with `--width_offset` / `-wd` and `--height_offset` / `-ht`.
+
+- height and width must be multiples of an eighth of the image size: 8 at 64x64, 16 at 128x128, 32 at 256x256, 64 at 512x512. With [`--backbone`](#modern-backbones), any multiple of 8.
+- None of 12 runs from 80x64 to 640x512, on both samplers, produced NaN or Inf. By eye, the default sampler's images were as clean as square ones. `-respace ddim50` gave saturated, broken images, but it did that at square sizes too.
 - a positive offset will require more memory.
 - a _negative_ offset uses less memory and is faster.
 
 ```sh
-my_caption="a photo of beautiful green hills and a sunset, taken with a blackberry in 2004"
-uv run cgd "$my_caption" \
-    --image_size 128 \
-    --width_offset 32 
+uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 \
+    --width_offset 128 \
+    "A castle on a hill at sunset"
 ```
-<img src="images/green-hills.png">
+
+![A castle on a hill at sunset, at 384x256](images/A_castle_on_a_hill_at_sunset_384x256.gif)
 
 ## Modern backbones
 
 `--backbone` / `-bb`
 
-`uv run cgd -bb sd-turbo "A red fox in the snow"`
+`uv run cgd -bb sd-turbo -gif "A red fox in the snow"`
+
+![A red fox in the snow, drawn by SD-Turbo](images/A_red_fox_in_the_snow_sd-turbo.gif)
 
 The ImageNet models only learned ImageNet, and CLIP cannot supply what a model never learned. With `-bb` a modern one-step model draws the image, and CLIP corrects it by optimising the model's starting noise for 50 steps ([ReNO](https://arxiv.org/abs/2406.04312)). There is no solver to tune, the noise stays on the model's prior, and the same `--seed` still reproduces the image byte for byte.
 
@@ -242,7 +282,9 @@ Model loading is faster too: checkpoints are memory mapped instead of copied, no
 
 `--clip_model` / `-clip` (default: `ViT-B/32`)
 
-`uv run cgd -clip PE-Core-L-14-336 -size 256 "A red fox in the snow"`
+`uv run cgd -gif -freq 3 -clip PE-Core-L-14-336 -size 256 -n 90 -gl 0.99 "A red fox in the snow"`
+
+![A red fox in the snow, guided by PE-Core-L-14-336](images/A_red_fox_in_the_snow_PE-Core-L-14-336_256.gif)
 
 Join models with `+` to guide with all of them, see [Ensembles](#ensembles).
 
@@ -338,7 +380,9 @@ Everything here was measured against the default on 12 prompts held out from tun
 
 ### Ensembles
 
-`uv run cgd -clip ViT-B/32+PE-Core-B-16 "A red fox in the snow"`
+`uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 "A red fox in the snow"`
+
+![A red fox in the snow, guided by ViT-B/32 and PE-Core-B-16](images/A_red_fox_in_the_snow_ensemble_256.gif)
 
 The one change that clearly helps ADM, and the default with `-bb`. Each model backpropagates on its own, so only one model's activations are in memory at a time.
 
@@ -354,21 +398,31 @@ That includes loading both models for every image, which a single `cgd` run only
 
 `--candidates` / `-best`
 
-`uv run cgd -best 4 "A red fox in the snow"`
+`uv run cgd -best 4 -gif "A red fox in the snow"`
 
-Runs that many seeds from `--seed`, and reports the one that `ViT-B/16` and `ViT-L-16-SigLIP2-256` prefer. Takes that many times as long, and the judges run on the CPU. Picked that way and scored by `ViT-H-14-quickgelu`, which did not pick, against the average candidate: ADM best of 4 gains +0.015 ± 0.007 (11), or +0.025 ± 0.011 (12) with the ensemble. SD-Turbo best of 3 gains +0.005 ± 0.005 (8), so it matters much less there.
+![A red fox in the snow, the best of 4 seeds](images/A_red_fox_in_the_snow.gif)
+
+Runs that many seeds from `--seed`, and reports the one that `ViT-B/16` and `ViT-L-16-SigLIP2-256` prefer. Here they picked seed 0, the image `--seed 0` gives on its own. Each candidate's frames go in `outputs/seed_<n>/`, and only the pick's become a GIF or video. Takes that many times as long, and the judges run on the CPU. Picked that way and scored by `ViT-H-14-quickgelu`, which did not pick, against the average candidate: ADM best of 4 gains +0.015 ± 0.007 (11), or +0.025 ± 0.011 (12) with the ensemble. SD-Turbo best of 3 gains +0.005 ± 0.005 (8), so it matters much less there.
 
 ### Upscaling
 
 `--upscale` / `-up`
 
-Also saves a copy 4x larger, made with [Real-ESRGAN x4plus](https://github.com/xinntao/Real-ESRGAN), a 64 MB download. It invents detail and cannot fix what the image got wrong. ADM at 128 plus `-up` ties ADM at 512 on score, -0.014 ± 0.028 (6) on one seed, for 3 s instead of 19 s and 2.3 instead of 4.1 GiB, so it is the cheap route to 512 on ADM and not a better one: direct 512 clips fewer pixels, 4.1% against 10.4%, and gets a higher predicted rating, 5.32 against 4.83. Going from 512 to 2048 takes under a second and about 2 GiB.
+`uv run cgd -gif -freq 3 -up -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 "A monarch butterfly on a purple flower"`
+
+![A monarch butterfly on a purple flower, at 128x128](images/A_monarch_butterfly_on_a_purple_flower_128.gif)
+
+![The result enlarged 4x with bicubic, wiping to the Real-ESRGAN copy](images/A_monarch_butterfly_on_a_purple_flower_x4_comparison.gif)
+
+Also saves a copy of the finished image 4x larger, made with [Real-ESRGAN x4plus](https://github.com/xinntao/Real-ESRGAN), a 64 MB download. It goes in the frames' folder, `outputs/A_monarch_butterfly_on_a_purple_flower/00/0089_x4.png` here, and the animation stays at the size that was sampled. The second GIF wipes between that copy and the same image enlarged 4x with plain bicubic resampling. It invents detail and cannot fix what the image got wrong. ADM at 128 plus `-up` ties ADM at 512 on score, -0.014 ± 0.028 (6) on one seed, for 3 s instead of 19 s and 2.3 instead of 4.1 GiB, so it is the cheap route to 512 on ADM and not a better one: direct 512 clips fewer pixels, 4.1% against 10.4%, and gets a higher predicted rating, 5.32 against 4.83. Going from 512 to 2048 takes under a second and about 2 GiB.
 
 ### Aesthetic
 
 `--aesthetic_scale` / `-aes` (default `0.05` with `-bb`, otherwise `0`)
 
-`uv run cgd -bb sd-turbo -aes 0.1 "A red fox in the snow"`
+`uv run cgd -bb sd-turbo -aes 0.1 -gif "A red fox in the snow"`
+
+![A red fox in the snow, drawn by SD-Turbo with -aes 0.1](images/A_red_fox_in_the_snow_sd-turbo_aes_0.1.gif)
 
 Also rewards what people rate highly, with Katherine Crowson's [aesthetic predictor](https://github.com/crowsonkb/simulacra-aesthetic-models) for `ViT-B/32`. The scale is per point of a rating from 1 to 10. It rates random cutouts instead of the whole frame, because cutouts raised the held-out rating more per point of score lost, on both models.
 
@@ -406,46 +460,59 @@ Leave them alone: the default 4 random cutouts tied or beat everything tried. On
 
 ## Full Usage - Python
 
+Run from the repository root, so the image paths resolve.
+
 ```python
-# Initialize diffusion generator
 from cgd.cgd import clip_guided_diffusion
+from cgd.script_util import create_gif_ffmpeg
 
 cgd_generator = clip_guided_diffusion(
-    prompts=["an image of a fox in a forest"],
-    image_prompts=["image_to_compare_with_clip.png"],
-    batch_size=1,
-    clip_guidance_scale=1500,
-    sat_scale=0,
-    tv_scale=150,
-    init_scale=1000,
-    range_scale=50,
+    prompts=["A volcano erupting at night"],
+    image_prompts=[],
+    init_image=None,
+    init_scale=0,
+    skip_timesteps=0,
     image_size=256,
-    class_cond=False,
+    class_cond=True,
+    batch_size=1,
+    sample_steps=90,
+    guidance_rate=0.08,
+    guidance_limit=0.99,
+    clip_guidance_scale=1000,
+    tv_scale=150,
+    range_scale=50,
+    sat_scale=0,
     cutout_power=1.0,
-    sample_steps=30,
-    seed=0,
-    skip_timesteps=400,
-    init_image="image_to_blend_and_compare_with_vgg.png",
-    clip_model_name="PE-Core-L-14-336",
+    clip_model_name="ViT-B/32+PE-Core-B-16",
     clip_fp16=False,
+    solver="dpm++2m-sde",
+    seed=0,
     device="cuda",
-    prefix_path="store_images/",
+    prefix_path="outputs",
+    save_frequency=3,
     wandb_project=None,
     wandb_entity=None,
     progress=True,
 )
-for batch_idx, image_path in cgd_generator:  # Yields each saved image. The last is the result.
-    print(batch_idx, image_path)
+frames = [image_path for batch_idx, image_path in cgd_generator]  # Every saved step. The last is the result.
+create_gif_ffmpeg(frames, "outputs/A_volcano_erupting_at_night.gif")
 ```
 
-`modern.generate()` is the same with a backbone:
+![A volcano erupting at night](images/A_volcano_erupting_at_night.gif)
+
+These are the settings of `uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 "A volcano erupting at night"`, and the GIF is the same as that command's, byte for byte. With `save_frequency=3` it has 31 frames: every third of the 90 steps, then the result.
+
+`modern.generate()` is the same with a backbone. With the same settings it makes the same image as the CLI, byte for byte, so this is the GIF from [Modern backbones](#modern-backbones) again:
 
 ```python
 from cgd.modern import generate
+from cgd.script_util import create_gif_ffmpeg
 
-for batch_idx, image_path in generate(prompts=["an image of a fox in a forest"], backbone="sd-turbo", seed=0):
-    print(batch_idx, image_path)
+frames = [image_path for batch_idx, image_path in generate(prompts=["A red fox in the snow"], backbone="sd-turbo", seed=0, save_frequency=1)]
+create_gif_ffmpeg(frames, "outputs/A_red_fox_in_the_snow_sd-turbo.gif")
 ```
+
+![A red fox in the snow, drawn by SD-Turbo](images/A_red_fox_in_the_snow_sd-turbo.gif)
 
 ## Full Usage - CLI
 
