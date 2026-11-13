@@ -26,6 +26,7 @@ class TestPipeline:
             "batch_size": 1,
             "clip_model": "RN50",
             "clip_fp16": False,
+            "num_cutouts": 16,
             "steps": 12,
             "save_frequency": 10,
             "progress": False,
@@ -38,6 +39,17 @@ class TestPipeline:
         assert (settings["iterations"], settings["image_size"], settings["aesthetic_scale"]) == (3, 512, 0.0)
         assert settings["progress"] is True
 
+    @pytest.mark.parametrize("backbone_argv", [(), ("-bb", "sd-turbo")])
+    def test_both_pipelines_get_the_cutouts(self, backbone_argv: tuple[str, ...]) -> None:
+        assert pipeline(parse("a fox", *backbone_argv))[1]["num_cutouts"] == 16
+        assert pipeline(parse("a fox", "-cutn", "4", *backbone_argv))[1]["num_cutouts"] == 4
+
+    def test_unconditional_is_passed_only_when_asked_for(self) -> None:
+        assert "unconditional" not in pipeline(parse("a fox"))[1]
+        generate, settings = pipeline(parse("a fox", "-uncond", "-size", "512"))
+        assert generate is adm.generate
+        assert (settings["unconditional"], settings["image_size"]) == (True, 512)
+
     def test_an_animation_saves_every_frame_unless_told_otherwise(self) -> None:
         assert pipeline(parse("a fox", "-gif"))[1]["save_frequency"] == 1
         assert pipeline(parse("a fox", "-mp4", "-freq", "3"))[1]["save_frequency"] == 3
@@ -46,6 +58,7 @@ class TestPipeline:
         ("argv", "message"),
         [
             (("-bb", "sd-turbo", "-n", "4"), "--steps only applies without --backbone."),
+            (("-bb", "sd-turbo", "-uncond"), "--unconditional only applies without --backbone."),
             (("-bb", "sd-turbo", "-rate", "0.1", "-init", "x.png"), "--guidance-rate, --init-image only apply without"),
             (("-iters", "4"), "--iterations only applies with --backbone."),
         ],
@@ -55,16 +68,36 @@ class TestPipeline:
             pipeline(parse("a fox", *argv))
 
     def test_the_short_and_long_spellings_are_the_same_option(self) -> None:
-        short = parse("a", "-size", "64", "-wd", "8", "-ht", "16", "-bs", "2", "-seed", "3", "-clip", "RN50", "-fp16")
+        short = parse(
+            "a",
+            "-size",
+            "256",
+            "-wd",
+            "8",
+            "-ht",
+            "16",
+            "-bs",
+            "2",
+            "-seed",
+            "3",
+            "-clip",
+            "RN50",
+            "-fp16",
+            "-cutn",
+            "4",
+            "-uncond",
+        )
         long = parse(
             "a",
-            "--image-size=64",
+            "--image-size=256",
             "--width-offset=8",
             "--height-offset=16",
             "--batch-size=2",
             "--seed=3",
             "--clip-model=RN50",
             "--clip-fp16",
+            "--num-cutouts=4",
+            "--unconditional",
         )
         assert short == long
 
@@ -80,6 +113,9 @@ def test_collect_groups_each_images_frames_in_order() -> None:
         (("-q",), "at least one prompt"),
         (("a fox", "-best", "0"), "--candidates must be at least 1"),
         (("a fox", "-size", "100"), "No checkpoint for size 100"),
+        (("a fox", "-uncond", "-size", "128"), "No unconditional checkpoint for size 128"),
+        (("a fox", "-cutn", "0"), "--num-cutouts must be at least 1"),
+        (("a fox", "-bb", "sd-turbo", "-cutn", "0"), "--num-cutouts must be at least 1"),
         (("a fox", "-clip", "ViT-Z/99"), "Unknown CLIP model"),
         (("a fox", "-dev", "gpu"), "Unknown device"),
         (("a fox", "-bb", "sd-turbo", "-size", "100"), "multiples of 8"),
@@ -122,5 +158,6 @@ def test_both_of_pytorchs_memory_errors_count_as_out_of_memory() -> None:
 def test_out_of_memory_advice_fits_the_run(argv: tuple[str, ...], fp16_advice: bool, iterations_advice: bool) -> None:
     advice = out_of_memory_advice(parse(*argv))
     assert advice.startswith("Ran out of GPU memory.")
+    assert "--num-cutouts/-cutn (currently 16)" in advice
     assert ("--clip-fp16" in advice) is fp16_advice
     assert ("--iterations" in advice) is iterations_advice
