@@ -67,6 +67,11 @@ def test_the_image_has_the_requested_shape(workdir: Path, settings: dict[str, An
     assert Image.open(generate(workdir, iterations=1, **settings)[-1][1]).size == size
 
 
+def test_the_cutouts_asked_for_are_the_ones_clip_sees(workdir: Path) -> None:
+    first, second = (generate(workdir / str(cutouts), num_cutouts=cutouts)[-1][1] for cutouts in (1, 16))
+    assert first.read_bytes() != second.read_bytes()
+
+
 def test_a_batch_holds_distinct_images(workdir: Path) -> None:
     finals = [path for _, path in generate(workdir, batch_size=2, iterations=1) if path.name == "0001.png"]
     assert len(finals) == 2
