@@ -12,9 +12,11 @@ from cgd.device import default_device
 
 ADM_SETTINGS: dict[str, Any] = {
     "image_size": 128,
+    "unconditional": False,
     "height": 128,
     "width": 128,
     "batch_size": 1,
+    "num_cutouts": 16,
     "steps": 30,
     "guidance_rate": 0.08,
     "guidance_limit": None,
@@ -28,6 +30,7 @@ BACKBONE_SETTINGS: dict[str, Any] = {
     "height": 512,
     "width": 512,
     "batch_size": 1,
+    "num_cutouts": 16,
     "iterations": 50,
     "aesthetic_scale": 0.05,
     "save_frequency": 10,
@@ -44,9 +47,11 @@ class TestAdmParameters:
         [
             ([], {}, "at least one prompt"),
             (["a"], {"batch_size": 0}, "--batch-size"),
+            (["a"], {"num_cutouts": 0}, "--num-cutouts"),
             (["a"], {"save_frequency": 0}, "--save-frequency"),
             (["a"], {"aesthetic_scale": -1}, "--aesthetic-scale"),
             (["a"], {"image_size": 100, "height": 100, "width": 100}, "No checkpoint for size 100"),
+            (["a"], {"unconditional": True}, r"No unconditional checkpoint for size 128\. Choose one of \[256, 512\]"),
             (["a"], {"height": 136}, "multiples of 16"),
             (["a"], {"width": 0}, "positive multiples"),
             (["a"], {"steps": 0}, "--steps"),
@@ -66,6 +71,11 @@ class TestAdmParameters:
         with pytest.raises(ConfigError, match=r"No such image: missing\.png"):
             adm.check_parameters([], ["missing.png:0.5"], **ADM_SETTINGS)
 
+    @pytest.mark.parametrize("image_size", [256, 512])
+    def test_both_unconditional_sizes_pass(self, image_size: int) -> None:
+        settings = {"image_size": image_size, "unconditional": True, "height": image_size, "width": image_size}
+        adm.check_parameters(["a fox"], [], **ADM_SETTINGS | settings)
+
     @pytest.mark.parametrize("skip", [-1, 1000])
     def test_skipping_off_the_schedule_is_explained(self, photon: Path, skip: int) -> None:
         with pytest.raises(ConfigError, match="between 0 and 999"):
@@ -82,6 +92,7 @@ class TestBackboneParameters:
             ({"height": 100}, "multiples of 8"),
             ({"width": -8}, "positive multiples"),
             ({"iterations": -1}, "--iterations"),
+            ({"num_cutouts": 0}, "--num-cutouts"),
             ({"save_frequency": 0}, "--save-frequency"),
         ],
     )
