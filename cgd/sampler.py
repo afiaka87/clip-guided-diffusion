@@ -20,8 +20,13 @@ that changes every step. This sampler reaches the same prompt fidelity in about
   and at low noise the gradient is mostly adversarial high frequency detail that
   the U-Net cleans up better on its own. Those steps also skip the U-Net
   backward pass, the single most expensive part of guidance.
+- Without a class label nothing brings the subject, so CLIP also has to set the
+  composition. That happens at high noise, so unconditional checkpoints are guided
+  from the very start, and take twice the steps for that not to overshoot. Neither
+  change helps alone.
 
-The defaults were tuned on 128px and validated on prompts held out from tuning.
+The defaults were tuned on 128px and validated on prompts held out from tuning, and
+the unconditional ones likewise on 256px.
 
 A schedule here is log(alpha_bar) at each integer timestep, from schedule(), and a
 denoiser predicts the noise in its input.
@@ -38,9 +43,11 @@ from tqdm.auto import tqdm
 from cgd.losses import finite_gradient
 
 DEFAULT_STEPS = 30
+UNCONDITIONAL_STEPS = 60
 ETA = 0.5  # Fresh noise per step: 0 is an ODE, 1 is fully ancestral.
 DEFAULT_GUIDANCE_RATE = 0.08  # Max RMS of the guidance relative to the noise.
 GUIDANCE_WINDOW = (0.1, 0.8)  # Guide between these fractions of the schedule.
+UNCONDITIONAL_GUIDANCE_WINDOW = (0.1, 1.0)
 X0_CLAMP = 1.2  # Bound on x0. Slightly loose so guidance can still move extremes.
 GUIDANCE_LIMIT_SEARCH_STEPS = 8
 
