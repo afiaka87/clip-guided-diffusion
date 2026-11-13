@@ -25,7 +25,7 @@ from tqdm.auto import tqdm
 from cgd.checks import check_common, require
 from cgd.clip_models import check_model
 from cgd.device import default_device
-from cgd.guide import Guide, guide_loss, load_guide
+from cgd.guide import NUM_CUTOUTS, Guide, guide_loss, load_guide
 from cgd.losses import finite_gradient
 from cgd.outputs import frame_path, run_name, save_frame
 from cgd.prompts import parse_prompt
@@ -270,14 +270,22 @@ def check_parameters(
     height: int,
     width: int,
     batch_size: int,
+    num_cutouts: int,
     iterations: int,
     aesthetic_scale: float,
     save_frequency: int,
 ) -> None:
     """Reject a configuration that cannot work, before loading anything."""
+    # pylint: disable=duplicate-code  # adm passes the same shared options to the same check.
     check_common(
-        prompts, image_prompts, batch_size=batch_size, save_frequency=save_frequency, aesthetic_scale=aesthetic_scale
+        prompts,
+        image_prompts,
+        batch_size=batch_size,
+        num_cutouts=num_cutouts,
+        save_frequency=save_frequency,
+        aesthetic_scale=aesthetic_scale,
     )
+    # pylint: enable=duplicate-code
     require(
         height > 0 and width > 0 and not height % LATENT_FACTOR and not width % LATENT_FACTOR,
         f"Height and width must be positive multiples of {LATENT_FACTOR}. Got {height}x{width}.",
@@ -294,6 +302,7 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
     width_offset: int = 0,
     height_offset: int = 0,
     batch_size: int = 1,
+    num_cutouts: int = NUM_CUTOUTS,
     iterations: int = DEFAULT_ITERATIONS,
     clip_model: str = DEFAULT_CLIP_MODEL,
     clip_fp16: bool = False,
@@ -318,6 +327,7 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
         height=height,
         width=width,
         batch_size=batch_size,
+        num_cutouts=num_cutouts,
         iterations=iterations,
         aesthetic_scale=aesthetic_scale,
         save_frequency=save_frequency,
@@ -336,6 +346,7 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
             prompts,
             image_prompts,
             image_size=size,
+            num_cutouts=num_cutouts,
             device=device,
             fp16=clip_fp16,
             aesthetic_scale=aesthetic_scale,
