@@ -22,6 +22,7 @@ def check_common(
     image_prompts: Sequence[str],
     *,
     batch_size: int,
+    num_cutouts: int,
     save_frequency: int,
     aesthetic_scale: float,
     other_images: Iterable[str] = (),
@@ -29,6 +30,7 @@ def check_common(
     """The checks every pipeline shares: something to draw, and images that exist."""
     require(bool(prompts or image_prompts), "Provide at least one prompt, text or image.")
     require(batch_size >= 1, "--batch-size must be at least 1.")
+    require(num_cutouts >= 1, "--num-cutouts must be at least 1.")
     require(save_frequency >= 1, "--save-frequency must be at least 1.")
     require(aesthetic_scale >= 0, "--aesthetic-scale must not be negative.")
     for image in (*(parse_prompt(prompt)[0] for prompt in image_prompts), *other_images):
