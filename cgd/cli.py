@@ -12,7 +12,7 @@ from cgd import adm, backbone, sampler, upscale
 from cgd.checks import ConfigError
 from cgd.clip_models import MODEL_NAMES, OPEN_CLIP_MODELS, ensemble_members
 from cgd.device import default_device
-from cgd.guide import load_guide, score
+from cgd.guide import NUM_CUTOUTS, load_guide, score
 from cgd.outputs import save_gif, save_video
 from cgd.prompts import split_prompts
 
@@ -22,6 +22,7 @@ JUDGE_MODELS = (
 )
 # Options only one pipeline has, by the name each pipeline takes them as.
 ADM_OPTIONS = {
+    "unconditional": "--unconditional",
     "steps": "--steps",
     "guidance_rate": "--guidance-rate",
     "guidance_limit": "--guidance-limit",
@@ -38,6 +39,7 @@ SHARED_OPTIONS = (
     "batch_size",
     "clip_model",
     "clip_fp16",
+    "num_cutouts",
     "aesthetic_scale",
     "device",
 )
@@ -68,8 +70,9 @@ def build_parser() -> argparse.ArgumentParser:
         "-size",
         "--image-size",
         type=int,
-        help=f"Image size. 64, 128, 256 or 512, default {adm.DEFAULT_IMAGE_SIZE}. With --backbone, any multiple "
-        f"of {backbone.LATENT_FACTOR}, defaulting to what the model was trained for.",
+        help=f"Image size. 64, 128, 256 or 512, default {adm.DEFAULT_IMAGE_SIZE}. With --unconditional, 256 or 512, "
+        f"default {adm.DEFAULT_UNCONDITIONAL_SIZE}. With --backbone, any multiple of {backbone.LATENT_FACTOR}, "
+        "defaulting to what the model was trained for.",
     )
     parser.add_argument(
         "-wd", "--width-offset", type=int, default=0, help="Make the image this much wider. Default %(default)s."
@@ -94,6 +97,14 @@ def build_parser() -> argparse.ArgumentParser:
         "Less exact, but it scored about the same. OpenAI's models always do.",
     )
     parser.add_argument(
+        "-cutn",
+        "--num-cutouts",
+        type=int,
+        default=NUM_CUTOUTS,
+        help="Random cutouts of the image CLIP sees each step. Fewer is faster and needs less VRAM. "
+        "Default %(default)s.",
+    )
+    parser.add_argument(
         "-aes",
         "--aesthetic-scale",
         type=float,
@@ -113,7 +124,20 @@ def build_parser() -> argparse.ArgumentParser:
     imagenet = parser.add_argument_group(
         "ImageNet model", "The default pipeline: CLIP guides OpenAI's ImageNet diffusion model."
     )
-    imagenet.add_argument("-n", "--steps", type=int, help=f"Model calls. Default {sampler.DEFAULT_STEPS}.")
+    imagenet.add_argument(
+        "-uncond",
+        "--unconditional",
+        action="store_true",
+        default=None,
+        help="Draw with an unconditional checkpoint, at 256 or 512. Less reliable than the default, because "
+        "without an ImageNet class nothing but CLIP brings the subject.",
+    )
+    imagenet.add_argument(
+        "-n",
+        "--steps",
+        type=int,
+        help=f"Model calls. Default {sampler.DEFAULT_STEPS}, or {sampler.UNCONDITIONAL_STEPS} with --unconditional.",
+    )
     imagenet.add_argument(
         "-rate",
         "--guidance-rate",
@@ -291,7 +315,8 @@ def out_of_memory_advice(args: argparse.Namespace) -> str:
     """What to change after running out of GPU memory."""
     clip_model = args.clip_model or (backbone.DEFAULT_CLIP_MODEL if args.backbone else adm.DEFAULT_CLIP_MODEL)
     advice = (
-        "Ran out of GPU memory. Try a smaller --image-size/-size or --batch-size/-bs.\n"
+        "Ran out of GPU memory. Try a smaller --image-size/-size, --batch-size/-bs or "
+        f"--num-cutouts/-cutn (currently {args.num_cutouts}).\n"
         f"--clip-model/-clip (currently {clip_model}) has a large impact on VRAM: "
         "RN50 uses the least, ViT-B/32 the second least.\n"
     )
