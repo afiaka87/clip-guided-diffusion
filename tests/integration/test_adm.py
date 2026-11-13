@@ -54,6 +54,32 @@ def test_it_draws_the_prompt_without_blowing_out(workdir: Path) -> None:
     assert prefers(path, PROMPT, OTHER_PROMPT)
 
 
+def test_an_unconditional_checkpoint_draws_the_prompt_with_clip_alone(workdir: Path) -> None:
+    (_, path), *_ = reversed(generate(workdir, unconditional=True))
+    assert path.name == "0059.png"  # Twice the steps, at 256.
+    image = Image.open(path).convert("RGB")
+    assert image.size == (256, 256)
+    pixels = tvf.to_tensor(image)
+    assert ((pixels <= 1 / 255) | (pixels >= 254 / 255)).float().mean().item() < 0.25
+    assert pixels.std().item() > 0.1
+    assert prefers(path, PROMPT, OTHER_PROMPT)
+
+
+@pytest.mark.parametrize("image_size", [256, 512])
+def test_the_unconditional_checkpoints_load_without_a_class_on_their_schedule(image_size: int) -> None:
+    """Loading is strict, so flags that disagreed with a checkpoint's weights would fail here."""
+    model, log_alpha_bar = adm.load_model(image_size, "cpu", False, unconditional=True)
+    assert model.num_classes is None
+    assert 1 - math.exp(log_alpha_bar[0]) == pytest.approx(1e-4)  # Linear, as the class-conditional 256 and 512.
+
+
+def test_the_cutouts_asked_for_are_the_ones_clip_sees(workdir: Path) -> None:
+    first, second = (
+        generate(workdir / str(cutouts), image_size=64, steps=6, num_cutouts=cutouts)[-1][1] for cutouts in (1, 16)
+    )
+    assert first.read_bytes() != second.read_bytes()
+
+
 def test_it_saves_every_frame_asked_for_and_the_result(workdir: Path) -> None:
     names = [path.name for _, path in generate(workdir, image_size=64, steps=8, save_frequency=3)]
     assert names == ["0000.png", "0003.png", "0006.png", "0007.png"]
@@ -62,9 +88,10 @@ def test_it_saves_every_frame_asked_for_and_the_result(workdir: Path) -> None:
     ).read_bytes()
 
 
-def test_512_fits_with_guidance(workdir: Path) -> None:
+@pytest.mark.parametrize("unconditional", [False, True])
+def test_512_fits_with_guidance(workdir: Path, unconditional: bool) -> None:
     """Gradient checkpointing is what lets it fit in 8 GB."""
-    assert generate(workdir, image_size=512, steps=6)[-1][1].name == "0005.png"
+    assert generate(workdir, image_size=512, unconditional=unconditional, steps=6)[-1][1].name == "0005.png"
 
 
 def test_gradient_checkpointing_keeps_the_gradient() -> None:
@@ -172,8 +199,9 @@ def test_running_out_of_memory_raises_instead_of_ending_the_run_early(workdir: P
         {"guidance_limit": 0.99},
         {"aesthetic_scale": 0.2},
         {"init_scale": 1000, "skip_timesteps": 300},
+        {"unconditional": True},
     ],
-    ids=["plain", "ensemble", "fp16", "limit", "aesthetic", "lpips"],
+    ids=["plain", "ensemble", "fp16", "limit", "aesthetic", "lpips", "unconditional"],
 )
 def test_a_seed_reproduces_the_image_exactly(workdir: Path, mushroom: Path, settings: dict[str, Any]) -> None:
     if "init_scale" in settings:
