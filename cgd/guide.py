@@ -21,7 +21,7 @@ AESTHETIC_URL = "https://github.com/crowsonkb/simulacra-aesthetic-models/raw/mas
 AESTHETIC_FILENAME = "sac_public_2022_06_29_vit_b_32_linear.pth"
 AESTHETIC_SHA256 = "64315370e2293a08cc2f4816ae9db715f935791569c1a57d84b943e482ea5e12"
 MIN_TOTAL_WEIGHT = 1e-3
-NUM_CUTOUTS = 4
+NUM_CUTOUTS = 16  # The original's. On ADM at 128, 4 scored the same for a quarter of CLIP's work.
 MIN_CUT_FRACTION = 0.7  # Cutouts span 70-100% of the frame, or down to CLIP's input size if that is smaller.
 
 
