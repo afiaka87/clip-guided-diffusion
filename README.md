@@ -25,7 +25,7 @@ uv sync
 
 ## Run
 
-`uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 "A monarch butterfly on a purple flower"`
+`uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 -cutn 4 "A monarch butterfly on a purple flower"`
 
 ![A monarch butterfly on a purple flower](images/A_monarch_butterfly_on_a_purple_flower.gif)
 
@@ -36,10 +36,11 @@ That is the classic pipeline: an ImageNet model steered by CLIP, with no extra d
 - `-clip ViT-B/32+PE-Core-B-16`, an [ensemble](#ensembles), the one option that measurably improves the image.
 - `-gl 0.99`, which [holds back](#--guidance-limit---gl) the part of CLIP's update that would clip, for natural colour.
 - `-freq 3`, which keeps every third step, so the GIF stays small.
+- `-cutn 4`, a quarter of the default [cutouts](#cutouts), for speed: it scored the same. Every image, time, VRAM figure and score in this README was made with 4, unless it says otherwise.
 
 That took 37 s on an RTX 2070 SUPER. For the best images this repo makes, use [a modern backbone](#modern-backbones), here in 48 s:
 
-`uv run cgd -bb sd-turbo -gif "A monarch butterfly on a purple flower"`
+`uv run cgd -bb sd-turbo -gif -cutn 4 "A monarch butterfly on a purple flower"`
 
 ![A monarch butterfly on a purple flower, drawn by SD-Turbo](images/A_monarch_butterfly_on_a_purple_flower_sd-turbo.gif)
 
@@ -65,7 +66,7 @@ Every GIF in this README is its command's real output, with the default seed. Th
 - The prompt, in quotes
 - `--image-size` / `-size`
 
-`uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 "A great grey owl perched on a branch"`
+`uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 -cutn 4 "A great grey owl perched on a branch"`
 
 ![A great grey owl perched on a branch](images/A_great_grey_owl_perched_on_a_branch.gif)
 
@@ -76,13 +77,13 @@ Every GIF in this README is its command's real output, with the default seed. Th
 - e.g. `uv run cgd "Noun to visualize:1.0|style:0.1|location:0.1|something you dont want:-0.1"`
 - weights must not sum to 0
 
-`uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 "A steam locomotive crossing a stone bridge"`
+`uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 -cutn 4 "A steam locomotive crossing a stone bridge"`
 
 ![A steam locomotive crossing a stone bridge](images/A_steam_locomotive_crossing_a_stone_bridge.gif)
 
 A negative weight takes the smoke away:
 
-`uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 "A steam locomotive crossing a stone bridge|smoke:-0.5"`
+`uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 -cutn 4 "A steam locomotive crossing a stone bridge|smoke:-0.5"`
 
 ![A steam locomotive crossing a stone bridge, minus smoke at -0.5](images/A_steam_locomotive_crossing_a_stone_bridge_MIN_smoke.gif)
 
@@ -90,7 +91,7 @@ A negative weight takes the smoke away:
 
 `--image-prompts` / `-imgs` take paths or URLs, and the same `|` and `:` syntax. They can replace the text prompt or add to it.
 
-`uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 -imgs "images/goose_on_the_run.png"`
+`uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 -cutn 4 -imgs "images/goose_on_the_run.png"`
 
 ![images/goose_on_the_run.png as the prompt](images/goose_on_the_run_image_prompt.gif)
 
@@ -101,7 +102,7 @@ The prompt is [this goose](images/goose_on_the_run.png), a generation from 2021.
 - **Using a CPU takes much longer** than using a GPU. This took 145 s on a Ryzen 9 3900X, and 15 s without `--device cpu` on an RTX 2070 SUPER.
 - The CPU runs the diffusion model at full precision, where the GPU uses half, and the same seed gives a different image on each.
 
-`uv run cgd --device cpu -gif -freq 2 -clip ViT-B/32+PE-Core-B-16 -n 60 -gl 0.99 "A wooden cabin in a snowy forest"`
+`uv run cgd --device cpu -gif -freq 2 -clip ViT-B/32+PE-Core-B-16 -n 60 -gl 0.99 -cutn 4 "A wooden cabin in a snowy forest"`
 
 ![A wooden cabin in a snowy forest, on the CPU](images/A_wooden_cabin_in_a_snowy_forest_cpu.gif)
 
@@ -109,7 +110,7 @@ The prompt is [this goose](images/goose_on_the_run.png), a generation from 2021.
 
 There's no need to specify a device: without `--device`, it uses CUDA whenever PyTorch can.
 
-`uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 "A wooden cabin in a snowy forest"`
+`uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 -cutn 4 "A wooden cabin in a snowy forest"`
 
 ![A wooden cabin in a snowy forest](images/A_wooden_cabin_in_a_snowy_forest.gif)
 
@@ -119,6 +120,7 @@ There's no need to specify a device: without `--device`, it uses CUDA whenever P
 
 - The number of model calls. Fewer is faster.
 - `30` matches the original sampler on prompts held out from tuning. `20` is a third faster, but doubles the share of clipped pixels. Below `15` quality falls off quickly.
+- [`--unconditional`](#unconditional-checkpoints) defaults to `60`. Without a class label it needs the extra steps, see [Speed](#speed).
 
 `--guidance-rate` / `-rate` (default: `0.08`)
 
@@ -139,7 +141,7 @@ How much of the 1000 step schedule to skip. Higher stays closer to the image. De
 Adds a VGG perceptual loss ([LPIPS](https://github.com/richzhang/PerceptualSimilarity)) between the image and the init image, which keeps the init's composition. 1000 seems to work well. In this example `0` sank the cap into tall grass and lost the stem, `3000` kept the fence behind the mushroom but barely turned it red, and `1000` sits between them.
 
 ```sh
-uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 \
+uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 -cutn 4 \
   --init-image images/32K_HUHD_Mushroom.png \
   --init-scale 1000 \
   --skip-timesteps 300 \
@@ -152,12 +154,12 @@ The init image is [this mushroom](images/32K_HUHD_Mushroom.png), a generation fr
 
 ### Image size
 
-- options: `64, 128, 256, 512 pixels (square)`, or any multiple of 8 with [`--backbone`](#modern-backbones)
+- options: `64, 128, 256, 512 pixels (square)`, `256` or `512` with [`--unconditional`](#unconditional-checkpoints), or any multiple of 8 with [`--backbone`](#modern-backbones)
 - Every size runs in 8 GB of VRAM with the default CLIP model. See [Speed](#speed) for the time and memory each one takes, and [CLIP models](#clip-models) for the models that need more.
 - Above 256x256 pixels per batch, the U-Net recomputes its activations during guidance instead of storing them. That takes about 1.5x the time per guided step and under half the memory, and it is automatic.
 
 ```sh
-uv run cgd -gif --init-image images/32K_HUHD_Mushroom.png \
+uv run cgd -gif -cutn 4 --init-image images/32K_HUHD_Mushroom.png \
     --skip-timesteps 500 \
     --image-size 64 \
     "8K HUHD Mushroom"
@@ -167,7 +169,7 @@ uv run cgd -gif --init-image images/32K_HUHD_Mushroom.png \
 _resized to 200 pixels for visibility_
 
 ```sh
-uv run cgd -gif -freq 2 -size 512 -clip ViT-B/32+PE-Core-B-16 -n 60 -gl 0.99 "A sailboat on a calm lake at sunset"
+uv run cgd -gif -freq 2 -size 512 -clip ViT-B/32+PE-Core-B-16 -n 60 -gl 0.99 -cutn 4 "A sailboat on a calm lake at sunset"
 ```
 
 ![A sailboat on a calm lake at sunset, at 512x512](images/A_sailboat_on_a_calm_lake_at_sunset_512.gif)
@@ -184,18 +186,26 @@ Generate portrait or landscape images by specifying a number to offset the width
 - a _negative_ offset uses less memory and is faster.
 
 ```sh
-uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 \
+uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 -cutn 4 \
     --width-offset 128 \
     "A castle on a hill at sunset"
 ```
 
 ![A castle on a hill at sunset, at 384x256](images/A_castle_on_a_hill_at_sunset_384x256.gif)
 
+### Unconditional checkpoints
+
+`--unconditional` / `-uncond`
+
+`uv run cgd -uncond "A red fox in the snow"`
+
+Draws with a model that takes no class label: OpenAI's at 256x256, the default size, and at 512x512 Katherine Crowson's fine-tune of OpenAI's class-conditional model. Nothing but CLIP brings the subject, so it is less reliable than the default, and it scored behind the original 1000 step sampler, see [Speed](#speed). Guidance starts at the very beginning of the schedule, because that is where the composition is set, and the sampler takes 60 steps by default, twice the class-conditional models', so that does not overshoot. `--steps` / `-n` changes them as usual.
+
 ## Modern backbones
 
 `--backbone` / `-bb`
 
-`uv run cgd -bb sd-turbo -gif "A red fox in the snow"`
+`uv run cgd -bb sd-turbo -gif -cutn 4 "A red fox in the snow"`
 
 ![A red fox in the snow, drawn by SD-Turbo](images/A_red_fox_in_the_snow_sd-turbo.gif)
 
@@ -209,9 +219,9 @@ The ImageNet models only learned ImageNet, and CLIP cannot supply what a model n
 | `sdxl-lightning` | 768 | 10.4 s, 6.3 GiB | 57.6 s, 7.0 GiB | 12 GB | [OpenRAIL++](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/blob/main/LICENSE.md) |
 | | 1024 (default) | 10.2 s, 7.3 GiB | Out of memory on 8 GB | | |
 
-Wall clock for one image with `cgd`, including startup and loading with the weights already on disk, and peak VRAM, on an RTX 2070 SUPER with 8 GB and nothing else on it. With CLIP means the defaults, `ViT-B/32+PE-Core-B-16` and `-aes 0.05`. `sdxl-lightning` at its default 1024 needs `-size 768` on 8 GB, or `-iters 0`, which skips CLIP. Even a single `-clip ViT-B/32` runs out of memory there. It should fit 12 GB with CLIP, but nothing has been run on an RTX 4070. Weights go to the Hugging Face cache.
+Wall clock for one image with `cgd`, including startup and loading with the weights already on disk, and peak VRAM, on an RTX 2070 SUPER with 8 GB and nothing else on it, at `-cutn 4`. With CLIP means the other defaults, `ViT-B/32+PE-Core-B-16` and `-aes 0.05`. `sdxl-lightning` at its default 1024 needs `-size 768 -cutn 4` on 8 GB, or `-iters 0`, which skips CLIP. Even a single `-clip ViT-B/32` runs out of memory there. It should fit 12 GB with CLIP, but nothing has been run on an RTX 4070. Weights go to the Hugging Face cache.
 
-How the images score, on 12 prompts held out from tuning, 3 seeds on SD-Turbo and 4 on ADM. The first three columns are CLIP similarity to the prompt on models that did not guide the image, and the last is a predicted human rating from 1 to 10 made by a [ViT-B/16 predictor](https://github.com/crowsonkb/simulacra-aesthetic-models) that also did not guide it.
+How the images score, on 12 prompts held out from tuning, 3 seeds on SD-Turbo and 4 on ADM, at `-cutn 4`. The first three columns are CLIP similarity to the prompt on models that did not guide the image, and the last is a predicted human rating from 1 to 10 made by a [ViT-B/16 predictor](https://github.com/crowsonkb/simulacra-aesthetic-models) that also did not guide it.
 
 | | `ViT-B/16` | `ViT-H-14-quickgelu` | `ViT-L-16-SigLIP2-256` | Rating |
 |---|---|---|---|---|
@@ -230,7 +240,7 @@ At 768, on one seed and with `-aes 0.1` on the whole frame, CLIP added 0.010 to 
 
 ## Speed
 
-Wall clock for `uv run cgd`, including startup and model loading, on an RTX 2070 SUPER with 8 GB:
+Wall clock for `uv run cgd -cutn 4`, including startup and model loading, on an RTX 2070 SUPER with 8 GB:
 
 | Size | Sampler | Model calls | Time | Peak VRAM |
 |---|---|---|---|---|
@@ -238,12 +248,15 @@ Wall clock for `uv run cgd`, including startup and model loading, on an RTX 2070
 | 128 | default | 30 | 6.5 s | 2.4 GiB |
 | 256 | default | 30 | 11.4 s | 5.3 GiB |
 | 512 | default | 30 | 22.4 s | 4.1 GiB |
+| 256 | `-uncond` | 60 | 20.0 s | 5.3 GiB |
+| 512 | `-uncond` | 60 | 48.1 s | 4.1 GiB |
 | 128 | the original, since removed | 1000 | 2 min 16 s | |
+| 256 | the original with `-uncond`, since removed | 1000 | 6 min | |
 
 Quality was measured on prompts held out from tuning, as the ViT-B/16 CLIP similarity to the prompt. Guidance uses ViT-B/32, so this model is not the one being optimised.
 
 - **128px, 12 prompts:** a tie with the original 1000 step sampler, 0.292 against 0.292 (difference 95% CI -0.018 to +0.016), with fewer clipped pixels, 6% against 7%. The look is different though, and any single image is not the same image.
-- **The unconditional checkpoints, 256px, 6 prompts:** behind the original sampler, 0.316 against 0.331 (difference 95% CI -0.040 to +0.014), and the original scored higher on 5 of the 6. With no class to bring the subject, CLIP had to set the composition too. Both were removed: the class conditional models with the fast sampler are the better trade.
+- **`-uncond`, 256px, 6 prompts:** behind the original sampler, 0.316 against 0.331 (difference 95% CI -0.040 to +0.014), and the original scored higher on 5 of the 6, at 18x the time. With no class to bring the subject, CLIP has to set the composition too.
 
 The original pipeline takes 1000 ancestral steps, because CLIP has to build the whole image while the U-Net follows a random class that changes every step. The sampler in `cgd/sampler.py` gets there in 30 model calls:
 
@@ -251,7 +264,8 @@ The original pipeline takes 1000 ancestral steps, because CLIP has to build the 
 - A second-order stochastic solver, DPM-Solver++(2M) SDE, covers the schedule in uniform logSNR steps.
 - Guidance is capped relative to the noise, so it stays stable with steps 33x larger than the original's.
 - Guidance only runs from 10% to 80% of the schedule, where it helps. The other steps also skip backpropagating through the U-Net, the most expensive part of guidance.
-- CLIP sees 4 random cutouts. At 128px they span 70-100% of the frame, where the original's 16 cutouts were all the same full frame. At 512px they span 44-100%, because a cutout is never smaller than CLIP's 224px input. See [Cutouts](#cutouts).
+- CLIP sees random cutouts, 16 by default, as many as the original. At 128px they span 70-100% of the frame, where the original's were all the same full frame. At 512px they span 44-100%, because a cutout is never smaller than CLIP's 224px input. See [Cutouts](#cutouts).
+- `-uncond` has no class to bring the subject, so CLIP also sets the composition. Guidance starts right at the beginning of the schedule, and the sampler takes twice the steps so that does not overshoot.
 
 Model loading is faster too: checkpoints are memory mapped instead of copied, nothing is randomly initialised just to be overwritten, and the ImageNet class features are cached on disk.
 
@@ -259,7 +273,7 @@ Model loading is faster too: checkpoints are memory mapped instead of copied, no
 
 `--clip-model` / `-clip` (default: `ViT-B/32`)
 
-`uv run cgd -gif -freq 3 -clip PE-Core-L-14-336 -size 256 -n 90 -gl 0.99 "A red fox in the snow"`
+`uv run cgd -gif -freq 3 -clip PE-Core-L-14-336 -size 256 -n 90 -gl 0.99 -cutn 4 "A red fox in the snow"`
 
 ![A red fox in the snow, guided by PE-Core-L-14-336](images/A_red_fox_in_the_snow_PE-Core-L-14-336_256.gif)
 
@@ -289,7 +303,7 @@ Higher ImageNet accuracy did not make a better guide. `ViT-gopt-16-SigLIP2-384` 
 
 `ViT-B/32` stays the default because it is the fastest and its gradient is by far the smoothest.
 
-Each cell is the change in CLIP similarity to the prompt against `ViT-B/32`, on 12 prompts held out from tuning with seed 0, then how many of the 12 improved. Three models judged the images, and a model never grades its own guidance, hence the empty cells. `ViT-B/16` is close kin to `ViT-B/32`, so it favours it. `-rate` was tuned on `ViT-B/32` and not retuned per model. The 95% interval on a difference is about ±0.03, so most of these are ties.
+Each cell is the change in CLIP similarity to the prompt against `ViT-B/32`, on 12 prompts held out from tuning with seed 0 and `-cutn 4`, then how many of the 12 improved. Three models judged the images, and a model never grades its own guidance, hence the empty cells. `ViT-B/16` is close kin to `ViT-B/32`, so it favours it. `-rate` was tuned on `ViT-B/32` and not retuned per model. The 95% interval on a difference is about ±0.03, so most of these are ties.
 
 128:
 
@@ -313,13 +327,13 @@ Each cell is the change in CLIP similarity to the prompt against `ViT-B/32`, on 
 | `PE-Core-B-16` | fp32 | -0.002 (4) | +0.018 (7) | +0.031 (12) |
 | `PE-Core-L-14-336` | fp32 | -0.004 (5) | +0.020 (9) | +0.032 (10) |
 | `ViT-SO400M-16-SigLIP2-384` | fp32 | -0.021 (3) | +0.018 (8) | +0.035 (11) |
-| `ViT-gopt-16-SigLIP2-384` | `-fp16`, 2 cutouts | -0.041 (3) | -0.014 (5) | -0.003 (5) |
+| `ViT-gopt-16-SigLIP2-384` | `-fp16 -cutn 2` | -0.041 (3) | -0.014 (5) | -0.003 (5) |
 
 `-fp16` moved scores in both directions, by less than the noise, which is why it counts as no measurable difference.
 
 ### Time and VRAM
 
-Time to sample one image and peak VRAM, the median of 3 prompts on an RTX 2070 SUPER with 8 GB and nothing else on it. Add the load time above, once per run. `~` marks a size that ran out of memory on this card: the number is what it should need, projected from the models that ran at that size, and has not been measured.
+Time to sample one image and peak VRAM at `-cutn 4`, the median of 3 prompts on an RTX 2070 SUPER with 8 GB and nothing else on it. Each cutout runs CLIP once more, so the default 16 take longer and more VRAM, most of all with the bigger models. Add the load time above, once per run. `~` marks a size that ran out of memory on this card: the number is what it should need, projected from the models that ran at that size, and has not been measured.
 
 | Model | Precision | 128 | 256 | 512 |
 |---|---|---|---|---|
@@ -339,9 +353,9 @@ Time to sample one image and peak VRAM, the median of 3 prompts on an RTX 2070 S
 
 256 needs more than 512 because 512 is the size where the U-Net starts recomputing its activations, see [Image size](#image-size). PyTorch holds on to about 0.1 GiB beyond the peak at 128 and 256, and up to 0.9 GiB at 512, so leave that free too.
 
-| VRAM | What fits |
+| VRAM | What fits at `-cutn 4` |
 |---|---|
-| 8 GB | Everything through `ViT-SO400M-16-SigLIP2-384`, at every size, though that one at 256 fp32 needs a nearly empty card. `ViT-gopt-16-SigLIP2-384` at 128, or at 512 with `-fp16`. `PE-Core-bigG-14-448` at 128 with `-fp16`. |
+| 8 GB | Everything through `ViT-SO400M-16-SigLIP2-384`, at every size, though that one at 256 fp32 needs a nearly empty card. `ViT-gopt-16-SigLIP2-384` at 128, at 512 with `-fp16`, or at 256 with `-fp16 -cutn 2` (31.5 s, 7.3 GiB). `PE-Core-bigG-14-448` at 128 with `-fp16`. |
 | 12 GB (estimated) | `ViT-gopt-16-SigLIP2-384` at every size. `PE-Core-bigG-14-448` at every size with `-fp16`. |
 | 16 GB (estimated) | Everything, at every size. |
 
@@ -353,11 +367,11 @@ The gradient does change. Its cosine similarity to the fp32 gradient varied by m
 
 ## What improves the image
 
-Everything here was measured against the default on 12 prompts held out from tuning, as the change in CLIP similarity to the prompt pooled over the three models above, with its 95% interval across prompts, and how many of the 12 improved. ADM at 128 over 4 seeds unless noted, and SD-Turbo at 512 over 3. A difference smaller than the interval is a tie. Options that lost were removed, see [Tried and removed](#tried-and-removed). `-gl` and `-aes` stay off by default but stay available, because a score is not an image: these models cannot see fine detail, and they reward caption match, not looks. Full evidence is in [the report](<reports/CLIP guided diffusion quality improvements.md>).
+Everything here was measured against the default on 12 prompts held out from tuning, as the change in CLIP similarity to the prompt pooled over the three models above, with its 95% interval across prompts, and how many of the 12 improved. ADM at 128 over 4 seeds unless noted, and SD-Turbo at 512 over 3, all at `-cutn 4`. A difference smaller than the interval is a tie. Options that lost were removed, see [Tried and removed](#tried-and-removed). `-gl` and `-aes` stay off by default but stay available, because a score is not an image: these models cannot see fine detail, and they reward caption match, not looks. Full evidence is in [the report](<reports/CLIP guided diffusion quality improvements.md>).
 
 ### Ensembles
 
-`uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 "A red fox in the snow"`
+`uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 -cutn 4 "A red fox in the snow"`
 
 ![A red fox in the snow, guided by ViT-B/32 and PE-Core-B-16](images/A_red_fox_in_the_snow_ensemble_256.gif)
 
@@ -375,7 +389,7 @@ That includes loading both models for every image, which a single `cgd` run only
 
 `--candidates` / `-best`
 
-`uv run cgd -best 4 -gif "A red fox in the snow"`
+`uv run cgd -best 4 -gif -cutn 4 "A red fox in the snow"`
 
 ![A red fox in the snow, the best of 4 seeds](images/A_red_fox_in_the_snow.gif)
 
@@ -385,7 +399,7 @@ Runs that many seeds from `--seed`, and reports the one that `ViT-B/16` and `ViT
 
 `--upscale` / `-up`
 
-`uv run cgd -gif -freq 3 -up -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 "A monarch butterfly on a purple flower"`
+`uv run cgd -gif -freq 3 -up -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 -cutn 4 "A monarch butterfly on a purple flower"`
 
 ![A monarch butterfly on a purple flower, at 128x128](images/A_monarch_butterfly_on_a_purple_flower_128.gif)
 
@@ -397,7 +411,7 @@ Also saves a copy of the finished image 4x larger, made with [Real-ESRGAN x4plus
 
 `--aesthetic-scale` / `-aes` (default `0.05` with `-bb`, otherwise `0`)
 
-`uv run cgd -bb sd-turbo -aes 0.1 -gif "A red fox in the snow"`
+`uv run cgd -bb sd-turbo -aes 0.1 -gif -cutn 4 "A red fox in the snow"`
 
 ![A red fox in the snow, drawn by SD-Turbo with -aes 0.1](images/A_red_fox_in_the_snow_sd-turbo_aes_0.1.gif)
 
@@ -418,7 +432,11 @@ The rating is a `ViT-B/16` predictor that did not guide the image. The rating an
 
 ### Cutouts
 
-CLIP sees 4 random cutouts, fixed, because that tied or beat everything tried. On ADM at 128, 8, 16, 32 and 64 cutouts scored -0.002 ± 0.009, +0.005 ± 0.011, +0.002 ± 0.007 and 0.000 ± 0.010. On 2 seeds, stratified layouts, mirrored cutouts and adding a whole frame tied, while keeping only the whole frame lost (-0.017 ± 0.010), and so did the Disco Diffusion mix of whole frame and small crops (-0.017 ± 0.010), reflect padding (-0.022 ± 0.023) and sizes that change during sampling (-0.007 to -0.012). On SD-Turbo at 512, where the idea should work best, eleven layouts all stayed within 0.007 of the default, on one seed, and the whole frame plus small crops lost a little on three (-0.003 ± 0.003). Cutout gradients are noisy, but removing the noise changes nothing, because the guidance step is capped and the model discards most of the gradient anyway.
+`--num-cutouts` / `-cutn` (default: `16`)
+
+How many random cutouts of the image CLIP sees each step, and the aesthetic term rates. 16 is the original's number. Fewer is faster and takes less VRAM, and scored the same: on ADM at 128, against 4 cutouts, 8, 16, 32 and 64 scored -0.002 ± 0.009, +0.005 ± 0.011, +0.002 ± 0.007 and 0.000 ± 0.010. That is why everything in this README was made with `-cutn 4`. Try fewer when a big [CLIP model](#clip-models) runs out of memory.
+
+How the cutouts are laid out is fixed, because nothing tried beat 4 random ones. On 2 seeds, stratified layouts, mirrored cutouts and adding a whole frame tied, while keeping only the whole frame lost (-0.017 ± 0.010), and so did the Disco Diffusion mix of whole frame and small crops (-0.017 ± 0.010), reflect padding (-0.022 ± 0.023) and sizes that change during sampling (-0.007 to -0.012). On SD-Turbo at 512, where the idea should work best, eleven layouts all stayed within 0.007 of 4 random cutouts, on one seed, and the whole frame plus small crops lost a little on three (-0.003 ± 0.003). Cutout gradients are noisy, but removing the noise changes nothing, because the guidance step is capped and the model discards most of the gradient anyway.
 
 ### `--guidance-limit` / `-gl`
 
@@ -442,7 +460,7 @@ These were options once. They tied or lost, so they went, to keep the command si
 | A backbone backpropagating through its real decoder | 0.001 ± 0.003 | Twice the time and 1 GiB more at 512 |
 | 4 model calls for a backbone's final image | -0.006, on one seed | |
 
-The CLIP guidance and TV loss scales, the number of cutouts, and the backbone's learning rate and noise penalty are fixed at the values everything here was tuned with.
+The CLIP guidance and TV loss scales and the backbone's learning rate and noise penalty are fixed at the values everything here was tuned with.
 
 ## Full Usage - Python
 
@@ -458,6 +476,7 @@ saved = generate(
     steps=90,
     guidance_limit=0.99,
     clip_model="ViT-B/32+PE-Core-B-16",
+    num_cutouts=4,
     save_frequency=3,
 )
 frames = [path for batch_index, path in saved]  # Every saved step. The last is the result.
@@ -466,7 +485,7 @@ save_gif(frames, "outputs/A_volcano_erupting_at_night.gif")
 
 ![A volcano erupting at night](images/A_volcano_erupting_at_night.gif)
 
-These are the settings of `uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 "A volcano erupting at night"`, and the GIF is the same as that command's, byte for byte. With `save_frequency=3` it has 31 frames: every third of the 90 steps, then the result. The other keyword arguments are the options' long names, with underscores, and `progress=False` is `--quiet`.
+These are the settings of `uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 -cutn 4 "A volcano erupting at night"`, and the GIF is the same as that command's, byte for byte. With `save_frequency=3` it has 31 frames: every third of the 90 steps, then the result. The other keyword arguments are the options' long names, with underscores, and `progress=False` is `--quiet`.
 
 `cgd.backbone.generate()` is the same with a backbone. With the same settings it makes the same image as the command, byte for byte, so this is the GIF from [Modern backbones](#modern-backbones) again:
 
@@ -474,7 +493,8 @@ These are the settings of `uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-C
 from cgd.backbone import generate
 from cgd.outputs import save_gif
 
-frames = [path for batch_index, path in generate(["A red fox in the snow"], backbone="sd-turbo", save_frequency=1)]
+saved = generate(["A red fox in the snow"], backbone="sd-turbo", num_cutouts=4, save_frequency=1)
+frames = [path for batch_index, path in saved]
 save_gif(frames, "outputs/A_red_fox_in_the_snow_sd-turbo.gif")
 ```
 
@@ -485,12 +505,12 @@ save_gif(frames, "outputs/A_red_fox_in_the_snow_sd-turbo.gif")
 ```sh
 usage: cgd [-h] [-imgs IMAGE_PROMPTS] [-size IMAGE_SIZE] [-wd WIDTH_OFFSET]
            [-ht HEIGHT_OFFSET] [-bs BATCH_SIZE] [-seed SEED]
-           [-clip CLIP_MODEL] [-fp16] [-aes AESTHETIC_SCALE]
-           [-best CANDIDATES] [-dev DEVICE] [-n STEPS] [-rate GUIDANCE_RATE]
-           [-gl GUIDANCE_LIMIT] [-init INIT_IMAGE] [-skip SKIP_TIMESTEPS]
-           [-is INIT_SCALE] [-bb {sd-turbo,vega,sdxl-lightning}]
-           [-iters ITERATIONS] [-dir OUTPUT_DIR] [-freq SAVE_FREQUENCY] [-gif]
-           [-mp4] [-up] [-q]
+           [-clip CLIP_MODEL] [-fp16] [-cutn NUM_CUTOUTS]
+           [-aes AESTHETIC_SCALE] [-best CANDIDATES] [-dev DEVICE] [-uncond]
+           [-n STEPS] [-rate GUIDANCE_RATE] [-gl GUIDANCE_LIMIT]
+           [-init INIT_IMAGE] [-skip SKIP_TIMESTEPS] [-is INIT_SCALE]
+           [-bb {sd-turbo,vega,sdxl-lightning}] [-iters ITERATIONS]
+           [-dir OUTPUT_DIR] [-freq SAVE_FREQUENCY] [-gif] [-mp4] [-up] [-q]
            [prompts]
 
 cgd: make images from text and image prompts with CLIP guided diffusion.
@@ -506,6 +526,7 @@ options:
                         weighted the same way.
   -size, --image-size IMAGE_SIZE
                         Image size. 64, 128, 256 or 512, default 128. With
+                        --unconditional, 256 or 512, default 256. With
                         --backbone, any multiple of 8, defaulting to what the
                         model was trained for.
   -wd, --width-offset WIDTH_OFFSET
@@ -527,6 +548,9 @@ options:
   -fp16, --clip-fp16    Run a PE-Core or SigLIP2 model at half precision: up
                         to 3x faster for half the CLIP VRAM. Less exact, but
                         it scored about the same. OpenAI's models always do.
+  -cutn, --num-cutouts NUM_CUTOUTS
+                        Random cutouts of the image CLIP sees each step. Fewer
+                        is faster and needs less VRAM. Default 16.
   -aes, --aesthetic-scale AESTHETIC_SCALE
                         Also reward what people rate highly, per point of a 1
                         to 10 rating. Default 0, or 0.05 with --backbone. The
@@ -543,7 +567,11 @@ options:
 ImageNet model:
   The default pipeline: CLIP guides OpenAI's ImageNet diffusion model.
 
-  -n, --steps STEPS     Model calls. Default 30.
+  -uncond, --unconditional
+                        Draw with an unconditional checkpoint, at 256 or 512.
+                        Less reliable than the default, because without an
+                        ImageNet class nothing but CLIP brings the subject.
+  -n, --steps STEPS     Model calls. Default 30, or 60 with --unconditional.
   -rate, --guidance-rate GUIDANCE_RATE
                         Guidance strength: the most CLIP may move each step,
                         relative to the noise. Higher follows the prompt
