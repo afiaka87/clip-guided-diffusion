@@ -1,7 +1,8 @@
-"""CLIP guidance of OpenAI's class-conditional ImageNet diffusion models (ADM, Dhariwal & Nichol 2021).
+"""CLIP guidance of OpenAI's ImageNet diffusion models (ADM, Dhariwal & Nichol 2021).
 
 CLIP picks the ImageNet class closest to the prompts for the U-Net to draw, and its
-gradient steers each denoised image towards them, through sampler.sample().
+gradient steers each denoised image towards them, through sampler.sample(). The
+unconditional checkpoints draw no class, so CLIP alone brings the subject.
 """
 
 import warnings
@@ -21,7 +22,7 @@ from cgd.checks import check_common, require
 from cgd.clip_models import check_model, closest_imagenet_class, ensemble_members
 from cgd.device import default_device
 from cgd.download import download, fetch
-from cgd.guide import Guide, guide_loss, load_guide, query
+from cgd.guide import NUM_CUTOUTS, Guide, guide_loss, load_guide, query
 from cgd.imagenet_classes import IMAGENET_CLASSES
 from cgd.outputs import run_name, save_frames
 
@@ -30,6 +31,7 @@ with warnings.catch_warnings():  # It uses a deprecated spelling of torch.amp, w
     from guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
 
 DEFAULT_IMAGE_SIZE = 128
+DEFAULT_UNCONDITIONAL_SIZE = 256
 DEFAULT_CLIP_MODEL = "ViT-B/32"
 CLIP_SCALE = 1000
 TV_SCALE = 150  # Smoothness.
@@ -39,7 +41,14 @@ NUM_TIMESTEPS = 1000  # Every checkpoint was trained on this schedule length.
 # its activations instead of storing them: 1.5x the time per guided step for under half
 # the memory, which is what lets 512px run in 8 GB.
 GRADIENT_CHECKPOINT_PIXELS = 256**2
-CHECKPOINT_URL = "https://openaipublic.blob.core.windows.net/diffusion/jul-2021/{filename}"
+OPENAI_URL = "https://openaipublic.blob.core.windows.net/diffusion/jul-2021/"
+CHECKPOINT_URLS = {size: f"{OPENAI_URL}{size}x{size}_diffusion.pt" for size in (64, 128, 256, 512)}
+# OpenAI's at 256, and at 512 Katherine Crowson's fine-tune of OpenAI's class-conditional model.
+UNCONDITIONAL_URLS = {
+    256: f"{OPENAI_URL}256x256_diffusion_uncond.pt",
+    512: "https://huggingface.co/lowlevelware/512x512_diffusion_unconditional_ImageNet/resolve/main/"
+    "512x512_diffusion_uncond_finetune_008100.pt",
+}
 VGG16_URL = "https://download.pytorch.org/models/vgg16-397923af.pth"
 
 _FLAGS = {
@@ -54,8 +63,8 @@ _FLAGS = {
     "resblock_updown": True,
     "use_scale_shift_norm": True,
 }
-# Each checkpoint's architecture and schedule. Sampling a model on a schedule it was not
-# trained on produces garbage.
+# Each class-conditional checkpoint's architecture and schedule. An unconditional one is the
+# same without class_cond. Sampling a model on a schedule it was not trained on produces garbage.
 CHECKPOINT_FLAGS = {
     64: {
         **_FLAGS,
@@ -73,14 +82,16 @@ CHECKPOINT_FLAGS = {
 InitLoss = Callable[[th.Tensor], th.Tensor]
 
 
-def check_parameters(
+def check_parameters(  # pylint: disable=too-many-locals  # Its keyword arguments are the command's options.
     prompts: Sequence[str],
     image_prompts: Sequence[str],
     *,
     image_size: int,
+    unconditional: bool,
     height: int,
     width: int,
     batch_size: int,
+    num_cutouts: int,
     steps: int,
     guidance_rate: float,
     guidance_limit: float | None,
@@ -95,13 +106,14 @@ def check_parameters(
         prompts,
         image_prompts,
         batch_size=batch_size,
+        num_cutouts=num_cutouts,
         save_frequency=save_frequency,
         aesthetic_scale=aesthetic_scale,
         other_images=[init_image] if init_image else [],
     )
-    require(
-        image_size in CHECKPOINT_FLAGS, f"No checkpoint for size {image_size}. Choose one of {list(CHECKPOINT_FLAGS)}."
-    )
+    sizes = list(UNCONDITIONAL_URLS if unconditional else CHECKPOINT_URLS)
+    kind = "unconditional checkpoint" if unconditional else "checkpoint"
+    require(image_size in sizes, f"No {kind} for size {image_size}. Choose one of {sizes}.")
     stride = image_size // 8  # The U-Net halves the resolution down to 8x8.
     require(
         height > 0 and width > 0 and not height % stride and not width % stride,
@@ -120,15 +132,18 @@ def check_parameters(
 
 
 @lru_cache(maxsize=1)
-def load_model(image_size: int, device: str, fp16: bool, use_checkpoint: bool = False) -> tuple[nn.Module, np.ndarray]:
+def load_model(
+    image_size: int, device: str, fp16: bool, use_checkpoint: bool = False, unconditional: bool = False
+) -> tuple[nn.Module, np.ndarray]:
     """The U-Net for `image_size`, frozen, and the log(alpha_bar) of its schedule.
 
     `use_checkpoint` recomputes activations during the backward pass instead of storing them.
     """
-    filename = f"{image_size}x{image_size}_diffusion.pt"
-    path = download(CHECKPOINT_URL.format(filename=filename), filename)
+    url = (UNCONDITIONAL_URLS if unconditional else CHECKPOINT_URLS)[image_size]
+    path = download(url, url.rpartition("/")[2])
     flags = model_and_diffusion_defaults() | CHECKPOINT_FLAGS[image_size]
-    flags |= {"image_size": image_size, "use_fp16": fp16, "use_checkpoint": use_checkpoint}
+    flags |= {"image_size": image_size, "class_cond": not unconditional}
+    flags |= {"use_fp16": fp16, "use_checkpoint": use_checkpoint}
     # Build on the meta device: random-initialising 400M+ parameters only to overwrite
     # them is the slowest part of startup. mmap and assign then adopt the checkpoint's
     # tensors without a copy.
@@ -196,11 +211,13 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
     prompts: Sequence[str] = (),
     image_prompts: Sequence[str] = (),
     *,
-    image_size: int = DEFAULT_IMAGE_SIZE,
+    image_size: int | None = None,
+    unconditional: bool = False,
     width_offset: int = 0,
     height_offset: int = 0,
     batch_size: int = 1,
-    steps: int = sampler.DEFAULT_STEPS,
+    num_cutouts: int = NUM_CUTOUTS,
+    steps: int | None = None,
     guidance_rate: float = sampler.DEFAULT_GUIDANCE_RATE,
     guidance_limit: float | None = None,
     clip_model: str = DEFAULT_CLIP_MODEL,
@@ -219,16 +236,23 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
 
     An image is saved every `save_frequency` model calls, and the result always last. The
     prompts take weights, as in "a fox:2", and image prompts are paths or URLs. Without
-    `skip_timesteps`, an init image skips half the schedule.
+    `skip_timesteps`, an init image skips half the schedule. `image_size` and `steps`
+    default to 128 and 30, or 256 and 60 for an unconditional checkpoint.
     """
+    if image_size is None:
+        image_size = DEFAULT_UNCONDITIONAL_SIZE if unconditional else DEFAULT_IMAGE_SIZE
+    if steps is None:
+        steps = sampler.UNCONDITIONAL_STEPS if unconditional else sampler.DEFAULT_STEPS
     height, width = image_size + height_offset, image_size + width_offset
     check_parameters(
         prompts,
         image_prompts,
         image_size=image_size,
+        unconditional=unconditional,
         height=height,
         width=width,
         batch_size=batch_size,
+        num_cutouts=num_cutouts,
         steps=steps,
         guidance_rate=guidance_rate,
         guidance_limit=guidance_limit,
@@ -249,17 +273,21 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
         prompts,
         image_prompts,
         image_size=image_size,
+        num_cutouts=num_cutouts,
         device=device,
         fp16=clip_fp16,
         aesthetic_scale=aesthetic_scale,
     )
     init = load_init_image(init_image, height, width, device) if init_image else None
-    # The U-Net does the heavy lifting when it draws the closest real class.
-    class_index = closest_imagenet_class(query(guide), ensemble_members(clip_model)[0], device, clip_fp16)
-    _status(f"Conditioning on ImageNet class: {IMAGENET_CLASSES[class_index]}", progress)
+    labels = None
+    if not unconditional:
+        labels = closest_class(
+            guide, clip_model, batch_size=batch_size, device=device, fp16=clip_fp16, progress=progress
+        )
     use_checkpoint = batch_size * height * width > GRADIENT_CHECKPOINT_PIXELS
-    model, log_alpha_bar = load_model(image_size, device, fp16=device != "cpu", use_checkpoint=use_checkpoint)
-    labels = th.full((batch_size,), class_index, device=device, dtype=th.long)
+    model, log_alpha_bar = load_model(
+        image_size, device, fp16=device != "cpu", use_checkpoint=use_checkpoint, unconditional=unconditional
+    )
 
     start, init_loss = None, None
     if init is not None:
@@ -277,13 +305,27 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
     x = th.randn((batch_size, 3, height, width), device=device)
     if init is not None:
         x = sampler.noised(log_alpha_bar, ts[0], init, x)
-    guidance = sampler.Guidance(partial(guidance_loss, guide, init_loss=init_loss), guidance_rate, limit=guidance_limit)
+    window = sampler.UNCONDITIONAL_GUIDANCE_WINDOW if unconditional else sampler.GUIDANCE_WINDOW
+    loss_fn = partial(guidance_loss, guide, init_loss=init_loss)
+    guidance = sampler.Guidance(loss_fn, guidance_rate, window, guidance_limit)
     samples = sampler.sample(partial(denoise, model, labels), log_alpha_bar, ts, x, guidance, progress=progress)
     yield from save_frames(samples, output_dir, run_name(prompts, image_prompts), save_frequency, len(ts) - 2)
 
 
-def denoise(model: nn.Module, labels: th.Tensor, x: th.Tensor, t: th.Tensor) -> th.Tensor:
-    """The noise the U-Net predicts in x at timesteps t, drawing the classes `labels`."""
+def closest_class(
+    guide: Guide, clip_model: str, *, batch_size: int, device: str, fp16: bool, progress: bool
+) -> th.Tensor:
+    """The ImageNet class closest to the prompts, as labels for the batch.
+
+    The U-Net does the heavy lifting when it draws a real class.
+    """
+    class_index = closest_imagenet_class(query(guide), ensemble_members(clip_model)[0], device, fp16)
+    _status(f"Conditioning on ImageNet class: {IMAGENET_CLASSES[class_index]}", progress)
+    return th.full((batch_size,), class_index, device=device, dtype=th.long)
+
+
+def denoise(model: nn.Module, labels: th.Tensor | None, x: th.Tensor, t: th.Tensor) -> th.Tensor:
+    """The noise the U-Net predicts in x at timesteps t, drawing the classes `labels`, or none without them."""
     return model(x, t, y=labels)[:, :3]  # The rest is the learned variance.
 
 
