@@ -32,7 +32,7 @@ from cgd.device import default_device, limit_to_vram, random_state, replayed_rng
 from cgd.guide import NUM_CUTOUTS, Guide, guide_loss, load_guides
 from cgd.losses import finite_gradient
 from cgd.outputs import frame_path, run_name, save_frame
-from cgd.prompts import parse_prompt, scenes
+from cgd.prompts import loops, parse_prompt, scenes
 
 DEFAULT_CLIP_MODEL = "ViT-B/32+PE-Core-B-16"
 DEFAULT_ITERATIONS = 50
@@ -341,7 +341,9 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
     A prompt that starts with > begins the next image of a sequence. Each image is the one
     its prompts make alone, with these settings and this seed. After the first, the frames
     saved are the `transition_frames` that slide to each next image, the last of them the
-    image itself. The default is DEFAULT_TRANSITION_FRAMES.
+    image itself. The default is DEFAULT_TRANSITION_FRAMES. A > alone at the end slides back
+    to the first image, and the frames then begin at that image instead of at the plain
+    model's, so they loop.
     """
     require(backbone in BACKBONES, f"Unknown backbone {backbone!r}. Choose one of {list(BACKBONES)}.")
     size = BACKBONES[backbone].size if image_size is None else image_size
@@ -394,6 +396,7 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
                 iterations=iterations,
                 save_frequency=save_frequency,
                 transition_frames=transition_frames or DEFAULT_TRANSITION_FRAMES,
+                loop=loops(prompts, image_prompts),
                 progress=progress,
             )
             for step, image in frames:
@@ -410,6 +413,7 @@ def corrected_frames(  # pylint: disable=too-many-locals  # It takes all a run d
     save_frequency: int,
     transition_frames: int,
     progress: bool,
+    loop: bool = False,
 ) -> Iterator[tuple[int, th.Tensor]]:
     """(step, image) of each frame the noise z makes, for a backbone that draws one image per guide.
 
@@ -417,6 +421,9 @@ def corrected_frames(  # pylint: disable=too-many-locals  # It takes all a run d
     the result as step `iterations`: the best noise found, through the full decoder. Then,
     for each next image, the `transition_frames` that slide to it, see between(). Every
     image is corrected from z, drawing the random numbers the first does.
+
+    With `loop`, the last frames slide back to the first image, and the first frame is
+    that image instead of the iterations that corrected it, so the frames go round without a cut.
     """
     conditionings = [unet_conditioning(backbone, prompt, *size) for prompt in backbone.prompts]
     drawn_from = random_state(backbone.device)
@@ -426,24 +433,30 @@ def corrected_frames(  # pylint: disable=too-many-locals  # It takes all a run d
     )
     for iteration, taken in enumerate(steps):
         best = taken.best_z
-        if iteration % save_frequency == 0:
+        if iteration % save_frequency == 0 and not loop:
             yield iteration, taken.images[0]
     result = render(backbone, conditionings[0], best).cpu()
     yield iterations, result[0]
+    first = best, result
 
-    step = iterations
-    for place in range(1, len(guides)):
-        draw, loss_fn = partial(preview, backbone, conditionings[place]), partial(guide_loss, guides[place])
-        with replayed_rng(backbone.device, drawn_from):
-            following = best_noise(optimise_noise(draw, loss_fn, z, iterations, progress), z)
-        ends = result, render(backbone, conditionings[place], following).cpu()
-        prompts = backbone.prompts[place - 1], backbone.prompts[place]
-        for frame in slide.place(
-            partial(between, backbone, prompts, (best, following), size), ends, transition_frames, progress
-        ):
+    def later_images() -> Iterator[tuple[int, th.Tensor, th.Tensor]]:
+        """The place of each image after the first, its noise and the image. A loop ends on the first again."""
+        for place in range(1, len(guides)):
+            draw, loss_fn = partial(preview, backbone, conditionings[place]), partial(guide_loss, guides[place])
+            with replayed_rng(backbone.device, drawn_from):
+                noise = best_noise(optimise_noise(draw, loss_fn, z, iterations, progress), z)
+            yield place, noise, render(backbone, conditionings[place], noise).cpu()
+        if loop:
+            yield 0, *first
+
+    step, before = iterations, 0
+    for place, following, image in later_images():
+        prompts = backbone.prompts[before], backbone.prompts[place]
+        draw_between = partial(between, backbone, prompts, (best, following), size)
+        for frame in slide.place(draw_between, (result, image), transition_frames, progress):
             step += 1
             yield step, frame[0]
-        best, result = following, ends[1]
+        before, best, result = place, following, image
 
 
 def best_noise(steps: Iterable[Iteration], z: th.Tensor) -> th.Tensor:
