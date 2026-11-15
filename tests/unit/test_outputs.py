@@ -46,6 +46,7 @@ def test_save_batch_saves_each_image_as_the_frame_of_its_step(workdir: Path) -> 
 
 def test_a_sequence_is_named_after_every_image_of_it() -> None:
     assert run_name(["a castle", ">a fox"]) == "a_castle_a_fox"
+    assert run_name(["a castle", ">a fox", ">"]) == "a_castle_a_fox"  # The mark that ends a loop adds nothing.
 
 
 @needs_ffmpeg
