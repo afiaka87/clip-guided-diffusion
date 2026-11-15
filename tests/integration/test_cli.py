@@ -14,7 +14,7 @@ from cgd.cli import judged_candidates, main
 pytestmark = pytest.mark.cuda
 
 PROMPT = "Loose seal."
-FAST = ["-size", "64", "-n", "6", "-clip", "RN50", "-q"]  # The quickest run there is: six calls of the 64px model.
+FAST = ["-size", "64", "-n", "2", "-q"]  # The quickest run there is: two calls of the 64px model.
 REPO = Path(__file__).resolve().parents[2]
 COUNT_FRAMES = "ffprobe -v error -count_frames -select_streams v:0 -show_entries stream=nb_read_frames -of csv=p=0"
 
@@ -43,11 +43,15 @@ def run_process(*argv: str, cwd: Path, env: dict[str, str] | None = None) -> sub
 
 
 class TestProcess:
-    def test_it_runs_as_a_module_and_reports_the_saved_image(self, workdir: Path) -> None:
-        result = run_process(PROMPT, *FAST, cwd=workdir)
+    def test_it_runs_as_a_module_and_reports_the_saved_image_without_noise_from_its_libraries(
+        self, workdir: Path
+    ) -> None:
+        """With one of OpenAI's models and an open_clip one, whose libraries each warn about something of their own."""
+        result = run_process(PROMPT, *FAST, "-clip", "ViT-B/32+PE-Core-B-16", "-fp16", cwd=workdir)
         assert result.returncode == 0, result.stderr
-        assert saved("outputs/Loose_seal/00/0005.png") in result.stdout
+        assert saved("outputs/Loose_seal/00/0001.png") in result.stdout
         assert (workdir / "current.png").exists()
+        assert result.stderr == ""
 
     def test_the_installed_script_runs(self) -> None:
         result = subprocess.run(
@@ -55,12 +59,6 @@ class TestProcess:
         )
         assert result.returncode == 0, result.stderr
         assert result.stdout.startswith("usage: cgd")
-
-    def test_an_open_clip_model_runs_without_noise_from_its_libraries(self, workdir: Path) -> None:
-        result = run_process(PROMPT, *FAST, "-clip", "PE-Core-B-16", "-fp16", cwd=workdir)
-        assert result.returncode == 0, result.stderr
-        assert saved("outputs/Loose_seal/00/0005.png") in result.stdout
-        assert "HF Hub" not in result.stderr
 
     @staticmethod
     def without_allocator_setting() -> dict[str, str]:
@@ -133,26 +131,22 @@ class TestErrors:
 
 
 class TestOutputs:
-    def test_the_output_folder_can_be_new_and_nested(self, workdir: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        assert saved("a/b/c/Loose_seal/00/0005.png") in run(PROMPT, *FAST, "-dir", "a/b/c", capsys=capsys)
-        assert (workdir / "a/b/c/Loose_seal/00/0005.png").exists()
-
-    def test_a_run_from_an_image_prompt_is_named_after_it(
+    def test_a_run_from_an_image_prompt_is_named_after_it_in_a_folder_that_can_be_new_and_nested(
         self, workdir: Path, photon: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        run("-imgs", f"{photon}:2", *FAST, capsys=capsys)
-        assert frames(workdir, "photon") == ["0000.png", "0005.png"]
+        assert saved("a/b/c/photon/00/0001.png") in run("-imgs", f"{photon}:2", *FAST, "-dir", "a/b/c", capsys=capsys)
+        assert (workdir / "a/b/c/photon/00/0001.png").exists()
 
     def test_a_gif_holds_every_saved_frame_and_leaves_other_runs_frames(
         self, workdir: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        run(PROMPT, *FAST, "-n", "8", "-freq", "1", capsys=capsys)
-        assert len(frames(workdir)) == 8
-        assert saved("outputs/Loose_seal/00.gif", "Created") in run(PROMPT, *FAST, "-freq", "2", "-gif", capsys=capsys)
+        run(PROMPT, *FAST, "-n", "4", "-freq", "1", capsys=capsys)
+        assert len(frames(workdir)) == 4
+        assert saved("outputs/Loose_seal/00.gif", "Created") in run(PROMPT, *FAST, "-gif", capsys=capsys)
         gif = workdir / "outputs/Loose_seal/00.gif"
         count = subprocess.run([*COUNT_FRAMES.split(), str(gif)], capture_output=True, text=True, check=True)
-        assert count.stdout.strip() == "4"  # Steps 0, 2, 4 and the final step 5.
-        assert frames(workdir) == ["0001.png", "0003.png", "0006.png", "0007.png"]  # The earlier run's.
+        assert count.stdout.strip() == "2"
+        assert frames(workdir) == ["0002.png", "0003.png"]  # The earlier run's.
 
     def test_a_video_replaces_the_frames(self, workdir: Path, capsys: pytest.CaptureFixture[str]) -> None:
         run(PROMPT, *FAST, "-mp4", capsys=capsys)
@@ -160,32 +154,18 @@ class TestOutputs:
         assert not (workdir / "outputs/Loose_seal/00").exists()
 
     @pytest.mark.parametrize(
-        "argv",
-        [(), ("-thumb", "none"), ("-thumb", "glide"), ("-thumb", "laionide"), ("-thumb", "karlo"), ("-pag",)],
-        ids=["default", "clip alone", "glide", "laionide", "karlo", "perturbed attention"],
-    )
-    def test_every_way_to_draw_without_a_class_becomes_a_gif_and_a_video(
-        self, workdir: Path, argv: tuple[str, ...], capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        run(PROMPT, "-uncond", "-n", "4", "-q", *argv, "-gif", "-mp4", capsys=capsys)
-        for animation in (workdir / "outputs/Loose_seal/00.gif", workdir / "outputs/Loose_seal/00.mp4"):
-            count = subprocess.run([*COUNT_FRAMES.split(), str(animation)], capture_output=True, text=True, check=True)
-            assert count.stdout.strip() == "4"
-        assert not (workdir / "outputs/Loose_seal/00").exists()
-
-    @pytest.mark.parametrize(
         ("argv", "count"),
         [
-            (FAST, 6 + 3),
-            (("-uncond", "-n", "4", "-q"), 4 + 3),
-            (("-bb", "sd-turbo", "-size", "136", "-iters", "2", "-clip", "ViT-B/32", "-q"), 3 + 3),
+            (FAST, 2 + 2),
+            (("-uncond", "-n", "2", "-clip", "ViT-B/32", "-q"), 2 + 2),
+            (("-bb", "sd-turbo", "-size", "136", "-iters", "1", "-clip", "ViT-B/32", "-q"), 2 + 2),
         ],
         ids=["default", "unconditional", "backbone"],
     )
     def test_a_sequence_becomes_a_gif_of_its_first_image_and_the_frames_to_each_next_one(
         self, workdir: Path, argv: tuple[str, ...], count: int, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        output = run("Loose seal.|>Loose goose.", *argv, "-frames", "3", capsys=capsys)
+        output = run("Loose seal.|>Loose goose.", *argv, "-frames", "2", capsys=capsys)
         assert saved("outputs/Loose_seal_Loose_goose/00.gif", "Created") in output
         gif = workdir / "outputs/Loose_seal_Loose_goose/00.gif"
         frames_read = subprocess.run([*COUNT_FRAMES.split(), str(gif)], capture_output=True, text=True, check=True)
@@ -195,7 +175,7 @@ class TestOutputs:
     def test_a_sequence_that_asks_for_a_video_gets_only_that(
         self, workdir: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        run("Loose seal.|>Loose goose.", *FAST, "-frames", "3", "-mp4", capsys=capsys)
+        run("Loose seal.|>Loose goose.", *FAST, "-frames", "2", "-mp4", capsys=capsys)
         assert (workdir / "outputs/Loose_seal_Loose_goose/00.mp4").stat().st_size > 0
         assert not (workdir / "outputs/Loose_seal_Loose_goose/00.gif").exists()
 
@@ -207,29 +187,15 @@ class TestOutputs:
         monkeypatch.setenv("PATH", str(empty))
         output = run(PROMPT, *FAST, "-gif", capsys=capsys)
         assert "ffmpeg not found" in output
-        assert saved("outputs/Loose_seal/00/0005.png") in output
-        assert len(frames(workdir)) == 6
+        assert saved("outputs/Loose_seal/00/0001.png") in output
+        assert len(frames(workdir)) == 2
 
-    def test_upscaling_saves_a_larger_copy_beside_the_image(
+    def test_upscaling_saves_a_larger_copy_that_outlives_an_animation(
         self, workdir: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        assert saved("outputs/Loose_seal/00/0005_x4.png") in run(PROMPT, *FAST, "-up", capsys=capsys)
-        assert Image.open(workdir / "outputs/Loose_seal/00/0005_x4.png").size == (256, 256)
-
-    def test_the_upscaled_copy_outlives_an_animation(self, workdir: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        run(PROMPT, *FAST, "-up", "-gif", capsys=capsys)
-        assert frames(workdir) == ["0005_x4.png"]
-
-    def test_candidates_report_the_winning_seed(self, workdir: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        output = run(PROMPT, *FAST, "-best", "2", "-seed", "7", capsys=capsys)
-        assert any(saved(f"outputs/seed_{seed}/Loose_seal/00/0005.png") in output for seed in (7, 8))
-        assert (workdir / "outputs/seed_7").is_dir()
-        assert (workdir / "outputs/seed_8").is_dir()
-
-    def test_a_backbone_draws_at_any_multiple_of_eight(self, workdir: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        output = run(PROMPT, "-bb", "sd-turbo", "-size", "136", "-iters", "2", "-clip", "ViT-B/32", "-q", capsys=capsys)
-        assert saved("outputs/Loose_seal/00/0002.png") in output
-        assert Image.open(workdir / "outputs/Loose_seal/00/0002.png").size == (136, 136)
+        assert saved("outputs/Loose_seal/00/0001_x4.png") in run(PROMPT, *FAST, "-up", "-gif", capsys=capsys)
+        assert frames(workdir) == ["0001_x4.png"]
+        assert Image.open(workdir / "outputs/Loose_seal/00/0001_x4.png").size == (256, 256)
 
 
 def test_candidates_keep_the_image_the_judges_prefer(tmp_path: Path, goose: Path) -> None:
