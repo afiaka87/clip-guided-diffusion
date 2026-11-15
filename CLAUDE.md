@@ -36,14 +36,14 @@ Basic usage: `uv run cgd "Your prompt here"`. `uv run cgd -h` groups the options
 - `-size`: Image size (64, 128, 256, 512, only 256 or 512 with `-uncond`, or any multiple of 8 with `-bb`)
 - `-clip`: CLIP model (default ViT-B/32, or ViT-B/32+PE-Core-B-16 with `-uncond` or `-bb`). `clip_models.MODEL_NAMES` lists them, and the README has the VRAM and time of each. `-clip A+B` guides with an ensemble.
 - `-fp16`: Run an open_clip model's vision tower at half precision. Faster and half the CLIP VRAM. Less exact, but scored about the same.
-- `-cutn`: Random cutouts CLIP sees each step, both pipelines (default 16, `guide.NUM_CUTOUTS`, or 4 with `-uncond`). 4 scored the same for a quarter of CLIP's work.
+- `-cutn`: Random cutouts CLIP sees each step, both pipelines (default 16, `guide.NUM_CUTOUTS`, or 4 with `-uncond`). 4 scored the same for a quarter of CLIP's work, except with `-thumb glide` and `-pag`, which do better at 16.
 - `-aes`: Also reward what people rate highly, over cutouts (default 0, or 0.05 with `-bb`).
 - `-best N`: Generate N candidates and keep the one held-out CLIP models prefer.
 - ImageNet model only: `-uncond` an unconditional checkpoint (256 by default, or 512) with no ImageNet class, and the defaults that made its best images for the time they take (`adm.UNCONDITIONAL_DEFAULTS`: `-clip ViT-B/32+PE-Core-B-16 -cutn 4 -n 60 -recur 2 -thumb clip`), each overridden by its option. `-thumb` the model that sets the composition by reading the noisy image as a 64x64 thumbnail (`clip`, `glide`, `laionide`, `karlo` or `none`, only with `-uncond`), `-pag` perturbed-attention guidance (only with `-uncond` at 256), `-n` steps down the schedule (default 30), `-recur` how many times each early guided step runs (default 1), `-rate` guidance strength (default 0.08), `-gl` guidance limit, `-init` init image, `-skip` how much of the schedule it skips (default half), `-is` LPIPS init scale.
 - `-bb`: Draw with a modern one-step model and correct it with CLIP, instead of guiding an ImageNet model (`sd-turbo`, `vega`, `sdxl-lightning`). `backbone.BACKBONES` lists them. The best images this repo makes. `-iters` is its only option of its own.
 - Output: `-dir`, `-freq`, `-gif`, `-mp4`, `-up` (a 4x larger copy made with Real-ESRGAN) and `-q`.
 
-The README's "Tried and removed" section has the options that tied or lost, and why they went. The CLIP and TV scales, the cutout layout and the backbone's learning rate are constants, at the values everything was tuned with. Every GIF and number in the README was made at `-cutn 4`, so its commands carry it and still reproduce their GIFs byte for byte. `-uncond` has it as its default.
+The README's "Tried and removed" section has the options that tied or lost, and why they went. The CLIP and TV scales, the cutout layout and the backbone's learning rate are constants, at the values everything was tuned with. Every GIF and number in the README was made at `-cutn 4` unless it says 16, so its commands carry the count and still reproduce their GIFs byte for byte. `-uncond` has 4 as its default.
 
 ## Architecture
 
