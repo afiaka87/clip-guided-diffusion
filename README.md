@@ -47,6 +47,7 @@ That took 37 s on an RTX 2070 SUPER. For the best images this repo makes, use [a
 Every GIF in this README is its command's real output, with the default seed. The one exception is the [upscaling](#upscaling) comparison, which is made from a command's two outputs.
 
 - The path of the finished image is printed at the end. See [Speed](#speed) for how long that takes.
+- Join several images with `|>`, as in `"A castle|>A red fox"`, and the animation slides from each to the next, see [Sequences](#sequences).
 - `./outputs` will contain intermediate outputs, every 10 steps by default. Change this with `--save-frequency` / `-freq`.
 - `current.png` will contain the current generation.
 - The same `--seed` and arguments reproduce the image byte for byte on the same machine and library versions.
@@ -96,6 +97,36 @@ A negative weight takes the smoke away:
 ![images/goose_on_the_run.png as the prompt](images/goose_on_the_run_image_prompt.gif)
 
 The prompt is [this goose](images/goose_on_the_run.png), a generation from 2021. The ImageNet class comes from the image prompts too: `goose`, here.
+
+### Sequences
+
+`uv run cgd -bb sd-turbo -size 384 -freq 5 -cutn 4 "A castle on a hill at sunset.|>A red fox in the snow.|>A sailboat on a calm lake at sunset."`
+
+![A castle, then a red fox, then a sailboat, drawn by SD-Turbo](images/A_castle_A_red_fox_A_sailboat_sd-turbo.gif)
+
+`|>` begins the next image, and the animation slides from each image to the next. Every image is the one its prompts make alone with the same options and `--seed`. They share their starting noise, which keeps them alike enough to slide between. That took 56 s on an RTX 4070.
+
+- The first image is animated as usual, and `-freq` only thins those frames.
+- `--transition-frames` / `-frames` (default: `30`, or `60` with `-bb`) is how many frames each slide takes, at 10 a second. More is smoother.
+- A sequence saves a GIF without `-gif`. With `-mp4` it saves the video and no GIF.
+- Each image still takes several prompts and weights, as in `"a castle|sunset:0.5|>a fox"`, and `-imgs` takes a sequence the same way. Text or image prompts that are not a sequence go with every image.
+- `-best` does not apply to one.
+
+It works best with [a modern backbone](#modern-backbones), whose image is a smooth function of its noise and of the text it is told to draw. A frame there is the model's image of the noise and the text partway between two images', which is one model call without CLIP, 0.1 s.
+
+The ImageNet models have no such handle. There a frame is the two finished images faded into each other and redrawn by the U-Net: noised, the most halfway, and denoised without CLIP between the two ImageNet classes. Both ends are the images themselves, and halfway the model makes one picture of the double exposure. With `-uncond`, in 247 s:
+
+`uv run cgd -uncond -freq 3 "A castle on a hill at sunset.|>A red fox in the snow.|>A sailboat on a calm lake at sunset."`
+
+![A castle, then a red fox, then a sailboat, with -uncond](images/A_castle_A_red_fox_A_sailboat_uncond.gif)
+
+And with the default model, in 68 s:
+
+`uv run cgd -cutn 4 "A castle on a hill at sunset.|>A red fox in the snow.|>A sailboat on a calm lake at sunset."`
+
+![A castle, then a red fox, then a sailboat](images/A_castle_A_red_fox_A_sailboat.gif)
+
+The frames go where the image changes. Each is drawn halfway between the two neighbours that differ most, so a slide moves at an even pace, a little slower near either image. On the ImageNet models three other ways to slide were tried first: drawing every frame in full with the prompts blended, which makes each frame another image because CLIP guidance is chaotic, redrawing each frame from the one before, which piles up into flat saturated colour, and sliding between the noise each image inverts to, which turns to grain with `-uncond`. `cgd/slide.py` has the numbers.
 
 ### CPU
 
@@ -572,7 +603,7 @@ save_gif(frames, "outputs/A_volcano_erupting_at_night.gif")
 
 ![A volcano erupting at night](images/A_volcano_erupting_at_night.gif)
 
-These are the settings of `uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 -cutn 4 "A volcano erupting at night"`, and the GIF is the same as that command's, byte for byte. With `save_frequency=3` it has 31 frames: every third of the 90 steps, then the result. The other keyword arguments are the options' long names, with underscores, and `progress=False` is `--quiet`.
+These are the settings of `uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 -cutn 4 "A volcano erupting at night"`, and the GIF is the same as that command's, byte for byte. With `save_frequency=3` it has 31 frames: every third of the 90 steps, then the result. The other keyword arguments are the options' long names, with underscores, and `progress=False` is `--quiet`. A [sequence](#sequences) is a prompt that starts with `>` for each next image, `["A castle", ">A red fox"]`, which is what `|>` splits into.
 
 `cgd.backbone.generate()` is the same with a backbone. With the same settings it makes the same image as the command, byte for byte, so this is the GIF from [Modern backbones](#modern-backbones) again:
 
@@ -593,7 +624,8 @@ save_gif(frames, "outputs/A_red_fox_in_the_snow_sd-turbo.gif")
 usage: cgd [-h] [-imgs IMAGE_PROMPTS] [-size IMAGE_SIZE] [-wd WIDTH_OFFSET]
            [-ht HEIGHT_OFFSET] [-bs BATCH_SIZE] [-seed SEED]
            [-clip CLIP_MODEL] [-fp16] [-cutn NUM_CUTOUTS]
-           [-aes AESTHETIC_SCALE] [-best CANDIDATES] [-dev DEVICE] [-uncond]
+           [-aes AESTHETIC_SCALE] [-best CANDIDATES]
+           [-frames TRANSITION_FRAMES] [-dev DEVICE] [-uncond]
            [-thumb {clip,glide,laionide,karlo,none}] [-pag] [-n STEPS]
            [-recur RECURRENCE] [-rate GUIDANCE_RATE] [-gl GUIDANCE_LIMIT]
            [-init INIT_IMAGE] [-skip SKIP_TIMESTEPS] [-is INIT_SCALE]
@@ -605,13 +637,18 @@ cgd: make images from text and image prompts with CLIP guided diffusion.
 
 positional arguments:
   prompts               Text prompts, joined with |. Each can take a weight,
-                        negative to avoid it: 'a fox:2|blurry:-1'.
+                        negative to avoid it: 'a fox:2|blurry:-1'. Begin the
+                        next image of a sequence with >, and the GIF or video
+                        slides from each image to the next: 'a castle|>a
+                        fox|>a sailboat'.
 
 options:
   -h, --help            show this help message and exit
   -imgs, --image-prompts IMAGE_PROMPTS
                         Image prompts, paths or URLs, joined with | and
-                        weighted the same way.
+                        weighted the same way. A sequence of them works the
+                        same way too, and image prompts that are not a
+                        sequence go with every image of one.
   -size, --image-size IMAGE_SIZE
                         Image size. 64, 128, 256 or 512, default 128. With
                         --unconditional, 256 or 512, default 256. With
@@ -650,6 +687,10 @@ options:
                         --seed, and keep the one that CLIP models which did
                         not guide them score best. Takes this many times as
                         long. Default 1.
+  -frames, --transition-frames TRANSITION_FRAMES
+                        Frames that slide from each image of a sequence to the
+                        next, 10 to a second. Default 30, or 60 with
+                        --backbone, where a frame is quick.
   -dev, --device DEVICE
                         cpu, cuda or cuda:<index>. Default cuda when there is
                         a GPU.
@@ -724,7 +765,8 @@ Output:
   -freq, --save-frequency SAVE_FREQUENCY
                         Save a frame every this many steps. The result is
                         always saved. Default 10, or 1 with --gif or --mp4.
-  -gif, --gif           Also save the frames as a GIF, then delete them.
+  -gif, --gif           Also save the frames as a GIF, then delete them. A
+                        sequence does unless it asks for --mp4.
   -mp4, --mp4           Also save the frames as an H.264 video, then delete
                         them.
   -up, --upscale        Also save a copy 4x larger, made with Real-ESRGAN
