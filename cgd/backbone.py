@@ -8,11 +8,14 @@ step of the model and a tiny decoder (ReNO, Eyring et al. 2024). There is no sol
 schedule to retune, and the noise stays on the prior, so every candidate along the way
 is a normal output of the model. This is a better fit for CLIP than per-step guidance:
 a one-step model has no steps to guide, and the gradient cannot leave its manifold.
+
+The image is a smooth function of the noise and the text embedding, so a sequence of
+images, "a castle|>a fox", slides from one to the next by moving both, see between().
 """
 
 import gc
 import math
-from collections.abc import Callable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -22,17 +25,21 @@ import torch as th
 from torch import nn
 from tqdm.auto import tqdm
 
+from cgd import slide
 from cgd.checks import check_common, require
 from cgd.clip_models import check_model
-from cgd.device import default_device, limit_to_vram
-from cgd.guide import NUM_CUTOUTS, Guide, guide_loss, load_guide
+from cgd.device import default_device, limit_to_vram, random_state, replayed_rng
+from cgd.guide import NUM_CUTOUTS, Guide, guide_loss, load_guides
 from cgd.losses import finite_gradient
 from cgd.outputs import frame_path, run_name, save_frame
-from cgd.prompts import parse_prompt
+from cgd.prompts import parse_prompt, scenes
 
 DEFAULT_CLIP_MODEL = "ViT-B/32+PE-Core-B-16"
 DEFAULT_ITERATIONS = 50
 DEFAULT_AESTHETIC_SCALE = 0.05
+DEFAULT_TRANSITION_FRAMES = (
+    60  # From one image of a sequence to the next. A frame is one model call without a gradient.
+)
 # ReNO's optimiser settings.
 LEARNING_RATE = 5.0
 MOMENTUM = 0.9
@@ -79,15 +86,21 @@ BACKBONES = {
 }
 
 
+class Prompt(NamedTuple):
+    """What a backbone is told to draw, encoded."""
+
+    text: th.Tensor  # The embedding, as the U-Net takes it.
+    pooled: th.Tensor | None  # SDXL's pooled text embedding.
+
+
 class Backbone(NamedTuple):
-    """A loaded one-step model, with the prompt it draws already encoded."""
+    """A loaded one-step model, with what it is told to draw for each image of a sequence already encoded."""
 
     spec: Spec
     unet: nn.Module
     vae: nn.Module
     tiny_decoder: nn.Module  # What guidance backpropagates through: as good, in half the time and 1 GiB less at 512.
-    text: th.Tensor  # The prompt's embedding, as the U-Net takes it.
-    pooled: th.Tensor | None  # SDXL's pooled text embedding.
+    prompts: tuple[Prompt, ...]
     alpha_bar: th.Tensor
     dtype: th.dtype
     device: str
@@ -101,14 +114,14 @@ class Iteration(NamedTuple):
     best_z: th.Tensor  # The noise that scored best so far.
 
 
-def load_backbone(name: str, text: str, device: str) -> Backbone:
-    """The backbone called `name`, drawing `text`."""
+def load_backbone(name: str, texts: Sequence[str], device: str) -> Backbone:
+    """The backbone called `name`, told to draw each of `texts`."""
     # Slow to import, and only --backbone needs them.
     from diffusers import AutoencoderKL, AutoencoderTiny, EulerDiscreteScheduler
 
     spec = BACKBONES[name]
     dtype = th.float16 if device != "cpu" else th.float32
-    unet, vae, embeds, pooled = _LOADERS[spec.family](spec, text, device, dtype)
+    unet, vae, prompts = _LOADERS[spec.family](spec, texts, device, dtype)
     gc.collect()  # The text encoders have done their job, and the graph needs that VRAM.
     if device != "cpu":
         th.cuda.empty_cache()
@@ -120,7 +133,7 @@ def load_backbone(name: str, text: str, device: str) -> Backbone:
     tiny_decoder = tiny_decoder.to(device).eval().requires_grad_(False)
     scheduler = EulerDiscreteScheduler.from_pretrained(spec.repo, subfolder="scheduler")
     alpha_bar = scheduler.alphas_cumprod.to(device, th.float32)
-    return Backbone(spec, unet, vae, tiny_decoder, embeds, pooled, alpha_bar, dtype, device)
+    return Backbone(spec, unet, vae, tiny_decoder, prompts, alpha_bar, dtype, device)
 
 
 def _freeze(module: nn.Module, device: str, dtype: th.dtype) -> nn.Module:
@@ -135,7 +148,9 @@ def _freeze(module: nn.Module, device: str, dtype: th.dtype) -> nn.Module:
     return module
 
 
-def _load_sd(spec: Spec, text: str, device: str, dtype: th.dtype) -> tuple[nn.Module, nn.Module, th.Tensor, None]:
+def _load_sd(
+    spec: Spec, texts: Sequence[str], device: str, dtype: th.dtype
+) -> tuple[nn.Module, nn.Module, tuple[Prompt, ...]]:
     from diffusers import StableDiffusionPipeline
 
     pipe = StableDiffusionPipeline.from_pretrained(
@@ -146,11 +161,13 @@ def _load_sd(spec: Spec, text: str, device: str, dtype: th.dtype) -> tuple[nn.Mo
         feature_extractor=None,
         requires_safety_checker=False,
     ).to(device)
-    embeds = pipe.encode_prompt(text, device, 1, False)[0]
-    return pipe.unet, pipe.vae, embeds.detach(), None
+    prompts = tuple(Prompt(pipe.encode_prompt(text, device, 1, False)[0].detach(), None) for text in texts)
+    return pipe.unet, pipe.vae, prompts
 
 
-def _load_sdxl(spec: Spec, text: str, device: str, dtype: th.dtype) -> tuple[nn.Module, None, th.Tensor, th.Tensor]:
+def _load_sdxl(
+    spec: Spec, texts: Sequence[str], device: str, dtype: th.dtype
+) -> tuple[nn.Module, None, tuple[Prompt, ...]]:
     from diffusers import StableDiffusionXLPipeline
 
     pipe = StableDiffusionXLPipeline.from_pretrained(spec.repo, variant="fp16", dtype=dtype, vae=None)
@@ -165,8 +182,8 @@ def _load_sdxl(spec: Spec, text: str, device: str, dtype: th.dtype) -> tuple[nn.
         pipe.unet.load_state_dict(load_file(hf_hub_download(*spec.unet_weights)))
     pipe.text_encoder.to(device)
     pipe.text_encoder_2.to(device)
-    embeds, _, pooled, _ = pipe.encode_prompt(text, device=device, do_classifier_free_guidance=False)
-    return pipe.unet, None, embeds.detach(), pooled.detach()
+    encoded = [pipe.encode_prompt(text, device=device, do_classifier_free_guidance=False) for text in texts]
+    return pipe.unet, None, tuple(Prompt(embeds.detach(), pooled.detach()) for embeds, _, pooled, _ in encoded)
 
 
 _LOADERS = {"sd": _load_sd, "sdxl": _load_sdxl}
@@ -177,12 +194,12 @@ def latent_shape(height: int, width: int) -> tuple[int, int, int, int]:
     return 1, LATENT_CHANNELS, height // LATENT_FACTOR, width // LATENT_FACTOR
 
 
-def unet_conditioning(backbone: Backbone, height: int, width: int) -> dict[str, Any]:
-    """What the U-Net takes besides its input and timestep, for images of this size."""
-    conditioning: dict[str, Any] = {"encoder_hidden_states": backbone.text}
-    if backbone.pooled is not None:  # SDXL is also told the size, and that the image is uncropped.
+def unet_conditioning(backbone: Backbone, prompt: Prompt, height: int, width: int) -> dict[str, Any]:
+    """What the U-Net takes besides its input and timestep, to draw `prompt` at this size."""
+    conditioning: dict[str, Any] = {"encoder_hidden_states": prompt.text}
+    if prompt.pooled is not None:  # SDXL is also told the size, and that the image is uncropped.
         time_ids = th.tensor([[height, width, 0, 0, height, width]], device=backbone.device, dtype=backbone.dtype)
-        conditioning["added_cond_kwargs"] = {"text_embeds": backbone.pooled, "time_ids": time_ids}
+        conditioning["added_cond_kwargs"] = {"text_embeds": prompt.pooled, "time_ids": time_ids}
     return conditioning
 
 
@@ -274,6 +291,7 @@ def check_parameters(
     iterations: int,
     aesthetic_scale: float,
     save_frequency: int,
+    transition_frames: int | None = None,
 ) -> None:
     """Reject a configuration that cannot work, before loading anything."""
     # pylint: disable=duplicate-code  # adm passes the same shared options to the same check.
@@ -284,6 +302,7 @@ def check_parameters(
         num_cutouts=num_cutouts,
         save_frequency=save_frequency,
         aesthetic_scale=aesthetic_scale,
+        transition_frames=transition_frames,
     )
     # pylint: enable=duplicate-code
     require(
@@ -310,6 +329,7 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
     seed: int = 0,
     output_dir: str | Path = "outputs",
     save_frequency: int = 10,
+    transition_frames: int | None = None,
     device: str | None = None,
     progress: bool = True,
 ) -> Iterator[tuple[int, Path]]:
@@ -317,6 +337,11 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
 
     `image_size` defaults to what the backbone was trained for. An image is saved every
     `save_frequency` iterations, and the result always last. 0 iterations is the plain model.
+
+    A prompt that starts with > begins the next image of a sequence. Each image is the one
+    its prompts make alone, with these settings and this seed. After the first, the frames
+    saved are the `transition_frames` that slide to each next image, the last of them the
+    image itself. The default is DEFAULT_TRANSITION_FRAMES.
     """
     require(backbone in BACKBONES, f"Unknown backbone {backbone!r}. Choose one of {list(BACKBONES)}.")
     size = BACKBONES[backbone].size if image_size is None else image_size
@@ -331,28 +356,29 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
         iterations=iterations,
         aesthetic_scale=aesthetic_scale,
         save_frequency=save_frequency,
+        transition_frames=transition_frames,
     )
     check_model(clip_model)
     device = default_device(device)
     limit_to_vram(device)
+    images = scenes(prompts, image_prompts)
 
     # Everything from here on draws random numbers in this order, so a seed always makes the same image.
     th.manual_seed(seed)
-    model = load_backbone(backbone, conditioning_text(prompts), device)
-    guide = None  # The plain model never uses it, and at 1024 it needs the room.
+    model = load_backbone(backbone, [conditioning_text(image.prompts) for image in images], device)
+    guides: Sequence[Guide | None] = [None] * len(
+        images
+    )  # The plain model never uses one, and at 1024 it needs the room.
     if iterations:
-        size = min(height, width)
-        guide = load_guide(
+        guides = load_guides(
             clip_model,
-            prompts,
-            image_prompts,
-            image_size=size,
+            images,
+            image_size=min(height, width),
             num_cutouts=num_cutouts,
             device=device,
             fp16=clip_fp16,
             aesthetic_scale=aesthetic_scale,
         )
-    conditioning = unet_conditioning(model, height, width)
     name = run_name(prompts, image_prompts)
     # The backward pass of the U-Net's widest convolutions is nondeterministic below about
     # 448px unless cuDNN is told otherwise, which makes a seed produce a different image
@@ -361,30 +387,86 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
         for index in range(batch_size):
             z = th.randn(latent_shape(height, width), device=device)
             frames = corrected_frames(
-                model, conditioning, guide, z, iterations=iterations, save_frequency=save_frequency, progress=progress
+                model,
+                guides,
+                z,
+                size=(height, width),
+                iterations=iterations,
+                save_frequency=save_frequency,
+                transition_frames=transition_frames or DEFAULT_TRANSITION_FRAMES,
+                progress=progress,
             )
             for step, image in frames:
                 yield index, save_frame(image, frame_path(output_dir, name, step, index))
 
 
-def corrected_frames(
+def corrected_frames(  # pylint: disable=too-many-locals  # It takes all a run draws with, to make every frame of it.
     backbone: Backbone,
-    conditioning: dict[str, Any],
-    guide: Guide | None,
+    guides: Sequence[Guide | None],
     z: th.Tensor,
     *,
+    size: tuple[int, int],
     iterations: int,
     save_frequency: int,
+    transition_frames: int,
     progress: bool,
 ) -> Iterator[tuple[int, th.Tensor]]:
-    """(iteration, image) of every `save_frequency`th iteration of correcting the noise z, then of the result.
+    """(step, image) of each frame the noise z makes, for a backbone that draws one image per guide.
 
-    The result is the best noise found, through the full decoder, as iteration `iterations`.
+    First every `save_frequency`th iteration of correcting z for the first image, then
+    the result as step `iterations`: the best noise found, through the full decoder. Then,
+    for each next image, the `transition_frames` that slide to it, see between(). Every
+    image is corrected from z, drawing the random numbers the first does.
     """
-    draw, loss_fn = partial(preview, backbone, conditioning), partial(guide_loss, guide)
-    best_z = z
-    for iteration, step in enumerate(optimise_noise(draw, loss_fn, z, iterations, progress)):
-        best_z = step.best_z
+    conditionings = [unet_conditioning(backbone, prompt, *size) for prompt in backbone.prompts]
+    drawn_from = random_state(backbone.device)
+    best = z
+    steps = optimise_noise(
+        partial(preview, backbone, conditionings[0]), partial(guide_loss, guides[0]), z, iterations, progress
+    )
+    for iteration, taken in enumerate(steps):
+        best = taken.best_z
         if iteration % save_frequency == 0:
-            yield iteration, step.images[0]
-    yield iterations, render(backbone, conditioning, best_z)[0]
+            yield iteration, taken.images[0]
+    result = render(backbone, conditionings[0], best).cpu()
+    yield iterations, result[0]
+
+    step = iterations
+    for place in range(1, len(guides)):
+        draw, loss_fn = partial(preview, backbone, conditionings[place]), partial(guide_loss, guides[place])
+        with replayed_rng(backbone.device, drawn_from):
+            following = best_noise(optimise_noise(draw, loss_fn, z, iterations, progress), z)
+        ends = result, render(backbone, conditionings[place], following).cpu()
+        prompts = backbone.prompts[place - 1], backbone.prompts[place]
+        for frame in slide.place(
+            partial(between, backbone, prompts, (best, following), size), ends, transition_frames, progress
+        ):
+            step += 1
+            yield step, frame[0]
+        best, result = following, ends[1]
+
+
+def best_noise(steps: Iterable[Iteration], z: th.Tensor) -> th.Tensor:
+    """The noise that scored best over the steps of optimise_noise(), or z when it took none."""
+    for step in steps:
+        z = step.best_z
+    return z
+
+
+def between(
+    backbone: Backbone,
+    prompts: tuple[Prompt, Prompt],
+    noises: tuple[th.Tensor, th.Tensor],
+    size: tuple[int, int],
+    position: float,
+) -> th.Tensor:
+    """The frame at `position` between two finished images, on the CPU: at 0 the first, at 1 the second.
+
+    It is the model's image of the noise and of the prompt that far from the first image's
+    to the second's. Both noises were corrected from the same one, so they are close, and
+    most of the change comes from the prompt.
+    """
+    text = th.lerp(prompts[0].text, prompts[1].text, position)
+    pooled = None if prompts[0].pooled is None else th.lerp(prompts[0].pooled, prompts[1].pooled, position)
+    conditioning = unet_conditioning(backbone, Prompt(text, pooled), *size)
+    return render(backbone, conditioning, slide.slerp(*noises, position)).cpu()
