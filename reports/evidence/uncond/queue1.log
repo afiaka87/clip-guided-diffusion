@@ -1,0 +1,327 @@
+uncond s0 p00   18.0 s  5.47 GiB
+uncond s0 p01   16.2 s  5.47 GiB
+uncond s0 p02   16.5 s  5.47 GiB
+uncond s0 p03   16.9 s  5.47 GiB
+uncond s0 p04   17.1 s  5.47 GiB
+uncond s0 p05   17.3 s  5.47 GiB
+uncond s0 p06   17.4 s  5.47 GiB
+uncond s0 p07   17.5 s  5.47 GiB
+uncond s0 p08   17.5 s  5.47 GiB
+uncond s0 p09   17.6 s  5.47 GiB
+uncond s0 p10   17.6 s  5.47 GiB
+uncond s0 p11   17.5 s  5.47 GiB
+uncond s1 p00   17.6 s  5.47 GiB
+uncond s1 p01   17.6 s  5.47 GiB
+uncond s1 p02   17.5 s  5.47 GiB
+uncond s1 p03   17.5 s  5.47 GiB
+uncond s1 p04   17.5 s  5.47 GiB
+uncond s1 p05   17.5 s  5.47 GiB
+uncond s1 p06   17.5 s  5.47 GiB
+uncond s1 p07   17.5 s  5.47 GiB
+uncond s1 p08   17.5 s  5.47 GiB
+uncond s1 p09   17.5 s  5.47 GiB
+uncond s1 p10   17.5 s  5.47 GiB
+uncond s1 p11   17.5 s  5.47 GiB
+uncond s2 p00   17.5 s  5.47 GiB
+uncond s2 p01   17.5 s  5.47 GiB
+uncond s2 p02   17.5 s  5.47 GiB
+uncond s2 p03   17.5 s  5.47 GiB
+uncond s2 p04   17.5 s  5.47 GiB
+uncond s2 p05   17.5 s  5.47 GiB
+uncond s2 p06   17.5 s  5.47 GiB
+uncond s2 p07   17.5 s  5.47 GiB
+uncond s2 p08   17.5 s  5.47 GiB
+uncond s2 p09   17.5 s  5.47 GiB
+uncond s2 p10   17.5 s  5.47 GiB
+uncond s2 p11   17.6 s  5.47 GiB
+uncond_ens s0 p00   36.8 s  5.87 GiB
+uncond_ens s0 p01   32.7 s  5.87 GiB
+uncond_ens s0 p02   32.6 s  5.87 GiB
+uncond_ens s0 p03   32.5 s  5.87 GiB
+uncond_ens s0 p04   32.6 s  5.87 GiB
+uncond_ens s0 p05   32.4 s  5.87 GiB
+uncond_ens s0 p06   32.3 s  5.87 GiB
+uncond_ens s0 p07   32.1 s  5.87 GiB
+uncond_ens s0 p08   32.2 s  5.87 GiB
+uncond_ens s0 p09   32.1 s  5.87 GiB
+uncond_ens s0 p10   32.1 s  5.87 GiB
+uncond_ens s0 p11   32.0 s  5.87 GiB
+uncond_ens s1 p00   32.0 s  5.87 GiB
+uncond_ens s1 p01   31.9 s  5.87 GiB
+uncond_ens s1 p02   32.0 s  5.87 GiB
+uncond_ens s1 p03   32.1 s  5.87 GiB
+uncond_ens s1 p04   31.9 s  5.87 GiB
+uncond_ens s1 p05   31.9 s  5.87 GiB
+uncond_ens s1 p06   31.9 s  5.87 GiB
+uncond_ens s1 p07   32.0 s  5.87 GiB
+uncond_ens s1 p08   32.0 s  5.87 GiB
+uncond_ens s1 p09   31.9 s  5.87 GiB
+uncond_ens s1 p10   31.9 s  5.87 GiB
+uncond_ens s1 p11   31.9 s  5.87 GiB
+uncond_ens s2 p00   31.9 s  5.87 GiB
+uncond_ens s2 p01   31.9 s  5.87 GiB
+uncond_ens s2 p02   31.9 s  5.87 GiB
+uncond_ens s2 p03   31.9 s  5.87 GiB
+uncond_ens s2 p04   31.9 s  5.87 GiB
+uncond_ens s2 p05   32.0 s  5.87 GiB
+uncond_ens s2 p06   32.0 s  5.87 GiB
+uncond_ens s2 p07   31.9 s  5.87 GiB
+uncond_ens s2 p08   31.9 s  5.87 GiB
+uncond_ens s2 p09   31.9 s  5.87 GiB
+uncond_ens s2 p10   32.1 s  5.87 GiB
+uncond_ens s2 p11   31.8 s  5.87 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 4580.36it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00,  4.92it/s]Loading pipeline components...:  60%|██████    | 3/5 [00:00<00:00,  5.78it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00,  8.61it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/huggingface_hub/utils/_validators.py:205: UserWarning: The `local_dir_use_symlinks` argument is deprecated and ignored in `hf_hub_download`. Downloading to a local directory does not use symlinks anymore.
+  warnings.warn(
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+turbo s0 p00   43.4 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10081.48it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.52it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.95it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 16.04it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s0 p01   35.7 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10283.21it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 13.34it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 13.14it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 16.40it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s0 p02   35.8 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10166.09it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 13.34it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.94it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 16.19it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s0 p03   35.7 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10704.82it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.46it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.61it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 15.68it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s0 p04   35.5 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 11604.57it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.81it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.63it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 15.76it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s0 p05   35.5 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10990.22it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.65it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.73it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 15.84it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s0 p06   35.2 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10036.09it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.53it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.70it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 15.79it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s0 p07   35.3 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 9977.24it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.65it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.90it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 16.02it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s0 p08   35.1 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10168.94it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.21it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.55it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 15.57it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s0 p09   35.1 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10150.35it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.55it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.72it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 15.82it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s0 p10   35.1 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10181.35it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 14.78it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 13.56it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 17.10it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s0 p11   34.9 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10385.12it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.48it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.72it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 15.79it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s1 p00   35.1 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10366.77it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.67it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 13.03it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 16.16it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s1 p01   35.0 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10080.64it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.45it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.88it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 15.96it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s1 p02   35.0 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10008.41it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.50it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.83it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 15.91it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s1 p03   34.9 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10157.95it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.63it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.68it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 15.78it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s1 p04   34.9 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 9953.57it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.58it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.66it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 15.75it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s1 p05   34.9 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 9592.70it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.78it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.71it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 15.85it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s1 p06   34.9 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10839.43it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.70it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.46it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 15.56it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s1 p07   35.2 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10229.67it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.52it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.73it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 15.82it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s1 p08   34.9 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10097.40it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.37it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.50it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 15.55it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s1 p09   34.8 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10573.88it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.55it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.75it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 15.84it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s1 p10   35.0 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 8956.73it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.21it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.75it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 15.78it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s1 p11   34.9 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10013.03it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 13.20it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 13.02it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 16.25it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s2 p00   34.8 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 9588.92it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.45it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.75it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 15.83it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s2 p01   34.9 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10153.72it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.64it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.59it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 15.68it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s2 p02   34.9 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10414.37it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.54it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.78it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 15.87it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s2 p03   34.9 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10353.97it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.77it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.70it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 15.83it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s2 p04   34.8 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10871.68it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.81it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.86it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 16.00it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s2 p05   34.9 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10040.10it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.31it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.53it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 15.57it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s2 p06   34.9 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10238.40it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.41it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.85it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 15.92it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s2 p07   34.8 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10128.93it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.68it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.97it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 16.10it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s2 p08   34.9 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 10358.85it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.77it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.83it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 15.97it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s2 p09   34.8 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 9945.19it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 12.56it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.87it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 15.97it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s2 p10   34.9 s  3.21 GiB
+Loading pipeline components...:   0%|          | 0/5 [00:00<?, ?it/s]
+Loading weights:   0%|          | 0/372 [00:00<?, ?it/s][ALoading weights: 100%|██████████| 372/372 [00:00<00:00, 11742.12it/s]
+Loading pipeline components...:  40%|████      | 2/5 [00:00<00:00, 13.04it/s]Loading pipeline components...:  80%|████████  | 4/5 [00:00<00:00, 12.89it/s]Loading pipeline components...: 100%|██████████| 5/5 [00:00<00:00, 16.08it/s]
+There are modules in UNet2DConditionModel that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+There are modules in AutoencoderKL that should be kept in float32: []. Casting directly with `to()` can lead to inconsistent results; set `torch_dtype` in `from_pretrained()` instead to keep these modules in float32.
+turbo s2 p11   34.8 s  3.21 GiB
+cc256 s0 p00   10.1 s  5.47 GiB
+cc256 s0 p01    7.8 s  5.47 GiB
+cc256 s0 p02    7.8 s  5.47 GiB
+cc256 s0 p03    7.9 s  5.47 GiB
+cc256 s0 p04    7.9 s  5.47 GiB
+cc256 s0 p05    7.9 s  5.47 GiB
+cc256 s0 p06    7.9 s  5.47 GiB
+cc256 s0 p07    7.9 s  5.47 GiB
+cc256 s0 p08    7.9 s  5.47 GiB
+cc256 s0 p09    7.9 s  5.47 GiB
+cc256 s0 p10    7.9 s  5.47 GiB
+cc256 s0 p11    7.9 s  5.47 GiB
+cc256 s1 p00    7.9 s  5.47 GiB
+cc256 s1 p01    7.8 s  5.47 GiB
+cc256 s1 p02    7.9 s  5.47 GiB
+cc256 s1 p03    7.9 s  5.47 GiB
+cc256 s1 p04    7.8 s  5.47 GiB
+cc256 s1 p05    7.8 s  5.47 GiB
+cc256 s1 p06    7.8 s  5.47 GiB
+cc256 s1 p07    7.8 s  5.47 GiB
+cc256 s1 p08    7.8 s  5.47 GiB
+cc256 s1 p09    7.8 s  5.47 GiB
+cc256 s1 p10    7.8 s  5.47 GiB
+cc256 s1 p11    7.8 s  5.47 GiB
+cc256 s2 p00    7.8 s  5.47 GiB
+cc256 s2 p01    7.8 s  5.47 GiB
+cc256 s2 p02    7.8 s  5.47 GiB
+cc256 s2 p03    7.8 s  5.47 GiB
+cc256 s2 p04    7.7 s  5.47 GiB
+cc256 s2 p05    7.8 s  5.47 GiB
+cc256 s2 p06    7.7 s  5.47 GiB
+cc256 s2 p07    7.8 s  5.47 GiB
+cc256 s2 p08    7.7 s  5.47 GiB
+cc256 s2 p09    7.7 s  5.47 GiB
+cc256 s2 p10    7.7 s  5.47 GiB
+cc256 s2 p11    7.7 s  5.47 GiB

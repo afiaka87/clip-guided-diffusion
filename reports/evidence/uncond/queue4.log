@@ -1,0 +1,11 @@
+Traceback (most recent call last):
+  File "/home/sam/GitHub/clip-guided-diffusion/reports/evidence/uncond/run_arm.py", line 56, in <module>
+    main()
+    ~~~~^^
+  File "/home/sam/GitHub/clip-guided-diffusion/reports/evidence/uncond/run_arm.py", line 34, in main
+    th.cuda.reset_peak_memory_stats()
+    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^
+  File "/home/sam/GitHub/clip-guided-diffusion/.venv/lib/python3.13/site-packages/torch/cuda/memory.py", line 376, in reset_peak_memory_stats
+    return torch._C._cuda_resetPeakMemoryStats(device)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^
+RuntimeError: invalid argument to reset_peak_memory_stats

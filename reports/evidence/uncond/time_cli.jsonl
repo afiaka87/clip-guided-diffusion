@@ -1,0 +1,6 @@
+{"configuration": "128 default", "seconds": 6.949777700006962, "peak": 2.355757713317871, "gpu": "NVIDIA GeForce RTX 4070"}
+{"configuration": "256 default", "seconds": 9.80324609996751, "peak": 5.305808067321777, "gpu": "NVIDIA GeForce RTX 4070"}
+{"configuration": "256 -uncond -recur 1", "seconds": 15.394698699994478, "peak": 5.3072285652160645, "gpu": "NVIDIA GeForce RTX 4070"}
+{"configuration": "256 -uncond", "seconds": 21.316951800021343, "peak": 5.31097412109375, "gpu": "NVIDIA GeForce RTX 4070"}
+{"configuration": "512 -uncond -recur 1", "seconds": 34.10319440002786, "peak": 4.099207878112793, "gpu": "NVIDIA GeForce RTX 4070"}
+{"configuration": "512 -uncond", "seconds": 50.1773242999916, "peak": 4.113429546356201, "gpu": "NVIDIA GeForce RTX 4070"}
