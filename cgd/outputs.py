@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import tempfile
 import uuid
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterator, Sequence
 from pathlib import Path
 
 import torch as th
@@ -52,14 +52,10 @@ def save_frame(image: th.Tensor, path: Path) -> Path:
     return path
 
 
-def save_frames(
-    batches: Iterable[th.Tensor], output_dir: str | Path, name: str, save_frequency: int, final_step: int
-) -> Iterator[tuple[int, Path]]:
-    """Save every `save_frequency`th batch of images and the one at `final_step`, yielding (batch index, path)."""
-    for step, images in enumerate(batches):
-        if step % save_frequency == 0 or step == final_step:
-            for index, image in enumerate(images):
-                yield index, save_frame(image, frame_path(output_dir, name, step, index))
+def save_batch(images: th.Tensor, output_dir: str | Path, name: str, step: int) -> Iterator[tuple[int, Path]]:
+    """Save each image of a batch as the frame of `step`, yielding (batch index, path)."""
+    for index, image in enumerate(images):
+        yield index, save_frame(image, frame_path(output_dir, name, step, index))
 
 
 def save_gif(frames: Sequence[str | Path], output: str | Path, fps: int = DEFAULT_FPS) -> Path | None:
