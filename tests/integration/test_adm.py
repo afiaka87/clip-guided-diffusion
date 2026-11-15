@@ -10,7 +10,7 @@ import torch as th
 import torchvision.transforms.functional as tvf
 from PIL import Image
 
-from cgd import adm, sampler
+from cgd import adm, sampler, thumbnails
 from cgd.guide import load_guide, score
 
 pytestmark = pytest.mark.cuda
@@ -54,8 +54,22 @@ def test_it_draws_the_prompt_without_blowing_out(workdir: Path) -> None:
     assert prefers(path, PROMPT, OTHER_PROMPT)
 
 
-def test_an_unconditional_checkpoint_draws_the_prompt_with_clip_alone(workdir: Path) -> None:
-    (_, path), *_ = reversed(generate(workdir, unconditional=True))
+@pytest.mark.parametrize(
+    "settings",
+    [
+        {},
+        {"thumbnail": "none"},
+        {"thumbnail": "glide"},
+        {"thumbnail": "laionide"},
+        {"thumbnail": "karlo"},
+        {"perturbed_attention": True},
+    ],
+    ids=["default", "clip alone", "glide", "laionide", "karlo", "perturbed attention"],
+)
+def test_an_unconditional_checkpoint_draws_the_prompt_with_guidance_alone(
+    workdir: Path, settings: dict[str, Any]
+) -> None:
+    (_, path), *_ = reversed(generate(workdir, unconditional=True, **settings))
     assert path.name == "0059.png"  # Twice the steps, at 256.
     image = Image.open(path).convert("RGB")
     assert image.size == (256, 256)
@@ -63,6 +77,59 @@ def test_an_unconditional_checkpoint_draws_the_prompt_with_clip_alone(workdir: P
     assert ((pixels <= 1 / 255) | (pixels >= 254 / 255)).float().mean().item() < 0.25
     assert pixels.std().item() > 0.1
     assert prefers(path, PROMPT, OTHER_PROMPT)
+
+
+def test_each_thumbnail_model_and_perturbed_attention_change_the_image(workdir: Path) -> None:
+    runs: dict[str, dict[str, Any]] = {name: {"thumbnail": name} for name in (adm.NO_THUMBNAIL, *thumbnails.MODELS)}
+    runs["perturbed attention"] = {"perturbed_attention": True}
+    images = {
+        name: generate(workdir / name, unconditional=True, steps=6, **settings)[-1][1].read_bytes()
+        for name, settings in runs.items()
+    }
+    assert len(set(images.values())) == len(runs)
+    default = generate(workdir / "default", unconditional=True, steps=6)[-1][1].read_bytes()
+    assert default == images[adm.UNCONDITIONAL_DEFAULTS.thumbnail]
+
+
+@pytest.mark.parametrize("thumbnail", thumbnails.MODELS)
+def test_a_thumbnail_model_reads_every_weighted_prompt_for_each_image_of_a_batch(workdir: Path, thumbnail: str) -> None:
+    def finals(name: str, prompts: list[str]) -> list[bytes]:
+        saved = generate(
+            workdir / name, prompts=prompts, unconditional=True, thumbnail=thumbnail, steps=4, batch_size=2
+        )
+        assert [index for index, _ in saved[-2:]] == [0, 1]
+        return [path.read_bytes() for _, path in saved[-2:]]
+
+    weighted = finals("weighted", ["a red fox in the snow:2", "a blurry photo:-1"])
+    assert weighted[0] != weighted[1]
+    assert weighted != finals("alone", ["a red fox in the snow"])
+
+
+@pytest.mark.parametrize("settings", [{"width_offset": 32}, {"prompts": []}], ids=["not square", "no text prompt"])
+def test_an_unconditional_run_with_nothing_for_a_thumbnail_model_to_read_does_without_one(
+    workdir: Path, photon: Path, settings: dict[str, Any]
+) -> None:
+    run = partial(generate, unconditional=True, image_prompts=[str(photon)], steps=4, **settings)
+    assert run(workdir / "default")[-1][1].read_bytes() == run(workdir / "none", thumbnail="none")[-1][1].read_bytes()
+
+
+def test_recurrence_changes_the_image_but_not_the_frames_saved(workdir: Path) -> None:
+    once, twice = (
+        [path for _, path in generate(workdir / str(runs), image_size=64, steps=8, recurrence=runs, save_frequency=1)]
+        for runs in (1, 2)
+    )
+    assert [path.name for path in once] == [path.name for path in twice]
+    assert once[-1].read_bytes() != twice[-1].read_bytes()
+
+
+def test_only_the_unconditional_checkpoints_recur_by_default(workdir: Path) -> None:
+    def result(name: str, **settings: Any) -> bytes:
+        return generate(workdir / name, steps=6, **settings)[-1][1].read_bytes()
+
+    assert result("class", image_size=64) == result("class_once", image_size=64, recurrence=1)
+    unconditional = result("unconditional", unconditional=True)
+    assert unconditional == result("recurring", unconditional=True, recurrence=sampler.UNCONDITIONAL_RECURRENCE)
+    assert unconditional != result("once", unconditional=True, recurrence=1)
 
 
 @pytest.mark.parametrize("image_size", [256, 512])
@@ -200,12 +267,34 @@ def test_running_out_of_memory_raises_instead_of_ending_the_run_early(workdir: P
         {"aesthetic_scale": 0.2},
         {"init_scale": 1000, "skip_timesteps": 300},
         {"unconditional": True},
+        {"unconditional": True, "thumbnail": "none"},
+        {"unconditional": True, "thumbnail": "glide"},
+        {"unconditional": True, "thumbnail": "laionide"},
+        {"unconditional": True, "thumbnail": "karlo"},
+        {"unconditional": True, "perturbed_attention": True},
+        {"recurrence": 2},
     ],
-    ids=["plain", "ensemble", "fp16", "limit", "aesthetic", "lpips", "unconditional"],
+    ids=[
+        "plain",
+        "ensemble",
+        "fp16",
+        "limit",
+        "aesthetic",
+        "lpips",
+        "unconditional",
+        "clip alone",
+        "glide",
+        "laionide",
+        "karlo",
+        "perturbed attention",
+        "recurrence",
+    ],
 )
 def test_a_seed_reproduces_the_image_exactly(workdir: Path, mushroom: Path, settings: dict[str, Any]) -> None:
+    """The first run loads its thumbnail model and the second finds it loaded, which must not move the seed either."""
     if "init_scale" in settings:
         settings = settings | {"init_image": str(mushroom)}
+    thumbnails.load_model.cache_clear()
     run = partial(generate, steps=12, seed=3, **settings)
     assert run(workdir / "a")[-1][1].read_bytes() == run(workdir / "b")[-1][1].read_bytes()
 
