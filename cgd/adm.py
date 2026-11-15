@@ -30,7 +30,7 @@ from cgd.download import download, fetch
 from cgd.guide import NUM_CUTOUTS, Guide, guide_loss, load_guides, query
 from cgd.imagenet_classes import IMAGENET_CLASSES
 from cgd.outputs import run_name, save_batch
-from cgd.prompts import by_image, scenes
+from cgd.prompts import by_image, loops, scenes
 
 with warnings.catch_warnings():  # It uses a deprecated spelling of torch.amp, which is nothing to act on.
     warnings.simplefilter("ignore", FutureWarning)
@@ -187,8 +187,7 @@ def check_parameters(  # pylint: disable=too-many-locals  # Its keyword argument
         require(unconditional, "--thumbnail only applies with --unconditional.")
         require(
             all(by_image(prompts)),
-            "--thumbnail reads the text prompts, and "
-            + ("an image of the sequence has none." if prompts else "there are none."),
+            "--thumbnail reads the text prompts, and there are none.",
         )
         require(
             height == width == image_size,
@@ -319,7 +318,8 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
     A prompt that starts with > begins the next image of a sequence. Each image is the one
     its prompts make alone, with these settings and this seed. After the first, the frames
     saved are the `transition_frames` that slide to each next image, the last of them the
-    image itself. The default is TRANSITION_FRAMES.
+    image itself. The default is TRANSITION_FRAMES. A > alone at the end slides back to the
+    first image, and the frames then begin at that image instead of at noise, so they loop.
 
     `image_size`, `steps`, `recurrence`, `clip_model`, `num_cutouts` and `thumbnail` default to
     DEFAULTS, or to UNCONDITIONAL_DEFAULTS for an unconditional checkpoint. `thumbnail` is
@@ -424,6 +424,7 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
         steps=steps,
         save_frequency=save_frequency,
         transition_frames=chosen(transition_frames, TRANSITION_FRAMES),
+        loop=loops(prompts, image_prompts),
         progress=progress,
     )
     name = run_name(prompts, image_prompts)
@@ -456,6 +457,7 @@ def sampled_frames(  # pylint: disable=too-many-locals  # It takes all a run sam
     save_frequency: int,
     transition_frames: int,
     progress: bool,
+    loop: bool = False,
 ) -> Iterator[tuple[int, th.Tensor]]:
     """(step, batch of images) of each frame to save, for one image per drawing, each sampled from x down `ts`.
 
@@ -463,21 +465,35 @@ def sampled_frames(  # pylint: disable=too-many-locals  # It takes all a run sam
     and its result. Then, for each next image, the `transition_frames` that slide to it,
     see between(). `noise` is the standard normal noise x was made from, and `steps` how
     many the whole schedule takes.
+
+    With `loop`, the last frames slide back to the first image, and the first frame is
+    that image instead of the model calls that made it, so the frames go round without a cut.
     """
     device = str(x.device)
     drawn_from = random_state(device)  # Every image draws what the first does from here on.
     before, result, step = drawings[0], x, len(ts) - 2
     samples = sampler.sample(before.unet, log_alpha_bar, ts, x, before.guidance, progress=progress)
     for model_call, result in enumerate(samples):
-        if model_call % save_frequency == 0 or model_call == step:
+        if model_call == step or (model_call % save_frequency == 0 and not loop):
             yield model_call, result
+    first = result
 
-    for number, after in enumerate(drawings[1:], start=2):
-        _status(f"Image {number} of {len(drawings)}, then the {transition_frames} frames that slide to it.", progress)
-        with replayed_rng(device, drawn_from):
-            following = sampler.final(
-                sampler.sample(after.unet, log_alpha_bar, ts, x, after.guidance, progress=progress)
+    def later_images() -> Iterator[tuple[Drawing, th.Tensor]]:
+        """What draws each image after the first, and the image. A loop ends on the first again, as it was made."""
+        for number, drawing in enumerate(drawings[1:], start=2):
+            _status(
+                f"Image {number} of {len(drawings)}, then the {transition_frames} frames that slide to it.", progress
             )
+            with replayed_rng(device, drawn_from):
+                image = sampler.final(
+                    sampler.sample(drawing.unet, log_alpha_bar, ts, x, drawing.guidance, progress=progress)
+                )
+            yield drawing, image
+        if loop:
+            _status(f"The {transition_frames} frames that slide back to the first image.", progress)
+            yield drawings[0], first
+
+    for after, following in later_images():
         ends = result.clamp(-1, 1), following.clamp(-1, 1)
         draw = partial(between, (before.plain, after.plain), log_alpha_bar, noise, ends, steps=steps)
         for frame in slide.place(draw, ends, transition_frames, progress):
