@@ -50,7 +50,7 @@ Every GIF in this README is its command's real output, with the default seed. Th
 - Join several images with `|>`, as in `"A castle|>A red fox"`, and the animation slides from each to the next, see [Sequences](#sequences).
 - `./outputs` will contain intermediate outputs, every 10 steps by default. Change this with `--save-frequency` / `-freq`.
 - `current.png` will contain the current generation.
-- The same `--seed` and arguments reproduce the image byte for byte on the same machine and library versions.
+- The same `--seed` and arguments reproduce the image byte for byte on the same machine and library versions. Another version of PyTorch makes another image, and the GIFs here were made with PyTorch 2.9.1.
 - Use `--gif` / `-gif` to save a high-quality GIF of every step, at 10 frames a second, and delete the frames. The frames of the batch's first image are in `outputs/<prompt>/00/`, and its GIF is `outputs/<prompt>/00.gif`.
 - Use `--mp4` / `-mp4` to save a high-quality MP4 of every step the same way, as `outputs/<prompt>/00.mp4`.
 - The classic pipeline's animation shows its estimate of the finished image at each step, so it runs from a blur to the image. A backbone's shows each step of CLIP reshaping an image that is finished from the first frame, and ends on the image from the full decoder.
@@ -786,9 +786,9 @@ uv sync
 
 ```sh
 uv run pytest tests/unit  # Seconds, on the CPU.
-uv run pytest             # Everything.
+uv run pytest             # Everything, in about three and a half minutes on an RTX 4070.
 ```
 
 - `tests/unit` checks the pure parts on small inputs: the sampler on data whose exact answer is known, the cutouts, losses, the noise optimisation, tiling, prompts and the command line.
-- `tests/integration` runs the real models on a GPU, and skips without one. Give them a free one: they fail with a genuine out of memory error if another process holds the VRAM.
+- `tests/integration` runs the real models on a GPU for a few steps each, and skips without one. Give them a free one: they fail with a genuine out of memory error if another process holds the VRAM.
 - `uv run ruff check`, `uv run ruff format --check` and `uv run pylint cgd tests` should all pass.
