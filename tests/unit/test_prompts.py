@@ -2,7 +2,7 @@
 
 import pytest
 
-from cgd.prompts import Scene, by_image, parse_prompt, scenes, split_prompts
+from cgd.prompts import Scene, by_image, loops, parse_prompt, scenes, split_prompts
 
 
 @pytest.mark.parametrize(
@@ -70,3 +70,26 @@ def test_prompts_that_are_not_a_sequence_go_with_every_image() -> None:
         Scene(("oil painting",), ("fox.png",)),
     )
     assert scenes(["a fox"]) == (Scene(("a fox",), ()),)
+
+
+@pytest.mark.parametrize(
+    ("prompts", "image_prompts", "expected"),
+    [
+        (("a castle", ">a fox", ">"), (), True),
+        (("a castle", ">a fox", "> "), (), True),
+        (("a fox",), ("castle.png", ">fox.png", ">"), True),
+        (("a castle", ">a fox"), (), False),
+        (("a castle", ">", ">a fox"), (), False),
+        ((), (), False),
+    ],
+)
+def test_the_mark_alone_at_the_end_goes_back_to_the_first_image(
+    prompts: tuple[str, ...], image_prompts: tuple[str, ...], expected: bool
+) -> None:
+    assert loops(prompts, image_prompts) is expected
+
+
+def test_the_mark_that_ends_a_loop_is_no_image_of_its_own() -> None:
+    prompts = split_prompts("a castle|>a fox|>")
+    assert loops(prompts)
+    assert by_image(prompts) == (("a castle",), ("a fox",))
