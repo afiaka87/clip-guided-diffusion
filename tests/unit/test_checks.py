@@ -77,6 +77,8 @@ class TestAdmParameters:
             (["a"], {"init_scale": 1000}, "need an --init-image"),
             (["a"], {"transition_frames": 12}, "--transition-frames needs a sequence"),
             (["a", ">b"], {"transition_frames": 0}, "--transition-frames must be at least 1"),
+            (["a", ">"], {}, "slides back to the first image, which takes another image to come back from"),
+            ([">"], {}, "slides back to the first image"),
         ],
     )
     def test_a_bad_one_is_explained(self, prompts: list[str], overrides: dict[str, Any], message: str) -> None:
@@ -89,6 +91,7 @@ class TestAdmParameters:
 
     def test_a_sequence_passes_with_image_prompts_for_every_image_or_for_each(self, photon: Path, goose: Path) -> None:
         adm.check_parameters(["a castle", ">a fox"], [], **ADM_SETTINGS | {"transition_frames": 12})
+        adm.check_parameters(["a castle", ">a fox", ">"], [], **ADM_SETTINGS)
         adm.check_parameters(["a castle", ">a fox"], [str(photon)], **ADM_SETTINGS)
         adm.check_parameters(["a castle", ">a fox"], [str(photon), f">{goose}"], **ADM_SETTINGS)
         adm.check_parameters(["a photograph"], [str(photon), f">{goose}"], **ADM_SETTINGS)
@@ -112,7 +115,6 @@ class TestAdmParameters:
             (["a"], {"width": 288}, "--thumbnail needs a square image: its models read 64x64 thumbnails"),
             (["a"], {"height": 224}, "--thumbnail needs a square image"),
             ([], {}, "--thumbnail reads the text prompts, and there are none"),
-            ([">"], {}, "--thumbnail reads the text prompts, and an image of the sequence has none"),
         ],
     )
     def test_a_thumbnail_model_with_nothing_to_read_is_explained(
