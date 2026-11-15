@@ -38,7 +38,8 @@ denoiser predicts the noise in its input.
 """
 
 import math
-from collections.abc import Callable, Iterator, Sequence
+from collections import deque
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from typing import NamedTuple
 
 import numpy as np
@@ -305,9 +306,43 @@ def recurring_step(
     """
     for run in range(runs):
         prediction = predict(denoise, x, t, step[0], guidance)
+        noise = th.randn_like(x) if eta > 0 else th.zeros_like(x)  # An ODE step draws no random numbers.
         x_next = dpm_solver_step(
-            x, prediction.x0, prediction.guided_x0, None if run else previous, step, noise=th.randn_like(x), eta=eta
+            x, prediction.x0, prediction.guided_x0, None if run else previous, step, noise=noise, eta=eta
         )
         if run < runs - 1:
             x = renoised(x_next, step, th.randn_like(x))
     return prediction, x_next
+
+
+def final(samples: Iterable[th.Tensor]) -> th.Tensor:
+    """The last image sample() yields, which is its result."""
+    return deque(samples, maxlen=1).pop()
+
+
+def blend(first: Denoiser, second: Denoiser, share: float, x: th.Tensor, t: th.Tensor) -> th.Tensor:
+    """The noise in x, `share` of the way from what `first` predicts to what `second` does.
+
+    This is how to draw something between two classes: either prediction is of a real
+    label, where an average of their embeddings is not, see the top of this file.
+    """
+    if share <= 0 or first is second:
+        return first(x, t)
+    if share >= 1:
+        return second(x, t)
+    return th.lerp(first(x, t), second(x, t), share)
+
+
+def redraw(
+    denoise: Denoiser, log_alpha_bar: np.ndarray, image: th.Tensor, noise: th.Tensor, *, t: float, steps: int
+) -> th.Tensor:
+    """`image` as the denoiser draws it again: noised to timestep t with `noise`, and denoised from there.
+
+    `steps` is how many the whole schedule would take, so this takes the share of them
+    below t. Without guidance or fresh noise it is a smooth function of the image, t and
+    the denoiser. The higher t, the more of the result is the denoiser's own.
+    """
+    ts = timesteps(log_alpha_bar, steps, t)
+    return final(
+        sample(denoise, log_alpha_bar, ts, noised(log_alpha_bar, ts[0], image, noise), eta=0.0, progress=False)
+    )
