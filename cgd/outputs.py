@@ -36,7 +36,8 @@ VIDEO_ARGS = (
 def run_name(prompts: Sequence[str], image_prompts: Sequence[str] = ()) -> str:
     """The folder a run's images go in: its text prompts, or else its image prompts' file names."""
     names = list(prompts) or [Path(parse_prompt(image)[0]).stem for image in image_prompts]
-    return "_".join(re.sub(r"[^\w\s]", "", name).replace(" ", "_") for name in names)[:MAX_NAME_LENGTH]
+    cleaned = (re.sub(r"[^\w\s]", "", name).replace(" ", "_") for name in names)
+    return "_".join(name for name in cleaned if name)[:MAX_NAME_LENGTH]  # The > that ends a loop has no name.
 
 
 def frame_path(output_dir: str | Path, name: str, step: int, batch_index: int) -> Path:
