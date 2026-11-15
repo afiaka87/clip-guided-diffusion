@@ -2,7 +2,7 @@
 
 import pytest
 
-from cgd.prompts import parse_prompt, split_prompts
+from cgd.prompts import Scene, by_image, parse_prompt, scenes, split_prompts
 
 
 @pytest.mark.parametrize(
@@ -28,3 +28,45 @@ def test_parse_prompt(prompt: str, expected: tuple[str, float]) -> None:
 )
 def test_split_prompts_leaves_out_empty_ones(prompts: str, expected: tuple[str, ...]) -> None:
     assert split_prompts(prompts) == expected
+
+
+@pytest.mark.parametrize(
+    ("prompts", "expected"),
+    [
+        ((), ((),)),
+        (("a fox", "blurry:-1"), (("a fox", "blurry:-1"),)),
+        (("a castle", ">a fox", "snow:0.5", "> a sailboat"), (("a castle",), ("a fox", "snow:0.5"), ("a sailboat",))),
+        ((">a castle", ">", ">a fox"), (("a castle",), ("a fox",))),
+    ],
+)
+def test_a_prompt_that_starts_with_the_mark_begins_the_next_image(
+    prompts: tuple[str, ...], expected: tuple[tuple[str, ...], ...]
+) -> None:
+    assert by_image(prompts) == expected
+
+
+def test_on_the_command_line_the_next_image_follows_a_bar_and_the_mark() -> None:
+    assert by_image(split_prompts("a castle|sunset:0.5|>a fox:2|>a sailboat")) == (
+        ("a castle", "sunset:0.5"),
+        ("a fox:2",),
+        ("a sailboat",),
+    )
+
+
+def test_each_image_of_a_sequence_has_the_prompts_at_its_place() -> None:
+    assert scenes(["a castle", ">a fox"], ["castle.png", ">fox.png"]) == (
+        Scene(("a castle",), ("castle.png",)),
+        Scene(("a fox",), ("fox.png",)),
+    )
+
+
+def test_prompts_that_are_not_a_sequence_go_with_every_image() -> None:
+    assert scenes(["a castle", ">a fox"], ["style.png:0.5"]) == (
+        Scene(("a castle",), ("style.png:0.5",)),
+        Scene(("a fox",), ("style.png:0.5",)),
+    )
+    assert scenes(["oil painting"], ["castle.png", ">fox.png"]) == (
+        Scene(("oil painting",), ("castle.png",)),
+        Scene(("oil painting",), ("fox.png",)),
+    )
+    assert scenes(["a fox"]) == (Scene(("a fox",), ()),)
