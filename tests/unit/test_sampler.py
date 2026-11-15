@@ -51,6 +51,11 @@ def towards_half(_x: th.Tensor, x0: th.Tensor, _sigma: float) -> th.Tensor:
     return (x0 - 0.5).square().sum()
 
 
+def nowhere(_x: th.Tensor, x0: th.Tensor, _sigma: float) -> th.Tensor:
+    """A guidance loss with no gradient, so guided steps run but nothing pulls them."""
+    return (x0 * 0).sum()
+
+
 class TestSchedule:
     @pytest.mark.parametrize("t", [0, 137, 999])
     def test_level_matches_the_table_at_integer_timesteps(self, log_alpha_bar: np.ndarray, t: int) -> None:
@@ -245,3 +250,82 @@ class TestSample:
             return list(sampler.sample(gaussian_denoiser(log_alpha_bar), log_alpha_bar, ts, x, progress=False))[-1]
 
         assert th.equal(draw(), draw())
+
+
+class TestRecurrence:
+    STEP = Level(0.6, 0.8), Level(0.8, 0.6)
+    UNCONDITIONAL = Guidance(towards_half, window=sampler.UNCONDITIONAL_GUIDANCE_WINDOW, recurrence=2)
+
+    def test_renoised_shrinks_the_signal_back_to_the_first_level(self) -> None:
+        (now, then), x0 = self.STEP, th.rand(1, 3, 8, 8, dtype=th.float64)
+        assert th.allclose(sampler.renoised(then.alpha * x0, self.STEP, th.zeros_like(x0)), now.alpha * x0)
+
+    def test_renoised_makes_up_exactly_the_first_levels_noise(self) -> None:
+        """The noise x kept from the lower level and the fresh noise together have the first level's spread."""
+        th.manual_seed(0)
+        (now, then), (eps, noise) = self.STEP, th.randn(2, 1, 512, 512, dtype=th.float64)
+        assert sampler.renoised(then.sigma * eps, self.STEP, noise).std().item() == pytest.approx(now.sigma, rel=0.01)
+
+    @pytest.mark.parametrize(
+        ("guidance", "t", "expected"),
+        [
+            (UNCONDITIONAL, 999, 2),
+            (UNCONDITIONAL, sampler.RECUR_ABOVE * 999, 2),
+            (UNCONDITIONAL, sampler.RECUR_ABOVE * 999 - 1, 1),
+            (Guidance(towards_half, window=(0.1, 0.5), recurrence=2), 600, 1),
+            (Guidance(towards_half, rate=0.0, recurrence=2), 500, 1),
+            (None, 500, 1),
+        ],
+    )
+    def test_only_guided_steps_above_recur_above_rerun(
+        self, guidance: Guidance | None, t: float, expected: int
+    ) -> None:
+        assert sampler.recurrences(guidance, t, 999) == expected
+
+    def test_a_step_that_recurs_calls_the_model_once_per_run_and_yields_once(self, log_alpha_bar: np.ndarray) -> None:
+        exact, calls = gaussian_denoiser(log_alpha_bar), []
+
+        def denoise(x: th.Tensor, t: th.Tensor) -> th.Tensor:
+            calls.append(float(t[0]))
+            return exact(x, t)
+
+        ts = sampler.timesteps(log_alpha_bar, 12)
+        guidance = self.UNCONDITIONAL._replace(recurrence=3)
+        recurring = [t for t in ts[:-2] if sampler.recurrences(guidance, t, 999) == 3]
+        images = list(sampler.sample(denoise, log_alpha_bar, ts, th.randn(1, 3, 8, 8), guidance, progress=False))
+        assert len(images) == 12
+        assert 0 < len(recurring) < 11
+        expected = [t for t in ts[:-1] for _ in range(3 if t in recurring else 1)]
+        assert calls == pytest.approx(expected, rel=1e-6)  # The model gets float32 timesteps.
+
+    def test_reruns_keep_the_spread_of_the_data(self, log_alpha_bar: np.ndarray) -> None:
+        """Taking x back up a level is the forward process, so with nothing pulling, reruns change no statistics."""
+        th.manual_seed(0)
+        ts = sampler.timesteps(log_alpha_bar, 30)
+        guidance = Guidance(nowhere, window=sampler.UNCONDITIONAL_GUIDANCE_WINDOW, recurrence=3, recur_above=0.0)
+        x = th.randn(1, 3, 128, 128)
+        result = list(sampler.sample(gaussian_denoiser(log_alpha_bar), log_alpha_bar, ts, x, guidance, progress=False))
+        assert result[-1].std().item() == pytest.approx(SPREAD, rel=0.03)
+        assert abs(result[-1].mean().item()) < 0.01
+
+    @pytest.mark.parametrize("i", [2, 10, 20])
+    def test_each_run_gives_guidance_another_say(self, log_alpha_bar: np.ndarray, i: int) -> None:
+        """A rerun starts from where the last run's guidance took x, and guides it again.
+
+        The pull is the guided step's mean less the unguided one's from the same noise. The
+        denoiser is linear here, so that difference is guidance's effect alone.
+        """
+        ts = sampler.timesteps(log_alpha_bar, 30)
+        step = sampler.level(log_alpha_bar, ts[i]), sampler.level(log_alpha_bar, ts[i + 1])
+
+        def pull(runs: int) -> float:
+            means = []
+            for loss in (towards_half, nowhere):
+                th.manual_seed(0)
+                x = th.randn(1, 3, 128, 128) * marginal_std(step[0])
+                denoise = gaussian_denoiser(log_alpha_bar)
+                _, x_next = sampler.recurring_step(denoise, x, ts[i], step, Guidance(loss), previous=None, runs=runs)
+                means.append(x_next.mean().item())
+            return means[0] - means[1]
+
+        assert 0 < pull(1) < pull(2) < pull(3)
