@@ -8,7 +8,16 @@ import torch as th
 
 from cgd import adm, backbone
 from cgd.checks import ConfigError
-from cgd.cli import build_parser, collect, is_out_of_memory, main, out_of_memory_advice, pipeline
+from cgd.cli import (
+    build_parser,
+    collect,
+    is_out_of_memory,
+    is_sequence,
+    main,
+    out_of_memory_advice,
+    pipeline,
+    watched,
+)
 
 
 def parse(*argv: str) -> argparse.Namespace:
@@ -94,6 +103,13 @@ class TestPipeline:
         assert pipeline(parse("a fox", "-gif"))[1]["save_frequency"] == 1
         assert pipeline(parse("a fox", "-mp4", "-freq", "3"))[1]["save_frequency"] == 3
 
+    @pytest.mark.parametrize("backbone_argv", [(), ("-bb", "sd-turbo"), ("-uncond",)])
+    def test_every_pipeline_gets_the_transition_frames_asked_for_and_otherwise_picks_its_own(
+        self, backbone_argv: tuple[str, ...]
+    ) -> None:
+        assert "transition_frames" not in pipeline(parse("a castle|>a fox", *backbone_argv))[1]
+        assert pipeline(parse("a castle|>a fox", "-frames", "12", *backbone_argv))[1]["transition_frames"] == 12
+
     @pytest.mark.parametrize(
         ("argv", "message"),
         [
@@ -128,6 +144,8 @@ class TestPipeline:
             "-fp16",
             "-cutn",
             "4",
+            "-frames",
+            "12",
             "-uncond",
             "-recur",
             "3",
@@ -145,12 +163,39 @@ class TestPipeline:
             "--clip-model=RN50",
             "--clip-fp16",
             "--num-cutouts=4",
+            "--transition-frames=12",
             "--unconditional",
             "--recurrence=3",
             "--thumbnail=karlo",
             "--perturbed-attention",
         )
         assert short == long
+
+
+class TestSequence:
+    @pytest.mark.parametrize(
+        ("argv", "expected"),
+        [
+            (("a castle|>a fox",), True),
+            (("a castle|a fox",), False),
+            (("a fox", "-imgs", "castle.png|>fox.png"), True),
+            (("",), False),
+        ],
+    )
+    def test_a_sequence_is_several_images_of_text_or_of_image_prompts(
+        self, argv: tuple[str, ...], expected: bool
+    ) -> None:
+        assert is_sequence(parse(*argv)) is expected
+
+    def test_a_sequence_is_made_into_a_gif_unless_it_asks_for_a_video(self) -> None:
+        assert watched(parse("a castle|>a fox")).gif is True
+        assert watched(parse("a castle|>a fox", "-mp4")).gif is False
+        assert watched(parse("a castle|>a fox", "-mp4", "-gif")).gif is True
+        assert watched(parse("a fox")).gif is False
+
+    def test_so_it_saves_every_frame_of_its_first_image(self) -> None:
+        assert pipeline(watched(parse("a castle|>a fox")))[1]["save_frequency"] == 1
+        assert pipeline(watched(parse("a castle|>a fox", "-freq", "3")))[1]["save_frequency"] == 3
 
 
 def test_collect_groups_each_images_frames_in_order() -> None:
@@ -178,6 +223,10 @@ def test_collect_groups_each_images_frames_in_order() -> None:
         (("a fox", "-dev", "gpu"), "Unknown device"),
         (("a fox", "-bb", "sd-turbo", "-size", "100"), "multiples of 8"),
         (("a fox", "-bb", "sd-turbo", "-skip", "10"), "--skip-timesteps only applies without --backbone"),
+        (("a castle|>a fox", "-best", "2"), "--candidates keeps the best of several images"),
+        (("a fox", "-frames", "12"), "--transition-frames needs a sequence"),
+        (("a fox", "-bb", "sd-turbo", "-frames", "12"), "--transition-frames needs a sequence"),
+        (("a castle|>a fox", "-frames", "0"), "--transition-frames must be at least 1"),
     ],
 )
 def test_a_bad_run_exits_with_its_reason_and_no_traceback(
