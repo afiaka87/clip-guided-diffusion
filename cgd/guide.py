@@ -11,9 +11,10 @@ from torch.nn import functional as tf
 from cgd.checks import require
 from cgd.clip_models import encode_image, encode_texts, ensemble_members, load_clip, preprocess
 from cgd.cutouts import adaptive_avg_pool, make_cutouts
+from cgd.device import forked_rng
 from cgd.download import download_verified
 from cgd.losses import spherical_dist_loss, with_gradient
-from cgd.prompts import parse_prompt
+from cgd.prompts import Scene, parse_prompt
 
 # A linear head on ViT-B/32 fit to human ratings of AI art (Simulacra Aesthetic Models, MIT).
 AESTHETIC_MODEL = "ViT-B/32"
@@ -69,32 +70,77 @@ def load_guide(
     `image_size` is the size of the image being made, which sets the detail image prompts
     are seen at. Encoding them takes random cutouts, so this draws random numbers.
     """
-    aesthetic = load_aesthetic(aesthetic_scale, device, fp16) if aesthetic_scale else None
-    towers = tuple(
-        load_tower(
-            member, prompts, image_prompts, image_size=image_size, num_cutouts=num_cutouts, device=device, fp16=fp16
-        )
-        for member in ensemble_members(model_name)
-    )
-    return Guide(towers, num_cutouts, min_cut_fraction, aesthetic)
+    return load_guides(
+        model_name,
+        [Scene(tuple(prompts), tuple(image_prompts))],
+        image_size=image_size,
+        num_cutouts=num_cutouts,
+        device=device,
+        fp16=fp16,
+        min_cut_fraction=min_cut_fraction,
+        aesthetic_scale=aesthetic_scale,
+    )[0]
 
 
-def load_tower(
+def load_guides(
     model_name: str,
-    prompts: Sequence[str],
-    image_prompts: Sequence[str],
+    images: Sequence[Scene],
+    *,
+    image_size: int = 128,
+    num_cutouts: int = NUM_CUTOUTS,
+    device: str = "cpu",
+    fp16: bool = False,
+    min_cut_fraction: float = MIN_CUT_FRACTION,
+    aesthetic_scale: float = 0.0,
+) -> tuple[Guide, ...]:
+    """A guide for each image of a sequence, as load_guide() makes one. They share the models, loaded once."""
+    aesthetic = load_aesthetic(aesthetic_scale, device, fp16) if aesthetic_scale else None
+    members = [
+        load_towers(member, images, image_size=image_size, num_cutouts=num_cutouts, device=device, fp16=fp16)
+        for member in ensemble_members(model_name)
+    ]
+    return tuple(Guide(towers, num_cutouts, min_cut_fraction, aesthetic) for towers in zip(*members, strict=True))
+
+
+def load_towers(
+    model_name: str, images: Sequence[Scene], *, image_size: int, num_cutouts: int, device: str, fp16: bool
+) -> list[Tower]:
+    """One model, as the tower of each image of a sequence: the image's prompts, encoded by it."""
+    model, size = load_clip(model_name, device, fp16)
+    encode = partial(
+        encode_prompts,
+        model,
+        size,
+        model_name,
+        image_size=image_size,
+        num_cutouts=num_cutouts,
+        device=device,
+        fp16=fp16,
+    )
+    first = encode(images[0])
+    # An image prompt's cutouts are random, and those of later images must not move the noise the seed starts from.
+    with forked_rng(device):
+        return [first, *map(encode, images[1:])]
+
+
+def encode_prompts(
+    model: nn.Module,
+    size: int,
+    model_name: str,
+    image: Scene,
     *,
     image_size: int,
     num_cutouts: int,
     device: str,
     fp16: bool,
 ) -> Tower:
-    """One model, with the prompts encoded by it. Each image prompt's weight is shared by its cutouts."""
-    model, size = load_clip(model_name, device, fp16)
-    encoded = [(encode_texts([text], model_name, device, fp16), weight) for text, weight in map(parse_prompt, prompts)]
+    """The tower of one image: its prompts, encoded by `model`. Each image prompt's weight is shared by its cutouts."""
+    encoded = [
+        (encode_texts([text], model_name, device, fp16), weight) for text, weight in map(parse_prompt, image.prompts)
+    ]
     encoded += [
         (encode_image(path, model_name, device, fp16, image_size=image_size, num_cutouts=num_cutouts), weight)
-        for path, weight in map(parse_prompt, image_prompts)
+        for path, weight in map(parse_prompt, image.image_prompts)
     ]
     weights = th.tensor([weight / len(targets) for targets, weight in encoded for _ in targets], device=device)
     total = weights.sum().abs()
