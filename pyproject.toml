@@ -35,6 +35,7 @@ dependencies = [
     "requests",
     "lpips",
     "guided-diffusion @ git+https://github.com/crowsonkb/guided-diffusion.git",
+    "glide-text2im @ git+https://github.com/openai/glide-text2im.git",
     "open-clip-torch>=3.3.0",
     "transformers>=5.20.2",
     "sentencepiece>=0.2.2",
@@ -52,6 +53,15 @@ cgd = "cgd.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/afiaka87/clip-guided-diffusion"
+
+[tool.uv.sources]  # PyPI's Windows wheels of torch are CPU-only; its Linux ones already bundle CUDA.
+torch = { index = "pytorch-cu128", marker = "sys_platform == 'win32'" }
+torchvision = { index = "pytorch-cu128", marker = "sys_platform == 'win32'" }
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
 
 [tool.hatch.metadata]
 allow-direct-references = true
