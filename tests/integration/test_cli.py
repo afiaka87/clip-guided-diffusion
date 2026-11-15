@@ -140,6 +140,20 @@ class TestOutputs:
         assert (workdir / "outputs/Loose_seal/00.mp4").stat().st_size > 0
         assert not (workdir / "outputs/Loose_seal/00").exists()
 
+    @pytest.mark.parametrize(
+        "argv",
+        [(), ("-thumb", "none"), ("-thumb", "glide"), ("-thumb", "laionide"), ("-thumb", "karlo"), ("-pag",)],
+        ids=["default", "clip alone", "glide", "laionide", "karlo", "perturbed attention"],
+    )
+    def test_every_way_to_draw_without_a_class_becomes_a_gif_and_a_video(
+        self, workdir: Path, argv: tuple[str, ...], capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        run(PROMPT, "-uncond", "-n", "4", "-q", *argv, "-gif", "-mp4", capsys=capsys)
+        for animation in (workdir / "outputs/Loose_seal/00.gif", workdir / "outputs/Loose_seal/00.mp4"):
+            count = subprocess.run([*COUNT_FRAMES.split(), str(animation)], capture_output=True, text=True, check=True)
+            assert count.stdout.strip() == "4"
+        assert not (workdir / "outputs/Loose_seal/00").exists()
+
     def test_the_frames_survive_without_ffmpeg(
         self, workdir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
