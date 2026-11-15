@@ -69,7 +69,7 @@ def generate(
     steps: int = sampler.UNCONDITIONAL_STEPS,
     recurrence: int = sampler.UNCONDITIONAL_RECURRENCE,
     guidance_rate: float = sampler.DEFAULT_GUIDANCE_RATE,
-    clip_model: str = adm.DEFAULT_CLIP_MODEL,
+    clip_model: str = adm.DEFAULTS.clip_model,
     num_cutouts: int = NUM_CUTOUTS,
     seed: int = 0,
     output_dir: str | Path = "outputs",
