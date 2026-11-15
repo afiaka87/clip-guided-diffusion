@@ -1,6 +1,7 @@
 """CLIP guidance of the ImageNet diffusion models, end to end on the GPU."""
 
 import math
+from collections.abc import Callable, Sequence
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -313,3 +314,44 @@ def test_loading_a_thumbnail_model_draws_none_of_the_runs_random_numbers(name: s
 def test_a_different_seed_changes_the_image(workdir: Path) -> None:
     first, second = (generate(workdir / str(seed), image_size=64, steps=6, seed=seed)[-1][1] for seed in (3, 4))
     assert first.read_bytes() != second.read_bytes()
+
+
+class TestSequence:
+    SEQUENCE = (PROMPT, f">{OTHER_PROMPT}")
+
+    def test_each_image_is_the_one_its_prompt_makes_alone_and_the_frames_between_change_step_by_step(
+        self, workdir: Path, changes: Callable[[Sequence[Path]], list[float]]
+    ) -> None:
+        saved = [path for _, path in generate(workdir / "sequence", prompts=self.SEQUENCE, transition_frames=24)]
+        assert [path.name for path in saved] == ["0000.png", *(f"{step:04}.png" for step in range(29, 54))]
+        for place, prompt in ((1, PROMPT), (-1, OTHER_PROMPT)):
+            alone = generate(workdir / str(place), prompts=[prompt])[-1][1]
+            assert saved[place].read_bytes() == alone.read_bytes()
+        # 0.13 against 0.56 when measured.
+        assert max(changes(saved[1:])) < 0.5 * changes([saved[1], saved[-1]])[0]
+        assert prefers(saved[1], PROMPT, OTHER_PROMPT)
+        assert prefers(saved[-1], OTHER_PROMPT, PROMPT)
+
+    def test_a_seed_reproduces_every_frame(self, workdir: Path) -> None:
+        settings = {"prompts": self.SEQUENCE, "steps": 8, "transition_frames": 6, "seed": 3}
+        first, second = ([path for _, path in generate(workdir / run, **settings)] for run in ("a", "b"))
+        assert len(first) == 8
+        assert all(a.read_bytes() == b.read_bytes() for a, b in zip(first, second, strict=True))
+
+    def test_an_unconditional_checkpoint_slides_between_images_made_with_thumbnail_guidance(
+        self, workdir: Path
+    ) -> None:
+        settings = {"unconditional": True, "steps": 4}
+        saved = [
+            path for _, path in generate(workdir / "sequence", prompts=self.SEQUENCE, transition_frames=3, **settings)
+        ]
+        assert len(saved) == 5
+        second = generate(workdir / "second", prompts=[OTHER_PROMPT], **settings)[-1][1]
+        assert saved[-1].read_bytes() == second.read_bytes()
+        assert saved[-2].read_bytes() != second.read_bytes()
+
+    def test_a_batch_of_image_prompts_slides_each_of_its_images(self, workdir: Path, photon: Path, goose: Path) -> None:
+        settings = {"prompts": [], "image_prompts": [str(photon), f">{goose}"], "batch_size": 2, "steps": 4}
+        saved = generate(workdir, transition_frames=3, **settings)
+        assert [index for index, _ in saved] == [0, 1] * 5
+        assert len({path.read_bytes() for _, path in saved}) == 10
