@@ -427,8 +427,11 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
         progress=progress,
     )
     name = run_name(prompts, image_prompts)
-    for step, batch in frames:
-        yield from save_batch(batch, output_dir, name, step)
+    # The backward pass of the U-Net's convolutions is nondeterministic at 128 and 256 unless cuDNN is told
+    # otherwise, since PyTorch 2.15, which makes a seed produce a different image every run. It is no slower.
+    with th.backends.cudnn.flags(enabled=True, deterministic=True):
+        for step, batch in frames:
+            yield from save_batch(batch, output_dir, name, step)
 
 
 def class_denoisers(model: nn.Module, labels: Sequence[th.Tensor | None]) -> list[sampler.Denoiser]:
