@@ -8,7 +8,7 @@ from typing import Any
 import torchvision.transforms.functional as tvf
 from PIL import Image
 
-from cgd import adm, backbone, sampler, upscale
+from cgd import adm, backbone, sampler, thumbnails, upscale
 from cgd.checks import ConfigError
 from cgd.clip_models import MODEL_NAMES, OPEN_CLIP_MODELS, ensemble_members
 from cgd.device import default_device
@@ -24,8 +24,11 @@ JUDGE_MODELS = (
 ADM_OPTIONS = {
     "unconditional": "--unconditional",
     "steps": "--steps",
+    "recurrence": "--recurrence",
     "guidance_rate": "--guidance-rate",
     "guidance_limit": "--guidance-limit",
+    "thumbnail": "--thumbnail",
+    "perturbed_attention": "--perturbed-attention",
     "init_image": "--init-image",
     "skip_timesteps": "--skip-timesteps",
     "init_scale": "--init-scale",
@@ -50,6 +53,8 @@ Frames = dict[int, list[Path]]
 Run = Callable[[int, Path], Iterator[tuple[int, Path]]]
 """(seed, output folder) -> (batch index, path) of each image the run saves."""
 
+UNCONDITIONAL = adm.UNCONDITIONAL_DEFAULTS
+
 
 def build_parser() -> argparse.ArgumentParser:
     """The command's options."""
@@ -70,8 +75,8 @@ def build_parser() -> argparse.ArgumentParser:
         "-size",
         "--image-size",
         type=int,
-        help=f"Image size. 64, 128, 256 or 512, default {adm.DEFAULT_IMAGE_SIZE}. With --unconditional, 256 or 512, "
-        f"default {adm.DEFAULT_UNCONDITIONAL_SIZE}. With --backbone, any multiple of {backbone.LATENT_FACTOR}, "
+        help=f"Image size. 64, 128, 256 or 512, default {adm.DEFAULTS.image_size}. With --unconditional, 256 or 512, "
+        f"default {UNCONDITIONAL.image_size}. With --backbone, any multiple of {backbone.LATENT_FACTOR}, "
         "defaulting to what the model was trained for.",
     )
     parser.add_argument(
@@ -86,8 +91,8 @@ def build_parser() -> argparse.ArgumentParser:
         "-clip",
         "--clip-model",
         help=f"CLIP model to guide with, one of {', '.join(MODEL_NAMES)}, or a checkpoint file. Join several with + "
-        f"to guide with all of them. Default {adm.DEFAULT_CLIP_MODEL}, or {backbone.DEFAULT_CLIP_MODEL} with "
-        "--backbone. The README has what each costs.",
+        f"to guide with all of them. Default {adm.DEFAULTS.clip_model}, or {UNCONDITIONAL.clip_model} with "
+        "--unconditional or --backbone. The README has what each costs.",
     )
     parser.add_argument(
         "-fp16",
@@ -100,9 +105,8 @@ def build_parser() -> argparse.ArgumentParser:
         "-cutn",
         "--num-cutouts",
         type=int,
-        default=NUM_CUTOUTS,
         help="Random cutouts of the image CLIP sees each step. Fewer is faster and needs less VRAM. "
-        "Default %(default)s.",
+        f"Default {NUM_CUTOUTS}, or {UNCONDITIONAL.num_cutouts} with --unconditional.",
     )
     parser.add_argument(
         "-aes",
@@ -129,14 +133,45 @@ def build_parser() -> argparse.ArgumentParser:
         "--unconditional",
         action="store_true",
         default=None,
-        help="Draw with an unconditional checkpoint, at 256 or 512. Less reliable than the default, because "
-        "without an ImageNet class nothing but CLIP brings the subject.",
+        help="Draw with an unconditional checkpoint, at 256 or 512, with the settings that made its best images "
+        f"for the time they take: -clip {UNCONDITIONAL.clip_model} -cutn {UNCONDITIONAL.num_cutouts} "
+        f"-n {UNCONDITIONAL.steps} -recur {UNCONDITIONAL.recurrence} -thumb {UNCONDITIONAL.thumbnail}. "
+        "Each of those options overrides its setting. Less reliable than the default, because without an "
+        "ImageNet class only guidance brings the subject.",
+    )
+    imagenet.add_argument(
+        "-thumb",
+        "--thumbnail",
+        choices=(*thumbnails.MODELS, adm.NO_THUMBNAIL),
+        help="With --unconditional, a model that reads the noisy image as a 64x64 thumbnail and sets the "
+        "composition from the text prompts. clip is OpenAI's CLIP of noisy images, glide and laionide are "
+        "64x64 text-to-image models, and karlo is one that makes the best images here, for the most VRAM. "
+        f"none leaves the composition to CLIP alone. Default {UNCONDITIONAL.thumbnail}, when the image is "
+        "square and there is a text prompt. The README has what each costs.",
+    )
+    imagenet.add_argument(
+        "-pag",
+        "--perturbed-attention",
+        action="store_true",
+        default=None,
+        help="With --unconditional at 256, also move each prediction away from one made with the U-Net's "
+        "attention switched off. A more finished picture that follows the prompt a little less, for one "
+        "more model call a step.",
     )
     imagenet.add_argument(
         "-n",
         "--steps",
         type=int,
-        help=f"Model calls. Default {sampler.DEFAULT_STEPS}, or {sampler.UNCONDITIONAL_STEPS} with --unconditional.",
+        help="Steps down the schedule, a model call each, plus any --recurrence reruns. "
+        f"Default {sampler.DEFAULT_STEPS}, or {sampler.UNCONDITIONAL_STEPS} with --unconditional.",
+    )
+    imagenet.add_argument(
+        "-recur",
+        "--recurrence",
+        type=int,
+        help=f"Run each guided step in the first {round(100 * (1 - sampler.RECUR_ABOVE))}%% of the schedule this many "
+        "times, taking the image back to the step's noise level in between, so CLIP has more say over the composition. "
+        f"Default 1, or {sampler.UNCONDITIONAL_RECURRENCE} with --unconditional.",
     )
     imagenet.add_argument(
         "-rate",
@@ -313,10 +348,12 @@ def is_out_of_memory(error: RuntimeError) -> bool:
 
 def out_of_memory_advice(args: argparse.Namespace) -> str:
     """What to change after running out of GPU memory."""
-    clip_model = args.clip_model or (backbone.DEFAULT_CLIP_MODEL if args.backbone else adm.DEFAULT_CLIP_MODEL)
+    default = adm.defaults(bool(args.unconditional))
+    clip_model = args.clip_model or (backbone.DEFAULT_CLIP_MODEL if args.backbone else default.clip_model)
+    num_cutouts = args.num_cutouts or (NUM_CUTOUTS if args.backbone else default.num_cutouts)
     advice = (
         "Ran out of GPU memory. Try a smaller --image-size/-size, --batch-size/-bs or "
-        f"--num-cutouts/-cutn (currently {args.num_cutouts}).\n"
+        f"--num-cutouts/-cutn (currently {num_cutouts}).\n"
         f"--clip-model/-clip (currently {clip_model}) has a large impact on VRAM: "
         "RN50 uses the least, ViT-B/32 the second least.\n"
     )
@@ -324,6 +361,9 @@ def out_of_memory_advice(args: argparse.Namespace) -> str:
         advice += "--clip-fp16/-fp16 halves what this model needs.\n"
     if args.backbone:
         advice += "--iterations/-iters 0 is the plain model, which needs far less than correcting it with CLIP.\n"
+    thumbnail = args.thumbnail or default.thumbnail
+    if not args.backbone and thumbnail not in (adm.NO_THUMBNAIL, UNCONDITIONAL.thumbnail):
+        advice += f"--thumbnail/-thumb {UNCONDITIONAL.thumbnail} or {adm.NO_THUMBNAIL} needs less than {thumbnail}.\n"
     return advice
 
 
