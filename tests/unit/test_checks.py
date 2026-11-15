@@ -75,6 +75,8 @@ class TestAdmParameters:
             (["a"], {"init_image": "missing.png"}, "No such image: missing.png"),
             (["a"], {"skip_timesteps": 500}, "need an --init-image"),
             (["a"], {"init_scale": 1000}, "need an --init-image"),
+            (["a"], {"transition_frames": 12}, "--transition-frames needs a sequence"),
+            (["a", ">b"], {"transition_frames": 0}, "--transition-frames must be at least 1"),
         ],
     )
     def test_a_bad_one_is_explained(self, prompts: list[str], overrides: dict[str, Any], message: str) -> None:
@@ -84,6 +86,20 @@ class TestAdmParameters:
     def test_a_missing_image_prompt_is_explained(self) -> None:
         with pytest.raises(ConfigError, match=r"No such image: missing\.png"):
             adm.check_parameters([], ["missing.png:0.5"], **ADM_SETTINGS)
+
+    def test_a_sequence_passes_with_image_prompts_for_every_image_or_for_each(self, photon: Path, goose: Path) -> None:
+        adm.check_parameters(["a castle", ">a fox"], [], **ADM_SETTINGS | {"transition_frames": 12})
+        adm.check_parameters(["a castle", ">a fox"], [str(photon)], **ADM_SETTINGS)
+        adm.check_parameters(["a castle", ">a fox"], [str(photon), f">{goose}"], **ADM_SETTINGS)
+        adm.check_parameters(["a photograph"], [str(photon), f">{goose}"], **ADM_SETTINGS)
+
+    def test_sequences_of_different_lengths_are_explained(self, photon: Path, goose: Path) -> None:
+        with pytest.raises(ConfigError, match="sequences of different lengths"):
+            adm.check_parameters(["a", ">b", ">c"], [str(photon), f">{goose}"], **ADM_SETTINGS)
+
+    def test_a_missing_image_prompt_of_a_later_image_is_explained(self, photon: Path) -> None:
+        with pytest.raises(ConfigError, match=r"No such image: missing\.png"):
+            adm.check_parameters(["a"], [str(photon), ">missing.png"], **ADM_SETTINGS)
 
     @pytest.mark.parametrize("image_size", [256, 512])
     @pytest.mark.parametrize("thumbnail", ["none", *thumbnails.MODELS])
@@ -96,6 +112,7 @@ class TestAdmParameters:
             (["a"], {"width": 288}, "--thumbnail needs a square image: its models read 64x64 thumbnails"),
             (["a"], {"height": 224}, "--thumbnail needs a square image"),
             ([], {}, "--thumbnail reads the text prompts, and there are none"),
+            ([">"], {}, "--thumbnail reads the text prompts, and an image of the sequence has none"),
         ],
     )
     def test_a_thumbnail_model_with_nothing_to_read_is_explained(
@@ -133,6 +150,7 @@ class TestAdmDefaults:
             (True, [], True, "none"),
             (True, ["a fox"], False, "none"),
             (False, ["a fox"], True, "none"),
+            (True, ["a castle", ">a fox"], True, "clip"),
         ],
     )
     def test_a_thumbnail_model_is_the_default_only_where_it_has_something_to_read(
@@ -157,11 +175,15 @@ class TestBackboneParameters:
             ({"iterations": -1}, "--iterations"),
             ({"num_cutouts": 0}, "--num-cutouts"),
             ({"save_frequency": 0}, "--save-frequency"),
+            ({"transition_frames": 12}, "--transition-frames needs a sequence"),
         ],
     )
     def test_a_bad_one_is_explained(self, overrides: dict[str, Any], message: str) -> None:
         with pytest.raises(ConfigError, match=message):
             backbone.check_parameters(["a fox"], [], **BACKBONE_SETTINGS | overrides)
+
+    def test_a_sequence_passes(self) -> None:
+        backbone.check_parameters(["a castle", ">a fox"], [], **BACKBONE_SETTINGS | {"transition_frames": 12})
 
     def test_an_unknown_backbone_is_explained_before_anything_loads(self) -> None:
         with pytest.raises(ConfigError, match="Unknown backbone 'dall-e'"):
