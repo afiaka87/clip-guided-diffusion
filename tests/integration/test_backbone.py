@@ -51,6 +51,15 @@ def test_each_image_of_a_sequence_is_the_one_its_prompt_makes_alone_and_a_seed_r
     assert max(changes(saved[1:])) < 0.75 * changes(alone)[0]  # No frame jumps: 0.42 against 0.71 when measured.
 
 
+def test_a_sequence_that_ends_with_the_mark_begins_at_its_first_image_and_slides_back_to_it(workdir: Path) -> None:
+    saved = generate(workdir, prompts=[*SEQUENCE, ">"], transition_frames=2, save_frequency=1)
+    assert [path.name for _, path in saved] == [f"{step:04}.png" for step in range(1, 6)]
+    first, there, second, back, last = (path.read_bytes() for _, path in saved)
+    assert first == last
+    assert len({first, there, second}) == 3
+    assert back not in {first, second}
+
+
 def test_the_plain_model_slides_each_image_of_a_batch_without_clip_at_any_shape(workdir: Path) -> None:
     settings = {"prompts": SEQUENCE, "iterations": 0, "batch_size": 2, "width_offset": 64}
     saved = generate(workdir, transition_frames=2, **settings)
