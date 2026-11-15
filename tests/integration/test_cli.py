@@ -1,7 +1,6 @@
 """The cgd command, end to end: in this process where that is enough, in a new one where the process itself matters."""
 
 import os
-import re
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -25,6 +24,11 @@ def frames(workdir: Path, name: str = "Loose_seal") -> list[str]:
     return sorted(path.name for path in (workdir / "outputs" / name / "00").glob("*.png"))
 
 
+def saved(path: str, verb: str = "Saved") -> str:
+    """What the command prints for a file it saved: the path with this platform's separators."""
+    return f"{verb} {Path(path)}"
+
+
 def run(*argv: str, capsys: pytest.CaptureFixture[str]) -> str:
     """Run the command in this process, and return what it printed."""
     main(argv)
@@ -42,7 +46,7 @@ class TestProcess:
     def test_it_runs_as_a_module_and_reports_the_saved_image(self, workdir: Path) -> None:
         result = run_process(PROMPT, *FAST, cwd=workdir)
         assert result.returncode == 0, result.stderr
-        assert "Saved outputs/Loose_seal/00/0005.png" in result.stdout
+        assert saved("outputs/Loose_seal/00/0005.png") in result.stdout
         assert (workdir / "current.png").exists()
 
     def test_the_installed_script_runs(self) -> None:
@@ -55,7 +59,7 @@ class TestProcess:
     def test_an_open_clip_model_runs_without_noise_from_its_libraries(self, workdir: Path) -> None:
         result = run_process(PROMPT, *FAST, "-clip", "PE-Core-B-16", "-fp16", cwd=workdir)
         assert result.returncode == 0, result.stderr
-        assert "Saved outputs/Loose_seal/00/0005.png" in result.stdout
+        assert saved("outputs/Loose_seal/00/0005.png") in result.stdout
         assert "HF Hub" not in result.stderr
 
     @staticmethod
@@ -78,6 +82,7 @@ class TestProcess:
         expected = f"{own} None" if name == "PYTORCH_ALLOC_CONF" else f"None {own}"
         assert result.stdout.strip() == expected, result.stderr
 
+    @pytest.mark.skipif(sys.platform == "win32", reason="PyTorch has no expandable segments on Windows.")
     def test_the_allocator_setting_reaches_the_allocator_without_a_warning(self) -> None:
         # Only expandable segments can serve the third block from the memory of the first two.
         code = (
@@ -93,6 +98,20 @@ class TestProcess:
         )
         assert result.stdout.strip() == "200", result.stderr
         assert "deprecated" not in result.stderr
+
+    @pytest.mark.skipif(sys.platform != "win32", reason="Only Windows lacks expandable segments.")
+    def test_windows_gets_no_allocator_setting_it_would_only_warn_about(self) -> None:
+        code = (
+            "import os, cgd, torch as th\n"
+            "th.empty(1, device='cuda')\n"
+            "print(os.environ.get('PYTORCH_ALLOC_CONF'), os.environ.get('PYTORCH_CUDA_ALLOC_CONF'))\n"
+        )
+        environment = {**self.without_allocator_setting(), "PYTHONPATH": str(REPO)}
+        result = subprocess.run(
+            [sys.executable, "-c", code], env=environment, capture_output=True, text=True, check=False
+        )
+        assert result.stdout.strip() == "None None", result.stderr
+        assert "expandable_segments" not in result.stderr
 
 
 class TestErrors:
@@ -115,7 +134,7 @@ class TestErrors:
 
 class TestOutputs:
     def test_the_output_folder_can_be_new_and_nested(self, workdir: Path, capsys: pytest.CaptureFixture[str]) -> None:
-        assert "Saved a/b/c/Loose_seal/00/0005.png" in run(PROMPT, *FAST, "-dir", "a/b/c", capsys=capsys)
+        assert saved("a/b/c/Loose_seal/00/0005.png") in run(PROMPT, *FAST, "-dir", "a/b/c", capsys=capsys)
         assert (workdir / "a/b/c/Loose_seal/00/0005.png").exists()
 
     def test_a_run_from_an_image_prompt_is_named_after_it(
@@ -129,7 +148,7 @@ class TestOutputs:
     ) -> None:
         run(PROMPT, *FAST, "-n", "8", "-freq", "1", capsys=capsys)
         assert len(frames(workdir)) == 8
-        assert "Created outputs/Loose_seal/00.gif" in run(PROMPT, *FAST, "-freq", "2", "-gif", capsys=capsys)
+        assert saved("outputs/Loose_seal/00.gif", "Created") in run(PROMPT, *FAST, "-freq", "2", "-gif", capsys=capsys)
         gif = workdir / "outputs/Loose_seal/00.gif"
         count = subprocess.run([*COUNT_FRAMES.split(), str(gif)], capture_output=True, text=True, check=True)
         assert count.stdout.strip() == "4"  # Steps 0, 2, 4 and the final step 5.
@@ -162,13 +181,13 @@ class TestOutputs:
         monkeypatch.setenv("PATH", str(empty))
         output = run(PROMPT, *FAST, "-gif", capsys=capsys)
         assert "ffmpeg not found" in output
-        assert "Saved outputs/Loose_seal/00/0005.png" in output
+        assert saved("outputs/Loose_seal/00/0005.png") in output
         assert len(frames(workdir)) == 6
 
     def test_upscaling_saves_a_larger_copy_beside_the_image(
         self, workdir: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        assert "Saved outputs/Loose_seal/00/0005_x4.png" in run(PROMPT, *FAST, "-up", capsys=capsys)
+        assert saved("outputs/Loose_seal/00/0005_x4.png") in run(PROMPT, *FAST, "-up", capsys=capsys)
         assert Image.open(workdir / "outputs/Loose_seal/00/0005_x4.png").size == (256, 256)
 
     def test_the_upscaled_copy_outlives_an_animation(self, workdir: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -177,13 +196,13 @@ class TestOutputs:
 
     def test_candidates_report_the_winning_seed(self, workdir: Path, capsys: pytest.CaptureFixture[str]) -> None:
         output = run(PROMPT, *FAST, "-best", "2", "-seed", "7", capsys=capsys)
-        assert re.search(r"Saved outputs/seed_[78]/Loose_seal/00/0005.png", output)
+        assert any(saved(f"outputs/seed_{seed}/Loose_seal/00/0005.png") in output for seed in (7, 8))
         assert (workdir / "outputs/seed_7").is_dir()
         assert (workdir / "outputs/seed_8").is_dir()
 
     def test_a_backbone_draws_at_any_multiple_of_eight(self, workdir: Path, capsys: pytest.CaptureFixture[str]) -> None:
         output = run(PROMPT, "-bb", "sd-turbo", "-size", "136", "-iters", "2", "-clip", "ViT-B/32", "-q", capsys=capsys)
-        assert "Saved outputs/Loose_seal/00/0002.png" in output
+        assert saved("outputs/Loose_seal/00/0002.png") in output
         assert Image.open(workdir / "outputs/Loose_seal/00/0002.png").size == (136, 136)
 
 
