@@ -118,9 +118,9 @@ There's no need to specify a device: without `--device`, it uses CUDA whenever P
 
 `--steps` / `-n` (default: `30`)
 
-- The number of model calls. Fewer is faster.
+- The number of steps down the schedule, each a model call. Fewer is faster.
 - `30` matches the original sampler on prompts held out from tuning. `20` is a third faster, but doubles the share of clipped pixels. Below `15` quality falls off quickly.
-- [`--unconditional`](#unconditional-checkpoints) defaults to `60`. Without a class label it needs the extra steps, see [Speed](#speed).
+- [`--unconditional`](#unconditional-checkpoints) defaults to `60`. Without a class label it needs the extra steps, see [Speed](#speed), and it takes the early ones twice, see [Recurrence](#recurrence).
 
 `--guidance-rate` / `-rate` (default: `0.08`)
 
@@ -199,7 +199,49 @@ uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 -cu
 
 `uv run cgd -uncond "A red fox in the snow"`
 
-Draws with a model that takes no class label: OpenAI's at 256x256, the default size, and at 512x512 Katherine Crowson's fine-tune of OpenAI's class-conditional model. Nothing but CLIP brings the subject, so it is less reliable than the default, and it scored behind the original 1000 step sampler, see [Speed](#speed). Guidance starts at the very beginning of the schedule, because that is where the composition is set, and the sampler takes 60 steps by default, twice the class-conditional models', so that does not overshoot. `--steps` / `-n` changes them as usual.
+Draws with a model that takes no class label: OpenAI's at 256x256, the default size, and at 512x512 Katherine Crowson's fine-tune of OpenAI's class-conditional model. Without a class only guidance brings the subject, so it is less reliable than the default. `-uncond` alone runs the settings that made its best images for the time they take, and each of these options overrides its own:
+
+| Option | With `-uncond` | Why |
+|---|---|---|
+| `-clip` | `ViT-B/32+PE-Core-B-16` | The [ensemble](#ensembles) |
+| `-cutn` | `4` | Ties `16` in two thirds of the time, see [Cutouts](#cutouts) |
+| `-n` | `60` | Guidance starts at the very beginning of the schedule, where the composition is set, and twice the steps keep that from overshooting |
+| `-recur` | `2` | Each guided step in the first 70% of the schedule runs twice, 91 model calls in all, see [Recurrence](#recurrence) |
+| `-thumb` | `clip` | A second model sets the composition, see [Thumbnail guidance](#thumbnail-guidance) |
+
+So `uv run cgd -uncond -thumb karlo "A red fox in the snow"` changes the thumbnail model and keeps the rest. Add `-gif` or `-mp4` to any of them as usual. Examples of each option with its GIF are still to come: the GPU was busy when this was written.
+
+### Thumbnail guidance
+
+`--thumbnail` / `-thumb` (default: `clip` with `-uncond`; one of `clip`, `glide`, `laionide`, `karlo`, `none`)
+
+`uv run cgd -uncond -thumb glide -gif "A red fox in the snow"`
+
+CLIP is a poor judge of a nearly pure noise image, and that is when the composition forms. A model trained on noisy 64x64 images is a good one. Each step the noisy image is averaged down to a 64x64 thumbnail, the model says what the text prompts change about the thumbnail's noise, and that is added to the U-Net's prediction, enlarged. The U-Net still draws every detail, and CLIP guides as before. It needs a text prompt and a square image: without either `-uncond` runs without it and says so.
+
+| `-thumb` | What it is | PickScore | Rating | Time | Peak VRAM | Download | License |
+|---|---|---|---|---|---|---|---|
+| `none` | CLIP alone | 20.71 | 5.14 | 30.2 s | 5.9 GiB | | |
+| `clip` (default) | OpenAI's CLIP of noisy images, released with GLIDE | 21.26 | 5.57 | 30.3 s | 6.5 GiB | 0.6 GB | MIT |
+| `clip` with [`-pag`](#perturbed-attention-guidance) | | 21.72 | 5.72 | 39.0 s | 6.6 GiB | | |
+| `glide` | [GLIDE](https://github.com/openai/glide-text2im)'s 64x64 text-to-image model | 21.50 | 5.55 | 32.1 s | 6.7 GiB | 1.5 GB | MIT |
+| `laionide` | [LAIONIDE v3](https://github.com/afiaka87/laionide), GLIDE fine-tuned on LAION | 21.47 | 5.59 | 32.6 s | 6.7 GiB | 1.5 GB | Its repository is MIT. The checkpoint states none |
+| `karlo` | The decoder and prior of [Karlo](https://huggingface.co/kakaobrain/karlo-v1-alpha), an open unCLIP | 22.65 | 5.81 | 34.1 s | 7.8 GiB | 8.2 GB | CreativeML Open RAIL-M |
+
+12 prompts held out from tuning over 3 seeds at 256, with `-cutn 16`, on an RTX 4070. [PickScore](https://github.com/yuvalkirstain/PickScore) is a model of which image people pick for a prompt, the rating is the predictor from [Modern backbones](#modern-backbones), and neither guided the images. Time is per image with the models loaded. For scale, `-bb sd-turbo` scores 24.07 and 7.07. These were measured with the experiments the options were built from, in [the report](<reports/Unconditional ADM CLIP guidance quality.md>). The command's own times, and how thumbnail guidance does at 512, are still to be measured.
+
+- **`clip` is the default** because it costs no time: +0.56 ± 0.54 PickScore over `none`, and a judge who saw only unlabelled pairs preferred it in 18 of 24. It keeps the gain at 4 cutouts, +0.75 ± 0.40 at 22.4 s against 20.5 s, which is what `-uncond` runs. It is a classifier, so with it nothing in the pipeline was trained to draw from text.
+- **`karlo` makes the best images**, preferred blind in 23 of 24 pairs, for an 8.2 GB download and 2 GiB more VRAM. But Karlo's own pipeline scores the same in 3 seconds, so it is here to play with, not as the way to use Karlo.
+- **`glide` and `laionide`** tie each other, a little ahead of `clip` on PickScore and level on the rating, for 2 s more. They were trained to draw from text.
+- **`none`** is CLIP alone, what `-uncond` was before.
+
+### Perturbed attention guidance
+
+`--perturbed-attention` / `-pag`
+
+`uv run cgd -uncond -pag -gif "A red fox in the snow"`
+
+Also moves each prediction away from one the U-Net makes with the self-attention of four layers switched off, the layers and scale of the [PAG paper](https://arxiv.org/abs/2403.17377) for this checkpoint. That is one more model call a step, and only for `-uncond` at 256. Pictures come out more finished and follow the prompt a little less. With `-thumb clip` at 16 cutouts it beat `-thumb none` in 20 of 24 blind pairs. Over `-thumb clip` alone it adds less: +0.46 ± 0.53 PickScore for 9 s, and on 66 more prompts +0.18 ± 0.15 with the held-out CLIP models' score down 0.012 ± 0.006. At 4 cutouts, the default, it added nothing to PickScore, 21.44 against 21.43 at 31.5 s against 22.4 s. Without thumbnail guidance it loses the subject, -0.029 ± 0.018 on the CLIP models. Off by default.
 
 ## Modern backbones
 
@@ -248,15 +290,26 @@ Wall clock for `uv run cgd -cutn 4`, including startup and model loading, on an 
 | 128 | default | 30 | 6.5 s | 2.4 GiB |
 | 256 | default | 30 | 11.4 s | 5.3 GiB |
 | 512 | default | 30 | 22.4 s | 4.1 GiB |
-| 256 | `-uncond` | 60 | 20.0 s | 5.3 GiB |
-| 512 | `-uncond` | 60 | 48.1 s | 4.1 GiB |
+| 256 | `-uncond -clip ViT-B/32 -thumb none -recur 1` | 60 | 20.0 s | 5.3 GiB |
+| 512 | `-uncond -clip ViT-B/32 -thumb none -recur 1` | 60 | 48.1 s | 4.1 GiB |
 | 128 | the original, since removed | 1000 | 2 min 16 s | |
 | 256 | the original with `-uncond`, since removed | 1000 | 6 min | |
+
+`-uncond` has since taken its early steps twice by default, see [Recurrence](#recurrence), and guides with the ensemble and a thumbnail model, see [Unconditional checkpoints](#unconditional-checkpoints). Its time with those defaults is still to be measured. The same on an RTX 4070 with 12 GB under Windows, where starting up takes longer:
+
+| Size | Sampler | Model calls | Time | Peak VRAM |
+|---|---|---|---|---|
+| 128 | default | 30 | 6.9 s | 2.4 GiB |
+| 256 | default | 30 | 9.8 s | 5.3 GiB |
+| 256 | `-uncond -clip ViT-B/32 -thumb none -recur 1` | 60 | 15.4 s | 5.3 GiB |
+| 256 | `-uncond -clip ViT-B/32 -thumb none` | 91 | 21.3 s | 5.3 GiB |
+| 512 | `-uncond -clip ViT-B/32 -thumb none -recur 1` | 60 | 34.1 s | 4.1 GiB |
+| 512 | `-uncond -clip ViT-B/32 -thumb none` | 91 | 50.2 s | 4.1 GiB |
 
 Quality was measured on prompts held out from tuning, as the ViT-B/16 CLIP similarity to the prompt. Guidance uses ViT-B/32, so this model is not the one being optimised.
 
 - **128px, 12 prompts:** a tie with the original 1000 step sampler, 0.292 against 0.292 (difference 95% CI -0.018 to +0.016), with fewer clipped pixels, 6% against 7%. The look is different though, and any single image is not the same image.
-- **`-uncond`, 256px, 6 prompts:** behind the original sampler, 0.316 against 0.331 (difference 95% CI -0.040 to +0.014), and the original scored higher on 5 of the 6, at 18x the time. With no class to bring the subject, CLIP has to set the composition too.
+- **`-uncond`, 256px, 6 prompts:** behind the original sampler, 0.316 against 0.331 (difference 95% CI -0.040 to +0.014), and the original scored higher on 5 of the 6, at 18x the time. With no class to bring the subject, CLIP has to set the composition too. That was at `-recur 1`, before [recurrence](#recurrence) became its default.
 
 The original pipeline takes 1000 ancestral steps, because CLIP has to build the whole image while the U-Net follows a random class that changes every step. The sampler in `cgd/sampler.py` gets there in 30 model calls:
 
@@ -265,13 +318,13 @@ The original pipeline takes 1000 ancestral steps, because CLIP has to build the 
 - Guidance is capped relative to the noise, so it stays stable with steps 33x larger than the original's.
 - Guidance only runs from 10% to 80% of the schedule, where it helps. The other steps also skip backpropagating through the U-Net, the most expensive part of guidance.
 - CLIP sees random cutouts, 16 by default, as many as the original. At 128px they span 70-100% of the frame, where the original's were all the same full frame. At 512px they span 44-100%, because a cutout is never smaller than CLIP's 224px input. See [Cutouts](#cutouts).
-- `-uncond` has no class to bring the subject, so CLIP also sets the composition. Guidance starts right at the beginning of the schedule, and the sampler takes twice the steps so that does not overshoot.
+- `-uncond` has no class to bring the subject, so guidance also sets the composition. It starts right at the beginning of the schedule, and the sampler takes twice the steps so that does not overshoot. It takes each guided step in the first 70% of the schedule twice, see [Recurrence](#recurrence), and a second model reads the noisy image as a thumbnail, see [Thumbnail guidance](#thumbnail-guidance).
 
 Model loading is faster too: checkpoints are memory mapped instead of copied, nothing is randomly initialised just to be overwritten, and the ImageNet class features are cached on disk.
 
 ## CLIP models
 
-`--clip-model` / `-clip` (default: `ViT-B/32`)
+`--clip-model` / `-clip` (default: `ViT-B/32`, or `ViT-B/32+PE-Core-B-16` with [`--unconditional`](#unconditional-checkpoints) or [`--backbone`](#modern-backbones))
 
 `uv run cgd -gif -freq 3 -clip PE-Core-L-14-336 -size 256 -n 90 -gl 0.99 -cutn 4 "A red fox in the snow"`
 
@@ -385,6 +438,18 @@ The one change that clearly helps ADM, and the default with `-bb`. Each model ba
 
 That includes loading both models for every image, which a single `cgd` run only does once. `PE-Core-B-16` on its own only ties (+0.001 ± 0.015), so it takes the pair. It is not the ADM default because that would change every existing seed's image, and it needs a 1.7 GiB download.
 
+### Recurrence
+
+`--recurrence` / `-recur` (default: `1`, or `2` with [`--unconditional`](#unconditional-checkpoints))
+
+`uv run cgd -uncond -recur 3 "A red fox in the snow"`
+
+Takes each guided step in the first 70% of the schedule this many times. After a step the image goes back up to the step's noise level with fresh noise, and the step is taken again. CLIP gets another say at the noise levels where the composition forms, and the U-Net another try at a picture of what CLIP asked for, without the schedule getting longer.
+
+It is the default with `-uncond`, where only guidance brings the subject. There, with `-thumb none -cutn 16` over 3 seeds, `2` gains +0.015 ± 0.013 (9) over `1`, at 30 s an image against 18 s on an RTX 4070. Spending the same model calls on more steps, `-n 90`, gained as much CLIP similarity on an RTX 2070 SUPER but none of the aesthetic rating recurrence added, +0.51 ± 0.34 (11). `3` gained +0.023 ± 0.012 (10) there, at 2.3 times the time of `1`.
+
+The class-conditional models stay at `1`. At 128 with the defaults over 3 seeds, `2` is +0.012 ± 0.015 (9), a tie, for half as long again, and making it the default would change every existing seed's image.
+
 ### Keep the best of several seeds
 
 `--candidates` / `-best`
@@ -432,7 +497,7 @@ The rating is a `ViT-B/16` predictor that did not guide the image. The rating an
 
 ### Cutouts
 
-`--num-cutouts` / `-cutn` (default: `16`)
+`--num-cutouts` / `-cutn` (default: `16`, or `4` with [`--unconditional`](#unconditional-checkpoints))
 
 How many random cutouts of the image CLIP sees each step, and the aesthetic term rates. 16 is the original's number. Fewer is faster and takes less VRAM, and scored the same: on ADM at 128, against 4 cutouts, 8, 16, 32 and 64 scored -0.002 ± 0.009, +0.005 ± 0.011, +0.002 ± 0.007 and 0.000 ± 0.010. That is why everything in this README was made with `-cutn 4`. Try fewer when a big [CLIP model](#clip-models) runs out of memory.
 
@@ -453,7 +518,7 @@ These were options once. They tied or lost, so they went, to keep the command si
 | Dynamic thresholding at 0.995 | -0.019 ± 0.014 (2) | No clipped pixels, but saturation fell from 0.46 to 0.20. Closer to 1 was lower still, and greyer |
 | A sine guidance schedule | -0.006 ± 0.009 (4) | A rising one: -0.011 ± 0.012 (2) |
 | Pushing away from the second closest class, at 0.5 | -0.007 ± 0.011 (5) | One more model call per guided step |
-| Perturbed attention guidance, at 1 | -0.013 ± 0.009 (3) | One more model call per guided step |
+| Perturbed attention guidance, at 1 | -0.013 ± 0.009 (3) | On the class-conditional model at 128. One more model call per guided step. It stayed for `-uncond`, see [Perturbed attention guidance](#perturbed-attention-guidance) |
 | A contrastive loss | -0.010 ± 0.015 (3) | Also lost on SD-Turbo: -0.009 ± 0.006, on one seed |
 | The second closest class | -0.013 ± 0.035 (3) | |
 | Guidance through a small U-Net | -0.005 ± 0.023 (6) at 256, 2 seeds; -0.009 ± 0.022 (6) at 512, 1 seed; -0.019 ± 0.022 (2) at 128 | 5.3 to 1.9 GiB and 7.8 to 5.8 s at 256, 4.1 to 2.6 GiB and 18.8 to 11.2 s at 512 |
@@ -507,7 +572,8 @@ usage: cgd [-h] [-imgs IMAGE_PROMPTS] [-size IMAGE_SIZE] [-wd WIDTH_OFFSET]
            [-ht HEIGHT_OFFSET] [-bs BATCH_SIZE] [-seed SEED]
            [-clip CLIP_MODEL] [-fp16] [-cutn NUM_CUTOUTS]
            [-aes AESTHETIC_SCALE] [-best CANDIDATES] [-dev DEVICE] [-uncond]
-           [-n STEPS] [-rate GUIDANCE_RATE] [-gl GUIDANCE_LIMIT]
+           [-thumb {clip,glide,laionide,karlo,none}] [-pag] [-n STEPS]
+           [-recur RECURRENCE] [-rate GUIDANCE_RATE] [-gl GUIDANCE_LIMIT]
            [-init INIT_IMAGE] [-skip SKIP_TIMESTEPS] [-is INIT_SCALE]
            [-bb {sd-turbo,vega,sdxl-lightning}] [-iters ITERATIONS]
            [-dir OUTPUT_DIR] [-freq SAVE_FREQUENCY] [-gif] [-mp4] [-up] [-q]
@@ -544,13 +610,15 @@ options:
                         gopt-16-SigLIP2-384, PE-Core-bigG-14-448, or a
                         checkpoint file. Join several with + to guide with all
                         of them. Default ViT-B/32, or ViT-B/32+PE-Core-B-16
-                        with --backbone. The README has what each costs.
+                        with --unconditional or --backbone. The README has
+                        what each costs.
   -fp16, --clip-fp16    Run a PE-Core or SigLIP2 model at half precision: up
                         to 3x faster for half the CLIP VRAM. Less exact, but
                         it scored about the same. OpenAI's models always do.
   -cutn, --num-cutouts NUM_CUTOUTS
                         Random cutouts of the image CLIP sees each step. Fewer
-                        is faster and needs less VRAM. Default 16.
+                        is faster and needs less VRAM. Default 16, or 4 with
+                        --unconditional.
   -aes, --aesthetic-scale AESTHETIC_SCALE
                         Also reward what people rate highly, per point of a 1
                         to 10 rating. Default 0, or 0.05 with --backbone. The
@@ -568,10 +636,36 @@ ImageNet model:
   The default pipeline: CLIP guides OpenAI's ImageNet diffusion model.
 
   -uncond, --unconditional
-                        Draw with an unconditional checkpoint, at 256 or 512.
-                        Less reliable than the default, because without an
-                        ImageNet class nothing but CLIP brings the subject.
-  -n, --steps STEPS     Model calls. Default 30, or 60 with --unconditional.
+                        Draw with an unconditional checkpoint, at 256 or 512,
+                        with the settings that made its best images for the
+                        time they take: -clip ViT-B/32+PE-Core-B-16 -cutn 4 -n
+                        60 -recur 2 -thumb clip. Each of those options
+                        overrides its setting. Less reliable than the default,
+                        because without an ImageNet class only guidance brings
+                        the subject.
+  -thumb, --thumbnail {clip,glide,laionide,karlo,none}
+                        With --unconditional, a model that reads the noisy
+                        image as a 64x64 thumbnail and sets the composition
+                        from the text prompts. clip is OpenAI's CLIP of noisy
+                        images, glide and laionide are 64x64 text-to-image
+                        models, and karlo is one that makes the best images
+                        here, for the most VRAM. none leaves the composition
+                        to CLIP alone. Default clip, when the image is square
+                        and there is a text prompt. The README has what each
+                        costs.
+  -pag, --perturbed-attention
+                        With --unconditional at 256, also move each prediction
+                        away from one made with the U-Net's attention switched
+                        off. A more finished picture that follows the prompt a
+                        little less, for one more model call a step.
+  -n, --steps STEPS     Steps down the schedule, a model call each, plus any
+                        --recurrence reruns. Default 30, or 60 with
+                        --unconditional.
+  -recur, --recurrence RECURRENCE
+                        Run each guided step in the first 70% of the schedule
+                        this many times, taking the image back to the step's
+                        noise level in between, so CLIP has more say over the
+                        composition. Default 1, or 2 with --unconditional.
   -rate, --guidance-rate GUIDANCE_RATE
                         Guidance strength: the most CLIP may move each step,
                         relative to the noise. Higher follows the prompt
