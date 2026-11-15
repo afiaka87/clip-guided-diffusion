@@ -1,5 +1,6 @@
 """CLIP correcting a one-step model's noise, end to end on the GPU."""
 
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -33,10 +34,10 @@ def generate(output_dir: Path, **settings: Any) -> list[tuple[int, Path]]:
 
 def test_optimising_the_noise_lowers_the_clip_loss_and_keeps_the_best() -> None:
     """Over the default iterations. The loss rises for the first ten or so, while the momentum builds."""
-    model = backbone.load_backbone("sd-turbo", PROMPT, "cuda")
+    model = backbone.load_backbone("sd-turbo", [PROMPT], "cuda")
     # The whole frame is the only cutout, so the loss is a function of the noise alone.
     guide = load_guide("ViT-B/32", [PROMPT], image_size=256, num_cutouts=1, min_cut_fraction=1.0, device="cuda")
-    conditioning = backbone.unet_conditioning(model, 256, 256)
+    conditioning = backbone.unet_conditioning(model, model.prompts[0], 256, 256)
     th.manual_seed(0)
     start = th.randn(backbone.latent_shape(256, 256), device="cuda")
 
@@ -103,3 +104,43 @@ def test_a_seed_reproduces_the_image_exactly(workdir: Path, settings: dict[str, 
 def test_a_different_seed_changes_the_image(workdir: Path) -> None:
     first, second = (generate(workdir / str(seed), seed=seed)[-1][1] for seed in (3, 4))
     assert first.read_bytes() != second.read_bytes()
+
+
+class TestSequence:
+    OTHER = "a sailboat on a calm lake at sunset"
+    SEQUENCE = (PROMPT, f">{OTHER}")
+
+    def test_each_image_is_the_one_its_prompt_makes_alone_and_the_frames_between_change_step_by_step(
+        self, workdir: Path, changes: Callable[[Sequence[Path]], list[float]]
+    ) -> None:
+        saved = [path for _, path in generate(workdir / "sequence", prompts=self.SEQUENCE, transition_frames=24)]
+        assert [path.name for path in saved] == ["0000.png", *(f"{step:04}.png" for step in range(4, 29))]
+        alone = [generate(workdir / prompt[:9], prompts=[prompt])[-1][1] for prompt in (PROMPT, self.OTHER)]
+        assert [saved[1].read_bytes(), saved[-1].read_bytes()] == [path.read_bytes() for path in alone]
+        between = changes(saved[1:])
+        assert max(between) < 0.5 * changes(alone)[0]
+
+    def test_a_seed_reproduces_every_frame(self, workdir: Path) -> None:
+        settings = {"prompts": self.SEQUENCE, "transition_frames": 6, "seed": 3}
+        first, second = ([path for _, path in generate(workdir / run, **settings)] for run in ("a", "b"))
+        assert len(first) == 8
+        assert all(a.read_bytes() == b.read_bytes() for a, b in zip(first, second, strict=True))
+
+    def test_the_plain_model_slides_without_clip(self, workdir: Path) -> None:
+        saved = [path for _, path in generate(workdir, prompts=self.SEQUENCE, iterations=0, transition_frames=4)]
+        assert [path.name for path in saved] == [f"{step:04}.png" for step in range(5)]
+        assert len({path.read_bytes() for path in saved}) == 5
+
+    def test_an_sdxl_backbone_slides_its_pooled_embedding_too(self, workdir: Path) -> None:
+        settings = {"backbone": "vega", "image_size": 512, "iterations": 1}
+        sequence = generate(workdir / "sequence", prompts=self.SEQUENCE, transition_frames=3, **settings)
+        saved = [path for _, path in sequence]
+        second = generate(workdir / "second", prompts=[self.OTHER], **settings)[-1][1]
+        assert len(saved) == 5
+        assert saved[-1].read_bytes() == second.read_bytes()
+        assert tvf.to_tensor(Image.open(saved[-2]).convert("RGB")).std().item() > 0.05
+
+    def test_a_batch_slides_each_of_its_images(self, workdir: Path) -> None:
+        saved = generate(workdir, prompts=self.SEQUENCE, batch_size=2, iterations=1, transition_frames=3)
+        assert [index for index, _ in saved] == [0] * 5 + [1] * 5
+        assert len({path.read_bytes() for _, path in saved}) == 10
