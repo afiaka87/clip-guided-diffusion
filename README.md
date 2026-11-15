@@ -47,10 +47,10 @@ That took 37 s on an RTX 2070 SUPER. For the best images this repo makes, use [a
 Every GIF in this README is its command's real output, with the default seed. The one exception is the [upscaling](#upscaling) comparison, which is made from a command's two outputs.
 
 - The path of the finished image is printed at the end. See [Speed](#speed) for how long that takes.
-- Join several images with `|>`, as in `"A castle|>A red fox"`, and the animation slides from each to the next, see [Sequences](#sequences).
+- Join several images with `|>`, as in `"A castle|>A red fox"`, and the animation slides from each to the next. End with `|>` and it loops. See [Sequences](#sequences).
 - `./outputs` will contain intermediate outputs, every 10 steps by default. Change this with `--save-frequency` / `-freq`.
 - `current.png` will contain the current generation.
-- The same `--seed` and arguments reproduce the image byte for byte on the same machine and library versions. Another version of PyTorch makes another image, and the GIFs here were made with PyTorch 2.9.1.
+- The same `--seed` and arguments reproduce the image byte for byte on the same machine and library versions. Another version of PyTorch makes another image, and the GIFs here were made with PyTorch 2.9.1, except the looping sequence's, made with 2.15.0.
 - Use `--gif` / `-gif` to save a high-quality GIF of every step, at 10 frames a second, and delete the frames. The frames of the batch's first image are in `outputs/<prompt>/00/`, and its GIF is `outputs/<prompt>/00.gif`.
 - Use `--mp4` / `-mp4` to save a high-quality MP4 of every step the same way, as `outputs/<prompt>/00.mp4`.
 - The classic pipeline's animation shows its estimate of the finished image at each step, so it runs from a blur to the image. A backbone's shows each step of CLIP reshaping an image that is finished from the first frame, and ends on the image from the full decoder.
@@ -111,6 +111,14 @@ The prompt is [this goose](images/goose_on_the_run.png), a generation from 2021.
 - A sequence saves a GIF without `-gif`. With `-mp4` it saves the video and no GIF.
 - Each image still takes several prompts and weights, as in `"a castle|sunset:0.5|>a fox"`, and `-imgs` takes a sequence the same way. Text or image prompts that are not a sequence go with every image.
 - `-best` does not apply to one.
+
+End the prompts with `|>` and the last slide goes back to the first image, so the animation loops:
+
+`uv run cgd -bb sd-turbo -size 384 -frames 30 -cutn 4 "A castle on a hill at sunset.|>A red fox in the snow.|>A sailboat on a calm lake at sunset.|>"`
+
+![A castle, then a red fox, then a sailboat, then the castle again, drawn by SD-Turbo](images/A_castle_A_red_fox_A_sailboat_loop_sd-turbo.gif)
+
+A loop begins at the first finished image instead of showing it being made, so its last frame leads into its first, and `-freq` has nothing to thin. It needs at least two images. That took 55 s on an RTX 4070.
 
 It works best with [a modern backbone](#modern-backbones), whose image is a smooth function of its noise and of the text it is told to draw. A frame there is the model's image of the noise and the text partway between two images', which is one model call without CLIP, 0.1 s.
 
@@ -603,7 +611,7 @@ save_gif(frames, "outputs/A_volcano_erupting_at_night.gif")
 
 ![A volcano erupting at night](images/A_volcano_erupting_at_night.gif)
 
-These are the settings of `uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 -cutn 4 "A volcano erupting at night"`, and the GIF is the same as that command's, byte for byte. With `save_frequency=3` it has 31 frames: every third of the 90 steps, then the result. The other keyword arguments are the options' long names, with underscores, and `progress=False` is `--quiet`. A [sequence](#sequences) is a prompt that starts with `>` for each next image, `["A castle", ">A red fox"]`, which is what `|>` splits into.
+These are the settings of `uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 -cutn 4 "A volcano erupting at night"`, and the GIF is the same as that command's, byte for byte. With `save_frequency=3` it has 31 frames: every third of the 90 steps, then the result. The other keyword arguments are the options' long names, with underscores, and `progress=False` is `--quiet`. A [sequence](#sequences) is a prompt that starts with `>` for each next image, `["A castle", ">A red fox"]`, which is what `|>` splits into, and a last prompt of `">"` alone makes it loop.
 
 `cgd.backbone.generate()` is the same with a backbone. With the same settings it makes the same image as the command, byte for byte, so this is the GIF from [Modern backbones](#modern-backbones) again:
 
@@ -640,7 +648,8 @@ positional arguments:
                         negative to avoid it: 'a fox:2|blurry:-1'. Begin the
                         next image of a sequence with >, and the GIF or video
                         slides from each image to the next: 'a castle|>a
-                        fox|>a sailboat'.
+                        fox|>a sailboat'. End with |> and it slides back to
+                        the first image, so it loops.
 
 options:
   -h, --help            show this help message and exit
