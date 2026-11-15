@@ -1,7 +1,8 @@
 """Prompts: a text, or an image's path or URL, with an optional weight after a colon.
 
 A prompt that starts with > begins the next image of a sequence, so "a castle|>a fox" is
-two images, and the animation slides from the first to the second.
+two images, and the animation slides from the first to the second. A > with nothing after
+it at the end, "a castle|>a fox|>", slides back to the first image, so the animation loops.
 """
 
 import math
@@ -49,6 +50,11 @@ def by_image(prompts: Sequence[str]) -> tuple[tuple[str, ...], ...]:
         if text:
             images[-1].append(text)
     return tuple(tuple(image) for image in images if image) or ((),)
+
+
+def loops(prompts: Sequence[str], image_prompts: Sequence[str] = ()) -> bool:
+    """Whether a sequence ends by sliding back to its first image: its last text or image prompt is a > alone."""
+    return any(bool(listed) and listed[-1].strip() == NEXT_IMAGE for listed in (prompts, image_prompts))
 
 
 def scenes(prompts: Sequence[str], image_prompts: Sequence[str] = ()) -> tuple[Scene, ...]:
