@@ -207,3 +207,12 @@ class TestNoisyClip:
             change = thumbnails.clip_change(model, target, log_alpha_bar, y, 500.0)
         assert change.abs().sum() > 0
         assert not change.requires_grad
+
+
+def test_a_model_built_in_the_forked_stream_leaves_the_runs_random_numbers_alone() -> None:
+    th.manual_seed(0)
+    expected = th.randn(4)
+    th.manual_seed(0)
+    with thumbnails.forked_rng("cpu"):
+        nn.Linear(8, 8)
+    assert th.equal(th.randn(4), expected)
