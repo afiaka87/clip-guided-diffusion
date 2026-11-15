@@ -329,3 +329,89 @@ class TestRecurrence:
             return means[0] - means[1]
 
         assert 0 < pull(1) < pull(2) < pull(3)
+
+
+class TestBlend:
+    @staticmethod
+    def counted(level: float, calls: list[float]) -> Callable[[th.Tensor, th.Tensor], th.Tensor]:
+        """A denoiser that predicts `level` everywhere, and records that it was called."""
+
+        def denoise(x: th.Tensor, _t: th.Tensor) -> th.Tensor:
+            calls.append(level)
+            return th.full_like(x, level)
+
+        return denoise
+
+    @pytest.mark.parametrize(
+        ("share", "called", "level"), [(0.0, [1.0], 1.0), (1.0, [3.0], 3.0), (0.25, [1.0, 3.0], 1.5)]
+    )
+    def test_it_is_that_share_of_the_way_between_two_predictions_and_calls_only_what_it_needs(
+        self, share: float, called: list[float], level: float
+    ) -> None:
+        calls: list[float] = []
+        x, t = th.zeros(1, 3, 4, 4), th.full((1,), 500.0)
+        eps = sampler.blend(self.counted(1.0, calls), self.counted(3.0, calls), share, x, t)
+        assert calls == called
+        assert th.allclose(eps, th.full_like(x, level))
+
+    def test_a_denoiser_blended_with_itself_is_called_once(self) -> None:
+        calls: list[float] = []
+        denoise = self.counted(2.0, calls)
+        sampler.blend(denoise, denoise, 0.5, th.zeros(1, 3, 4, 4), th.full((1,), 500.0))
+        assert calls == [2.0]
+
+
+class TestRedraw:
+    @staticmethod
+    def image() -> tuple[th.Tensor, th.Tensor]:
+        """An image and noise for it."""
+        image, noise = th.randn(2, 1, 3, 16, 16, generator=th.Generator().manual_seed(0))
+        return image * SPREAD, noise
+
+    def test_from_almost_no_noise_it_is_the_image(self, log_alpha_bar: np.ndarray) -> None:
+        """To within the noise added, which no denoiser can tell from an image that is Gaussian itself."""
+        image, noise = self.image()
+        redrawn = sampler.redraw(gaussian_denoiser(log_alpha_bar), log_alpha_bar, image, noise, t=2.0, steps=30)
+        assert (redrawn - image).square().mean().sqrt().item() < 1.5 * sampler.level(log_alpha_bar, 2.0).sigma
+
+    def test_the_more_noise_the_more_of_it_is_the_denoisers_own(self, log_alpha_bar: np.ndarray) -> None:
+        image, noise = self.image()
+        denoise = gaussian_denoiser(log_alpha_bar)
+        far = [
+            (sampler.redraw(denoise, log_alpha_bar, image, noise, t=t, steps=30) - image).square().mean().item()
+            for t in (50.0, 300.0, 600.0, 900.0)
+        ]
+        assert far == sorted(far)
+        assert far[0] < 0.2 * far[-1]
+
+    def test_it_takes_the_share_of_the_steps_below_its_timestep(self, log_alpha_bar: np.ndarray) -> None:
+        exact, calls = gaussian_denoiser(log_alpha_bar), []
+
+        def denoise(x: th.Tensor, t: th.Tensor) -> th.Tensor:
+            calls.append(float(t[0]))
+            return exact(x, t)
+
+        image, noise = self.image()
+        sampler.redraw(denoise, log_alpha_bar, image, noise, t=500.0, steps=30)
+        below = [t for t in sampler.timesteps(log_alpha_bar, 30) if 0 < t < 500]
+        assert calls == pytest.approx([500.0, *below], rel=1e-6)
+        assert 5 < len(calls) < 30
+
+    def test_it_draws_no_random_numbers(self, log_alpha_bar: np.ndarray) -> None:
+        image, noise = self.image()
+        th.manual_seed(0)
+        expected = th.randn(4)
+        th.manual_seed(0)
+        first = sampler.redraw(gaussian_denoiser(log_alpha_bar), log_alpha_bar, image, noise, t=600.0, steps=30)
+        assert th.equal(th.randn(4), expected)
+        again = sampler.redraw(gaussian_denoiser(log_alpha_bar), log_alpha_bar, image, noise, t=600.0, steps=30)
+        assert th.equal(first, again)
+
+    def test_a_small_change_of_the_image_or_the_timestep_changes_it_a_little(self, log_alpha_bar: np.ndarray) -> None:
+        image, noise = self.image()
+        denoise = gaussian_denoiser(log_alpha_bar)
+        redrawn = sampler.redraw(denoise, log_alpha_bar, image, noise, t=600.0, steps=30)
+        moved = sampler.redraw(denoise, log_alpha_bar, image + 0.001, noise, t=600.0, steps=30)
+        later = sampler.redraw(denoise, log_alpha_bar, image, noise, t=601.0, steps=30)
+        assert (moved - redrawn).abs().max() < 0.002
+        assert (later - redrawn).abs().max() < 0.01
