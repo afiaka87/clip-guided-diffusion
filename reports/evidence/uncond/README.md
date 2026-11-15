@@ -13,7 +13,7 @@ Experiments for [the unconditional report](<../../Unconditional ADM CLIP guidanc
 | `train_conditioning.py` | Fine-tunes that projection, the timestep MLP and every ResBlock's embedding layers on webdataset tars. |
 | `cond_generate.py` | Samples a fine-tuned checkpoint with classifier-free guidance and CLIP guidance, for `run_arm.py`. |
 | `queue1.sh` to `queue4.sh` | The runs below, in order, on the RTX 2070 SUPER. `queue4.sh` did not run there: the 2070 fell off the bus as it started. |
-| `queue5.sh`, `queue6.sh`, `queue.sh`, `todo.txt` | The runs on the RTX 4070. `queue5.sh` regenerates the baselines there and starts queue4's arms. From `queue6.sh` on, `queue.sh` runs the commands listed in `todo.txt` one at a time, so the list can be reordered while it runs, and `queue6.log` has what ran. |
+| `queue5.sh` to `queue7.sh`, `queue.sh`, `todo.txt` | The runs on the RTX 4070. `queue5.sh` regenerates the baselines there and starts queue4's arms. From `queue6.sh` on, `queue.sh` runs the commands listed in `todo.txt` one at a time, so the list can be reordered while it runs, and `queue6.log` has what ran. `queue7.sh` runs the arms made with cgd's own options. |
 | `layout.py` | Starts the unconditional pipeline from another arm's image, shrunk to a tiny layout and noised partway down the schedule. |
 | `thumbnail.py` | Thumbnail guidance and hand-off: a 64x64 text-conditioned model (GLIDE, LAIONIDE, Karlo's decoder, OpenAI's CLIP of noisy images or `layout_prior.py`'s) sets the composition. Also CLIP guidance towards the image embedding Karlo's prior draws (`target`), limits on the thumbnail model's push (`parallel`, `limit`, `cap`) and PAG on the U-Net's call (`pag_scale`). `check_thumbnail.py` checks its formula exactly on Gaussian data. |
 | `karlo_alone.py` | Karlo without the unconditional U-Net, as the reference: its whole pipeline, or its bare thumbnail. |
@@ -21,6 +21,7 @@ Experiments for [the unconditional report](<../../Unconditional ADM CLIP guidanc
 | `check_seed.py` | Draws one image of an arm again in a new process and compares the pixels. |
 | `add_arm.py`, `reorder.py` | Insert an arm into `todo.txt`, and move arms to its front. `todo_later.txt` holds arms set aside. |
 | `time_cli.py` | Wall clock and peak VRAM of the `cgd` command, for the README's Speed table. |
+| `check_port.py` | Makes one image of each of ten arms again with `cgd.adm.generate()` and the options that stand for the arm, and compares it with the stored image. |
 | `sheet_rows.py` | `sheet.py` turned on its side, a row per arm with a label and only the prompts asked for. |
 | `self_guidance.py` | Perturbed-attention guidance with the four layers its paper perturbs on this checkpoint. |
 | `cache_layouts.py`, `build_layout_data.py` | Shrink the LAION shards to 64x64 thumbnails with captions, and embed the captions, for `train_layout_prior.py`. |
@@ -263,8 +264,17 @@ Its means are 0.342, 0.350 and 0.161 on the CLIP judges, PickScore 21.44, HPS 0.
 
 **The options make the experiments' images, byte for byte.** `check_port.py` makes prompt 3 at seed 1 of each of its ten arms again with `cgd.adm.generate()`, and all ten are the stored image. That took a fix. At first only the default, `xres_nclip_w10_e_c4`, differed, and only when it was the first image of a process: OpenAI's CLIP of noisy images is built straight on the GPU, and its weights' random initialisation drew from the GPU's random stream after the seed was set, which moved the noise the image starts from. `thumbnail.py` loads it before setting the seed, so the experiment never saw this. The thumbnail loaders now fork the GPU's stream as well as the CPU's, and `test_loading_a_thumbnail_model_draws_none_of_the_runs_random_numbers` fails without that. GLIDE, LAIONIDE and Karlo are built on the CPU and were never affected. So the measurements above are measurements of the options.
 
-Still to run:
+**4 cutouts or 16.** Each option at `-cutn 4` against itself at 16, from the stored scores, paired on (prompt, seed). `cgd_glide_c4` was made with `cgd.adm.generate()` itself (`queue7.sh`), and the rest are the arms above:
 
-- The integration tests (`tests/integration`). A first run passed its first 32 tests and was stopped by the machine running low on memory.
-- `time_cli.py` with the new configurations, GLIDE, LAIONIDE and Karlo at 4 cutouts, and thumbnail guidance at 512, where the thumbnail is an eighth of the image and nothing has been measured. They are queued in `todo.txt`, for `queue7.sh`.
-- The README's examples and GIFs of each option.
+| At `-cutn 4` against `-cutn 16` | CLIP judges | PickScore | HPS v2.1 | Rating | Seconds |
+|---|---|---|---|---|---|
+| `-thumb none`: `uncond_e_c4`, `cgd_uncond_e` | -0.0044 ± 0.0087, 6/12 | -0.03 ± 0.46, 7/12 | +0.0022 ± 0.0128, 7/12 | +0.18 ± 0.32, 8/12 | 20.5 against 30.2 |
+| `-thumb clip`, the default: `xres_nclip_w10_e_c4`, `xres_nclip_w10_e` | +0.0015 ± 0.0049, 6/12 | +0.17 ± 0.34, 7/12 | +0.0012 ± 0.0098, 5/12 | -0.02 ± 0.25, 6/12 | 22.4 against 30.3 |
+| `-pag`: `xres_nclip_w10_pag1_e_c4`, `xres_nclip_w10_pag1_e` | +0.0000 ± 0.0076, 6/12 | -0.28 ± 0.29, p 0.064, 3/12 | -0.0052 ± 0.0093, 3/12 | -0.07 ± 0.22, 5/12 | 31.5 against 39.0 |
+| `-thumb glide`: `cgd_glide_c4`, `xres_glide_w3_e` | -0.0080 ± 0.0057, p 0.027, 4/12 | -0.45 ± 0.52, 2/12 | -0.0074 ± 0.0136, 5/12 | -0.06 ± 0.33, 6/12 | 24.4 against 32.1 |
+
+`cgd_glide_c4`'s means are 0.338, 0.351 and 0.159 on the CLIP judges, PickScore 21.05, HPS 0.2435 and rating 5.48, with 2.1% of pixels clipped, at 6.6 GiB. So the default stays at 4 cutouts: 16 add nothing to it and cost 8 s an image. GLIDE loses at 4, clearly on the CLIP judges, and PAG leans the same way, so the README runs them, LAIONIDE and Karlo at `-cutn 16`, as they were measured. `cgd_laionide_c4` and `cgd_karlo_c4` were made as well and are not scored.
+
+The integration tests pass on the RTX 4070 under Windows, 118 of them, with the expandable segments check skipped, as PyTorch has none there. That took two fixes: the printed paths the tests expect now use the platform's separators, and `limit_to_vram()` caps PyTorch at what the GPU has free, without which the tests that run out of memory on purpose took system memory for two minutes instead of failing.
+
+Not measured: thumbnail guidance at 512, where the thumbnail is an eighth of the image (`cgd_512_none_c4` was stopped after 22 of 36 images), and the command's own wall clock with the new defaults. The times above are per image with the models loaded.
