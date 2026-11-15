@@ -30,7 +30,6 @@ pushing away, and each scale is the one its model was measured with.
 import math
 import warnings
 from collections.abc import Callable, Sequence
-from contextlib import AbstractContextManager
 from functools import lru_cache, partial
 from typing import Any, NamedTuple
 
@@ -42,6 +41,7 @@ from torch import nn
 from cgd import sampler
 from cgd.checks import require
 from cgd.clip_models import skip_weight_init
+from cgd.device import forked_rng
 from cgd.download import CACHE_PATH, download
 from cgd.guide import MIN_TOTAL_WEIGHT
 from cgd.prompts import parse_prompt
@@ -169,16 +169,6 @@ def load(name: str, prompts: Sequence[str], *, batch_size: int, seed: int, devic
         tokens = glide_tokens(loaded.model, texts, loaded.text_context, device)
         change = partial(glide_change, loaded.model, tokens, weights)
     return Thumbnail(partial(matched, change, loaded.log_alpha_bar), SCALES[name])
-
-
-def forked_rng(device: str) -> AbstractContextManager[None]:
-    """Fork the CPU's random stream and the device's, so a model built inside draws none of the run's random numbers.
-
-    Both matter: a model built straight on the GPU initialises its weights from the GPU's stream,
-    which the seed's initial noise is drawn from.
-    """
-    place = th.device(device)
-    return th.random.fork_rng(devices=[place] if place.type == "cuda" else [])
 
 
 @lru_cache(maxsize=1)
