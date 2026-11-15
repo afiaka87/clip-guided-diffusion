@@ -109,7 +109,10 @@ def _load_openai(model_name: str, device: str) -> nn.Module:
         if model_name in OPENAI_MODELS
         else Path(model_name)
     )
-    with skip_weight_init():
+    # OpenAI published these weights as TorchScript archives, so reading one is the only way to them. On Python
+    # 3.14 and later PyTorch warns on every run that it may stop reading them, which a user can do nothing about.
+    with skip_weight_init(), warnings.catch_warnings():
+        warnings.filterwarnings("ignore", "`torch.jit.load` is not supported", FutureWarning)
         model = clip.load(str(path), jit=False, device=device)[0]
     return model.eval().requires_grad_(False)
 
