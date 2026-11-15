@@ -4,6 +4,9 @@ CLIP picks the ImageNet class closest to the prompts for the U-Net to draw, and 
 gradient steers each denoised image towards them, through sampler.sample(). The
 unconditional checkpoints draw no class, so guidance alone brings the subject: CLIP's,
 and that of a model which reads the noisy image as a thumbnail, see thumbnails.py.
+
+A sequence of images, "a castle|>a fox", is each image as its prompts make it alone, and
+frames that slide from each one to the next, see slide.py and between().
 """
 
 import warnings
@@ -19,14 +22,15 @@ from PIL import Image
 from torch import nn
 from tqdm.auto import tqdm
 
-from cgd import losses, pag, sampler, thumbnails
+from cgd import losses, pag, sampler, slide, thumbnails
 from cgd.checks import check_common, require
 from cgd.clip_models import check_model, closest_imagenet_class, ensemble_members
-from cgd.device import default_device, limit_to_vram
+from cgd.device import default_device, limit_to_vram, random_state, replayed_rng
 from cgd.download import download, fetch
-from cgd.guide import NUM_CUTOUTS, Guide, guide_loss, load_guide, query
+from cgd.guide import NUM_CUTOUTS, Guide, guide_loss, load_guides, query
 from cgd.imagenet_classes import IMAGENET_CLASSES
-from cgd.outputs import run_name, save_frames
+from cgd.outputs import run_name, save_batch
+from cgd.prompts import by_image, scenes
 
 with warnings.catch_warnings():  # It uses a deprecated spelling of torch.amp, which is nothing to act on.
     warnings.simplefilter("ignore", FutureWarning)
@@ -38,6 +42,7 @@ TV_SCALE = 150  # Smoothness.
 RANGE_SCALE = 50  # How far out of RGB range the denoised image may get.
 NUM_TIMESTEPS = 1000  # Every checkpoint was trained on this schedule length.
 PAG_SIZE = 256  # The unconditional checkpoint that pag.LAYERS names the attention blocks of.
+TRANSITION_FRAMES = 30  # From one image of a sequence to the next: 3 seconds of the animation.
 # Guidance backpropagates through the U-Net. Above this many pixels per batch, recompute
 # its activations instead of storing them: 1.5x the time per guided step for under half
 # the memory, which is what lets 512px run in 8 GB.
@@ -95,6 +100,14 @@ class Defaults(NamedTuple):
     thumbnail: str  # One of thumbnails.MODELS, or NO_THUMBNAIL.
 
 
+class Drawing(NamedTuple):
+    """What draws one image of a sequence."""
+
+    unet: sampler.Denoiser  # The U-Net drawing the image's class, with whatever else shapes its noise prediction.
+    plain: sampler.Denoiser  # The U-Net drawing that class and nothing more, which the frames between images use.
+    guidance: sampler.Guidance
+
+
 DEFAULTS = Defaults(128, sampler.DEFAULT_STEPS, 1, "ViT-B/32", NUM_CUTOUTS, NO_THUMBNAIL)
 # What made the best images without a class to bring the subject, for the time it takes. The README has the numbers.
 UNCONDITIONAL_DEFAULTS = Defaults(
@@ -115,9 +128,9 @@ def chosen(given: T | None, default: T) -> T:
 def default_thumbnail(unconditional: bool, prompts: Sequence[str], square: bool) -> str:
     """The thumbnail model of a run that names none: its checkpoint's, if the run has what such a model reads.
 
-    That is a text prompt, and a square image to average down to a thumbnail.
+    That is a text prompt for every image of a sequence, and a square image to average down to a thumbnail.
     """
-    return defaults(unconditional).thumbnail if prompts and square else NO_THUMBNAIL
+    return defaults(unconditional).thumbnail if all(by_image(prompts)) and square else NO_THUMBNAIL
 
 
 def check_parameters(  # pylint: disable=too-many-locals  # Its keyword arguments are the command's options.
@@ -141,6 +154,7 @@ def check_parameters(  # pylint: disable=too-many-locals  # Its keyword argument
     init_scale: float,
     skip_timesteps: int,
     save_frequency: int,
+    transition_frames: int | None = None,
 ) -> None:
     """Reject a configuration that cannot work, before loading anything."""
     check_common(
@@ -150,6 +164,7 @@ def check_parameters(  # pylint: disable=too-many-locals  # Its keyword argument
         num_cutouts=num_cutouts,
         save_frequency=save_frequency,
         aesthetic_scale=aesthetic_scale,
+        transition_frames=transition_frames,
         other_images=[init_image] if init_image else [],
     )
     sizes = list(UNCONDITIONAL_URLS if unconditional else CHECKPOINT_URLS)
@@ -170,7 +185,11 @@ def check_parameters(  # pylint: disable=too-many-locals  # Its keyword argument
     require(thumbnail in names, f"Unknown thumbnail model {thumbnail!r}. Choose one of {names}.")
     if thumbnail != NO_THUMBNAIL:
         require(unconditional, "--thumbnail only applies with --unconditional.")
-        require(bool(prompts), "--thumbnail reads the text prompts, and there are none.")
+        require(
+            all(by_image(prompts)),
+            "--thumbnail reads the text prompts, and "
+            + ("an image of the sequence has none." if prompts else "there are none."),
+        )
         require(
             height == width == image_size,
             f"--thumbnail needs a square image: its models read {thumbnails.SIZE}x{thumbnails.SIZE} thumbnails.",
@@ -287,6 +306,7 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
     seed: int = 0,
     output_dir: str | Path = "outputs",
     save_frequency: int = 10,
+    transition_frames: int | None = None,
     device: str | None = None,
     progress: bool = True,
 ) -> Iterator[tuple[int, Path]]:
@@ -295,6 +315,11 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
     An image is saved every `save_frequency` model calls, and the result always last. The
     prompts take weights, as in "a fox:2", and image prompts are paths or URLs. Without
     `skip_timesteps`, an init image skips half the schedule.
+
+    A prompt that starts with > begins the next image of a sequence. Each image is the one
+    its prompts make alone, with these settings and this seed. After the first, the frames
+    saved are the `transition_frames` that slide to each next image, the last of them the
+    image itself. The default is TRANSITION_FRAMES.
 
     `image_size`, `steps`, `recurrence`, `clip_model`, `num_cutouts` and `thumbnail` default to
     DEFAULTS, or to UNCONDITIONAL_DEFAULTS for an unconditional checkpoint. `thumbnail` is
@@ -331,18 +356,19 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
         init_scale=init_scale,
         skip_timesteps=skip_timesteps,
         save_frequency=save_frequency,
+        transition_frames=transition_frames,
     )
     check_model(clip_model)
+    images = scenes(prompts, image_prompts)
     device = default_device(device)
     limit_to_vram(device)
     _status(f"Using device {device}", progress)
 
     # Everything from here on draws random numbers in this order, so a seed always makes the same image.
     th.manual_seed(seed)
-    guide = load_guide(
+    guides = load_guides(
         clip_model,
-        prompts,
-        image_prompts,
+        images,
         image_size=image_size,
         num_cutouts=num_cutouts,
         device=device,
@@ -350,11 +376,12 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
         aesthetic_scale=aesthetic_scale,
     )
     init = load_init_image(init_image, height, width, device) if init_image else None
-    labels = None
+    labels: list[th.Tensor | None] = [None] * len(images)
     if not unconditional:
-        labels = closest_class(
-            guide, clip_model, batch_size=batch_size, device=device, fp16=clip_fp16, progress=progress
-        )
+        labels = [
+            closest_class(guide, clip_model, batch_size=batch_size, device=device, fp16=clip_fp16, progress=progress)
+            for guide in guides
+        ]
     use_checkpoint = batch_size * height * width > GRADIENT_CHECKPOINT_PIXELS
     model, log_alpha_bar = load_model(
         image_size, device, fp16=device != "cpu", use_checkpoint=use_checkpoint, unconditional=unconditional
@@ -372,22 +399,108 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
         if init_scale:
             init_loss = partial(perceptual_init_loss, load_lpips(device), init, init_scale)
 
-    unet: sampler.Denoiser = partial(denoise, model, labels)
-    if perturbed_attention:
-        unet = partial(pag.denoise, unet, model, pag.LAYERS)
-    if thumbnail != NO_THUMBNAIL:
-        guidance_of = thumbnails.load(thumbnail, prompts, batch_size=batch_size, seed=seed, device=device)
-        unet = partial(thumbnails.guided_denoise, unet, log_alpha_bar, guidance_of)
+    window = sampler.UNCONDITIONAL_GUIDANCE_WINDOW if unconditional else sampler.GUIDANCE_WINDOW
+    drawings = []
+    for image, guide, plain in zip(images, guides, class_denoisers(model, labels), strict=True):
+        unet = plain
+        if perturbed_attention:
+            unet = partial(pag.denoise, unet, model, pag.LAYERS)
+        if thumbnail != NO_THUMBNAIL:
+            guidance_of = thumbnails.load(thumbnail, image.prompts, batch_size=batch_size, seed=seed, device=device)
+            unet = partial(thumbnails.guided_denoise, unet, log_alpha_bar, guidance_of)
+        loss_fn = partial(guidance_loss, guide, init_loss=init_loss)
+        guidance = sampler.Guidance(loss_fn, guidance_rate, window, guidance_limit, recurrence)
+        drawings.append(Drawing(unet, plain, guidance))
 
     ts = sampler.timesteps(log_alpha_bar, steps, start)
-    x = th.randn((batch_size, 3, height, width), device=device)
-    if init is not None:
-        x = sampler.noised(log_alpha_bar, ts[0], init, x)
-    window = sampler.UNCONDITIONAL_GUIDANCE_WINDOW if unconditional else sampler.GUIDANCE_WINDOW
-    loss_fn = partial(guidance_loss, guide, init_loss=init_loss)
-    guidance = sampler.Guidance(loss_fn, guidance_rate, window, guidance_limit, recurrence)
-    samples = sampler.sample(unet, log_alpha_bar, ts, x, guidance, progress=progress)
-    yield from save_frames(samples, output_dir, run_name(prompts, image_prompts), save_frequency, len(ts) - 2)
+    noise = th.randn((batch_size, 3, height, width), device=device)
+    x = noise if init is None else sampler.noised(log_alpha_bar, ts[0], init, noise)
+    frames = sampled_frames(
+        drawings,
+        log_alpha_bar,
+        ts,
+        x,
+        noise,
+        steps=steps,
+        save_frequency=save_frequency,
+        transition_frames=chosen(transition_frames, TRANSITION_FRAMES),
+        progress=progress,
+    )
+    name = run_name(prompts, image_prompts)
+    for step, batch in frames:
+        yield from save_batch(batch, output_dir, name, step)
+
+
+def class_denoisers(model: nn.Module, labels: Sequence[th.Tensor | None]) -> list[sampler.Denoiser]:
+    """The U-Net drawing each of `labels`, one batch of them per image of a sequence, or no class for None.
+
+    Images of the same class share a denoiser, so sampler.blend() between them calls the U-Net once.
+    """
+    shared: dict[int | None, sampler.Denoiser] = {}
+    return [
+        shared.setdefault(None if label is None else int(label[0]), partial(denoise, model, label)) for label in labels
+    ]
+
+
+def sampled_frames(  # pylint: disable=too-many-locals  # It takes all a run samples with, to make every frame of it.
+    drawings: Sequence[Drawing],
+    log_alpha_bar: np.ndarray,
+    ts: Sequence[float],
+    x: th.Tensor,
+    noise: th.Tensor,
+    *,
+    steps: int,
+    save_frequency: int,
+    transition_frames: int,
+    progress: bool,
+) -> Iterator[tuple[int, th.Tensor]]:
+    """(step, batch of images) of each frame to save, for one image per drawing, each sampled from x down `ts`.
+
+    First the denoised image of every `save_frequency`th model call of the first image,
+    and its result. Then, for each next image, the `transition_frames` that slide to it,
+    see between(). `noise` is the standard normal noise x was made from, and `steps` how
+    many the whole schedule takes.
+    """
+    device = str(x.device)
+    drawn_from = random_state(device)  # Every image draws what the first does from here on.
+    before, result, step = drawings[0], x, len(ts) - 2
+    samples = sampler.sample(before.unet, log_alpha_bar, ts, x, before.guidance, progress=progress)
+    for model_call, result in enumerate(samples):
+        if model_call % save_frequency == 0 or model_call == step:
+            yield model_call, result
+
+    for number, after in enumerate(drawings[1:], start=2):
+        _status(f"Image {number} of {len(drawings)}, then the {transition_frames} frames that slide to it.", progress)
+        with replayed_rng(device, drawn_from):
+            following = sampler.final(
+                sampler.sample(after.unet, log_alpha_bar, ts, x, after.guidance, progress=progress)
+            )
+        ends = result.clamp(-1, 1), following.clamp(-1, 1)
+        draw = partial(between, (before.plain, after.plain), log_alpha_bar, noise, ends, steps=steps)
+        for frame in slide.place(draw, ends, transition_frames, progress):
+            step += 1
+            yield step, frame
+        before, result = after, following
+
+
+def between(
+    denoisers: tuple[sampler.Denoiser, sampler.Denoiser],
+    log_alpha_bar: np.ndarray,
+    noise: th.Tensor,
+    ends: tuple[th.Tensor, th.Tensor],
+    position: float,
+    *,
+    steps: int,
+) -> th.Tensor:
+    """The frame at `position` between two finished images, the `ends`: at 0 the first, at 1 the second.
+
+    The two are faded into each other and redrawn by the U-Net: noised with `noise`, most
+    halfway, and denoised between the two classes, without CLIP. slide.py has why.
+    """
+    share = slide.fade(position)
+    unet = partial(sampler.blend, *denoisers, share)
+    faded = th.lerp(*ends, share)
+    return sampler.redraw(unet, log_alpha_bar, faded, noise, t=slide.noise_timestep(position), steps=steps).clamp(-1, 1)
 
 
 def closest_class(
