@@ -261,9 +261,10 @@ Its means are 0.342, 0.350 and 0.161 on the CLIP judges, PickScore 21.44, HPS 0.
 
 `cgd -uncond` now has thumbnail guidance (`-thumb clip`, `glide`, `laionide`, `karlo` or `none`, `cgd/thumbnails.py`) and PAG (`-pag`, `cgd/pag.py`), ported from `thumbnail.py` and `self_guidance.py` with the same arithmetic in the same order, and its defaults are `xres_nclip_w10_e_c4`: the ensemble, 4 cutouts, 60 steps, recurrence 2 and `-thumb clip`.
 
-Not yet run, because another job held the GPU:
+**The options make the experiments' images, byte for byte.** `check_port.py` makes prompt 3 at seed 1 of each of its ten arms again with `cgd.adm.generate()`, and all ten are the stored image. That took a fix. At first only the default, `xres_nclip_w10_e_c4`, differed, and only when it was the first image of a process: OpenAI's CLIP of noisy images is built straight on the GPU, and its weights' random initialisation drew from the GPU's random stream after the seed was set, which moved the noise the image starts from. `thumbnail.py` loads it before setting the seed, so the experiment never saw this. The thumbnail loaders now fork the GPU's stream as well as the CPU's, and `test_loading_a_thumbnail_model_draws_none_of_the_runs_random_numbers` fails without that. GLIDE, LAIONIDE and Karlo are built on the CPU and were never affected. So the measurements above are measurements of the options.
 
-- `check_port.py`, which makes one image of each arm again with `cgd.adm.generate()` and compares it with the arm's stored image byte for byte. Until it says SAME, the numbers above are measurements of the experiments, not of the options.
-- The integration tests of the new options (`tests/integration`). The unit tests pass, and every option ran end to end on the CPU.
-- `time_cli.py` with the new configurations, GLIDE, LAIONIDE and Karlo at 4 cutouts, and thumbnail guidance at 512, where the thumbnail is an eighth of the image and nothing has been measured.
+Still to run:
+
+- The integration tests (`tests/integration`). A first run passed its first 32 tests and was stopped by the machine running low on memory.
+- `time_cli.py` with the new configurations, GLIDE, LAIONIDE and Karlo at 4 cutouts, and thumbnail guidance at 512, where the thumbnail is an eighth of the image and nothing has been measured. They are queued in `todo.txt`, for `queue7.sh`.
 - The README's examples and GIFs of each option.
