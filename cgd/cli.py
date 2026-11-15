@@ -14,7 +14,7 @@ from cgd.clip_models import MODEL_NAMES, OPEN_CLIP_MODELS, ensemble_members
 from cgd.device import default_device
 from cgd.guide import NUM_CUTOUTS, load_guide, score
 from cgd.outputs import save_gif, save_video
-from cgd.prompts import split_prompts
+from cgd.prompts import scenes, split_prompts
 
 DEFAULT_SAVE_FREQUENCY = 10
 JUDGE_MODELS = (
@@ -44,6 +44,7 @@ SHARED_OPTIONS = (
     "clip_fp16",
     "num_cutouts",
     "aesthetic_scale",
+    "transition_frames",
     "device",
 )
 
@@ -63,13 +64,16 @@ def build_parser() -> argparse.ArgumentParser:
         "prompts",
         nargs="?",
         default="",
-        help="Text prompts, joined with |. Each can take a weight, negative to avoid it: 'a fox:2|blurry:-1'.",
+        help="Text prompts, joined with |. Each can take a weight, negative to avoid it: 'a fox:2|blurry:-1'. "
+        "Begin the next image of a sequence with >, and the GIF or video slides from each image to the next: "
+        "'a castle|>a fox|>a sailboat'.",
     )
     parser.add_argument(
         "-imgs",
         "--image-prompts",
         default="",
-        help="Image prompts, paths or URLs, joined with | and weighted the same way.",
+        help="Image prompts, paths or URLs, joined with | and weighted the same way. A sequence of them works the "
+        "same way too, and image prompts that are not a sequence go with every image of one.",
     )
     parser.add_argument(
         "-size",
@@ -122,6 +126,13 @@ def build_parser() -> argparse.ArgumentParser:
         default=1,
         help="Make this many images from seeds counting up from --seed, and keep the one that CLIP models which "
         "did not guide them score best. Takes this many times as long. Default %(default)s.",
+    )
+    parser.add_argument(
+        "-frames",
+        "--transition-frames",
+        type=int,
+        help="Frames that slide from each image of a sequence to the next, 10 to a second. Default "
+        f"{adm.TRANSITION_FRAMES}, or {backbone.DEFAULT_TRANSITION_FRAMES} with --backbone, where a frame is quick.",
     )
     parser.add_argument("-dev", "--device", help="cpu, cuda or cuda:<index>. Default cuda when there is a GPU.")
 
@@ -231,7 +242,12 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Save a frame every this many steps. The result is always saved. Default {DEFAULT_SAVE_FREQUENCY}, "
         "or 1 with --gif or --mp4.",
     )
-    output.add_argument("-gif", "--gif", action="store_true", help="Also save the frames as a GIF, then delete them.")
+    output.add_argument(
+        "-gif",
+        "--gif",
+        action="store_true",
+        help="Also save the frames as a GIF, then delete them. A sequence does unless it asks for --mp4.",
+    )
     output.add_argument(
         "-mp4", "--mp4", action="store_true", help="Also save the frames as an H.264 video, then delete them."
     )
@@ -311,11 +327,23 @@ def make_images(args: argparse.Namespace) -> Frames:
 
     if args.candidates < 1:
         raise ConfigError("--candidates must be at least 1.")
+    if args.candidates > 1 and is_sequence(args):
+        raise ConfigError("--candidates keeps the best of several images, and a sequence shows every one of its own.")
     if args.candidates == 1:
         return collect(run(args.seed, args.output_dir))
     return judged_candidates(
         run, args.candidates, seed=args.seed, output_dir=args.output_dir, prompts=prompts, image_prompts=image_prompts
     )
+
+
+def is_sequence(args: argparse.Namespace) -> bool:
+    """Whether the prompts ask for several images, to slide from one to the next."""
+    return len(scenes(split_prompts(args.prompts), split_prompts(args.image_prompts))) > 1
+
+
+def watched(args: argparse.Namespace) -> argparse.Namespace:
+    """The options, with a GIF added to a sequence that asks for no video: a sequence is made to be watched."""
+    return argparse.Namespace(**vars(args) | {"gif": True}) if is_sequence(args) and not args.mp4 else args
 
 
 def save_outputs(frames: Frames, args: argparse.Namespace) -> None:
@@ -370,7 +398,7 @@ def out_of_memory_advice(args: argparse.Namespace) -> str:
 def main(argv: Sequence[str] | None = None) -> None:
     """The cgd command."""
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args = watched(parser.parse_args(argv))
     try:
         frames = make_images(args)
     except ConfigError as error:
