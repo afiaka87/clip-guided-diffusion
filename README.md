@@ -110,6 +110,8 @@ The prompt is [this goose](images/goose_on_the_run.png), a generation from 2021.
 
 There's no need to specify a device: without `--device`, it uses CUDA whenever PyTorch can.
 
+On Windows, NVIDIA's driver lends a program system memory when the GPU's runs out, which is many times slower. `cgd` takes only what the GPU has free there, so a run that does not fit stops with advice on what to change, as it does elsewhere.
+
 `uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 -cutn 4 "A wooden cabin in a snowy forest"`
 
 ![A wooden cabin in a snowy forest](images/A_wooden_cabin_in_a_snowy_forest.gif)
