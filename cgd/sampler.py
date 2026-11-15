@@ -24,6 +24,11 @@ that changes every step. This sampler reaches the same prompt fidelity in about
   composition. That happens at high noise, so unconditional checkpoints are guided
   from the very start, and take twice the steps for that not to overshoot. Neither
   change helps alone.
+- They also redo each guided step above 30% of the schedule (self-recurrence, from
+  Universal Guidance): x goes back up to the step's own noise level with fresh noise,
+  and the step runs again. Guidance gets a second say over the composition, and the
+  U-Net pulls each pass back onto what it learned. Ninety plain steps, about the same
+  time, follow the prompt as closely but look no better.
 
 The defaults were tuned on 128px and validated on prompts held out from tuning, and
 the unconditional ones likewise on 256px.
@@ -48,6 +53,8 @@ ETA = 0.5  # Fresh noise per step: 0 is an ODE, 1 is fully ancestral.
 DEFAULT_GUIDANCE_RATE = 0.08  # Max RMS of the guidance relative to the noise.
 GUIDANCE_WINDOW = (0.1, 0.8)  # Guide between these fractions of the schedule.
 UNCONDITIONAL_GUIDANCE_WINDOW = (0.1, 1.0)
+UNCONDITIONAL_RECURRENCE = 2  # Times each guided step above RECUR_ABOVE runs.
+RECUR_ABOVE = 0.3  # Recurrence only redoes steps above this fraction of the schedule, where the composition forms.
 X0_CLAMP = 1.2  # Bound on x0. Slightly loose so guidance can still move extremes.
 GUIDANCE_LIMIT_SEARCH_STEPS = 8
 
@@ -176,6 +183,17 @@ def dpm_solver_step(
     return x_next
 
 
+def renoised(x: th.Tensor, levels: tuple[Level, Level], noise: th.Tensor) -> th.Tensor:
+    """x at the second, lower level of a step, taken back up to the first as the forward process would.
+
+    The signal shrinks by the ratio of the alphas, and fresh standard normal `noise` makes
+    up the rest of the first level's noise.
+    """
+    now, then = levels
+    ratio = now.alpha / then.alpha
+    return ratio * x + math.sqrt(max(now.sigma**2 - (ratio * then.sigma) ** 2, 0.0)) * noise
+
+
 class Guidance(NamedTuple):
     """What steers sampling, and how hard."""
 
@@ -183,6 +201,8 @@ class Guidance(NamedTuple):
     rate: float = DEFAULT_GUIDANCE_RATE  # The most the gradient may move x0, relative to the noise.
     window: tuple[float, float] = GUIDANCE_WINDOW  # Where in the schedule to guide, as fractions of it.
     limit: float | None = None  # A limit_guidance() quantile.
+    recurrence: int = 1  # Times each guided step above recur_above runs, re-noised back between runs.
+    recur_above: float = RECUR_ABOVE  # As a fraction of the schedule.
 
 
 def guides_at(guidance: Guidance | None, t: float, last: int) -> bool:
@@ -191,6 +211,13 @@ def guides_at(guidance: Guidance | None, t: float, last: int) -> bool:
         return False
     guide_from, guide_to = (bound * last for bound in guidance.window)
     return guide_from <= t <= guide_to
+
+
+def recurrences(guidance: Guidance | None, t: float, last: int) -> int:
+    """How many times the step from timestep t runs: more than once only where it is guided, above recur_above."""
+    if guidance is None or not guides_at(guidance, t, last) or t < guidance.recur_above * last:
+        return 1
+    return guidance.recurrence
 
 
 class Prediction(NamedTuple):
@@ -235,22 +262,52 @@ def sample(
     eta: float = ETA,
     progress: bool = True,
 ) -> Iterator[th.Tensor]:
-    """Yield the denoised image of each model call, from x at ts[0] down the timesteps `ts`. The last is the result.
+    """Yield the denoised image at each timestep, from x at ts[0] down the timesteps `ts`. The last is the result.
 
     x is standard normal noise at the start of the schedule, or an image noised() to a
-    timestep partway down it.
+    timestep partway down it. A step that recurs yields the image of its last run.
     """
     levels = [level(log_alpha_bar, t) for t in ts]
+    last = len(log_alpha_bar) - 1
     previous = None
     progress_bar = tqdm(range(len(ts) - 1), disable=not progress)
     for i in progress_bar:
-        active = guidance if guides_at(guidance, ts[i], len(log_alpha_bar) - 1) else None
-        prediction = predict(denoise, x, ts[i], levels[i], active)
+        active = guidance if guides_at(guidance, ts[i], last) else None
+        if i < len(ts) - 2:
+            step = levels[i], levels[i + 1]
+            prediction, x = recurring_step(
+                denoise, x, ts[i], step, active, previous=previous, runs=recurrences(active, ts[i], last), eta=eta
+            )
+            previous = Previous(prediction.x0, step_size(*step))
+        else:  # The last model call, whose denoised image is the result.
+            prediction = predict(denoise, x, ts[i], levels[i], active)
         if prediction.loss is not None:
             progress_bar.set_postfix(loss=f"{prediction.loss.item():.0f}", refresh=False)
         yield prediction.guided_x0
-        if i == len(ts) - 2:  # The last model call, whose denoised image is the result.
-            return
-        step = levels[i], levels[i + 1]
-        x = dpm_solver_step(x, prediction.x0, prediction.guided_x0, previous, step, noise=th.randn_like(x), eta=eta)
-        previous = Previous(prediction.x0, step_size(*step))
+
+
+def recurring_step(
+    denoise: Denoiser,
+    x: th.Tensor,
+    t: float,
+    step: tuple[Level, Level],
+    guidance: Guidance | None,
+    *,
+    previous: Previous | None,
+    runs: int = 1,
+    eta: float = ETA,
+) -> tuple[Prediction, th.Tensor]:
+    """The prediction at timestep t, the first level of `step`, and x after the step, taken `runs` times.
+
+    Between runs x goes back up to the first level with fresh noise, so guidance gets
+    another say at the same noise level. A rerun is first order: the x0 of the step before
+    does not continue from its fresh noise. Returns the last run's prediction and x.
+    """
+    for run in range(runs):
+        prediction = predict(denoise, x, t, step[0], guidance)
+        x_next = dpm_solver_step(
+            x, prediction.x0, prediction.guided_x0, None if run else previous, step, noise=th.randn_like(x), eta=eta
+        )
+        if run < runs - 1:
+            x = renoised(x_next, step, th.randn_like(x))
+    return prediction, x_next
