@@ -26,7 +26,6 @@ class TestPipeline:
             "batch_size": 1,
             "clip_model": "RN50",
             "clip_fp16": False,
-            "num_cutouts": 16,
             "steps": 12,
             "save_frequency": 10,
             "progress": False,
@@ -39,16 +38,57 @@ class TestPipeline:
         assert (settings["iterations"], settings["image_size"], settings["aesthetic_scale"]) == (3, 512, 0.0)
         assert settings["progress"] is True
 
-    @pytest.mark.parametrize("backbone_argv", [(), ("-bb", "sd-turbo")])
-    def test_both_pipelines_get_the_cutouts(self, backbone_argv: tuple[str, ...]) -> None:
-        assert pipeline(parse("a fox", *backbone_argv))[1]["num_cutouts"] == 16
-        assert pipeline(parse("a fox", "-cutn", "4", *backbone_argv))[1]["num_cutouts"] == 4
+    @pytest.mark.parametrize("backbone_argv", [(), ("-bb", "sd-turbo"), ("-uncond",)])
+    def test_every_pipeline_gets_the_cutouts_asked_for_and_otherwise_picks_its_own(
+        self, backbone_argv: tuple[str, ...]
+    ) -> None:
+        assert "num_cutouts" not in pipeline(parse("a fox", *backbone_argv))[1]
+        assert pipeline(parse("a fox", "-cutn", "8", *backbone_argv))[1]["num_cutouts"] == 8
 
     def test_unconditional_is_passed_only_when_asked_for(self) -> None:
         assert "unconditional" not in pipeline(parse("a fox"))[1]
         generate, settings = pipeline(parse("a fox", "-uncond", "-size", "512"))
         assert generate is adm.generate
         assert (settings["unconditional"], settings["image_size"]) == (True, 512)
+
+    def test_recurrence_is_passed_only_when_asked_for(self) -> None:
+        """Unset, adm.generate picks it from the checkpoint."""
+        assert "recurrence" not in pipeline(parse("a fox", "-uncond"))[1]
+        assert pipeline(parse("a fox", "-recur", "3"))[1]["recurrence"] == 3
+
+    def test_unconditional_alone_leaves_every_setting_to_its_defaults(self) -> None:
+        _, settings = pipeline(parse("a fox", "-uncond", "-q"))
+        assert settings == {
+            "width_offset": 0,
+            "height_offset": 0,
+            "batch_size": 1,
+            "clip_fp16": False,
+            "unconditional": True,
+            "save_frequency": 10,
+            "progress": False,
+        }
+
+    def test_each_option_given_overrides_a_default_of_unconditional(self) -> None:
+        argv = ("-clip", "RN50", "-cutn", "16", "-n", "30", "-recur", "1", "-thumb", "none", "-size", "512")
+        _, settings = pipeline(parse("a fox", "-uncond", *argv))
+        chosen = {name: settings[name] for name in adm.UNCONDITIONAL_DEFAULTS._fields}
+        assert chosen == {
+            "image_size": 512,
+            "steps": 30,
+            "recurrence": 1,
+            "clip_model": "RN50",
+            "num_cutouts": 16,
+            "thumbnail": "none",
+        }
+
+    @pytest.mark.parametrize("name", ["clip", "glide", "laionide", "karlo", "none"])
+    def test_a_thumbnail_model_is_passed_only_when_asked_for(self, name: str) -> None:
+        assert "thumbnail" not in pipeline(parse("a fox", "-uncond"))[1]
+        assert pipeline(parse("a fox", "-uncond", "-thumb", name))[1]["thumbnail"] == name
+
+    def test_perturbed_attention_is_passed_only_when_asked_for(self) -> None:
+        assert "perturbed_attention" not in pipeline(parse("a fox", "-uncond"))[1]
+        assert pipeline(parse("a fox", "-uncond", "-pag"))[1]["perturbed_attention"] is True
 
     def test_an_animation_saves_every_frame_unless_told_otherwise(self) -> None:
         assert pipeline(parse("a fox", "-gif"))[1]["save_frequency"] == 1
@@ -59,6 +99,9 @@ class TestPipeline:
         [
             (("-bb", "sd-turbo", "-n", "4"), "--steps only applies without --backbone."),
             (("-bb", "sd-turbo", "-uncond"), "--unconditional only applies without --backbone."),
+            (("-bb", "sd-turbo", "-recur", "2"), "--recurrence only applies without --backbone."),
+            (("-bb", "sd-turbo", "-thumb", "glide"), "--thumbnail only applies without --backbone."),
+            (("-bb", "sd-turbo", "-pag"), "--perturbed-attention only applies without --backbone."),
             (("-bb", "sd-turbo", "-rate", "0.1", "-init", "x.png"), "--guidance-rate, --init-image only apply without"),
             (("-iters", "4"), "--iterations only applies with --backbone."),
         ],
@@ -86,6 +129,11 @@ class TestPipeline:
             "-cutn",
             "4",
             "-uncond",
+            "-recur",
+            "3",
+            "-thumb",
+            "karlo",
+            "-pag",
         )
         long = parse(
             "a",
@@ -98,6 +146,9 @@ class TestPipeline:
             "--clip-fp16",
             "--num-cutouts=4",
             "--unconditional",
+            "--recurrence=3",
+            "--thumbnail=karlo",
+            "--perturbed-attention",
         )
         assert short == long
 
@@ -114,6 +165,13 @@ def test_collect_groups_each_images_frames_in_order() -> None:
         (("a fox", "-best", "0"), "--candidates must be at least 1"),
         (("a fox", "-size", "100"), "No checkpoint for size 100"),
         (("a fox", "-uncond", "-size", "128"), "No unconditional checkpoint for size 128"),
+        (("a fox", "-thumb", "glide"), "--thumbnail only applies with --unconditional"),
+        (("a fox", "-uncond", "-wd", "32", "-thumb", "clip"), "--thumbnail needs a square image"),
+        (("a fox", "-pag"), "--perturbed-attention only applies with --unconditional at 256"),
+        (
+            ("a fox", "-uncond", "-size", "512", "-pag"),
+            "--perturbed-attention only applies with --unconditional at 256",
+        ),
         (("a fox", "-cutn", "0"), "--num-cutouts must be at least 1"),
         (("a fox", "-bb", "sd-turbo", "-cutn", "0"), "--num-cutouts must be at least 1"),
         (("a fox", "-clip", "ViT-Z/99"), "Unknown CLIP model"),
@@ -134,9 +192,12 @@ def test_a_bad_run_exits_with_its_reason_and_no_traceback(
     assert not (workdir / "outputs").exists()
 
 
-def test_an_unknown_backbone_is_an_invalid_choice(capsys: pytest.CaptureFixture[str]) -> None:
+@pytest.mark.parametrize("argv", [("-bb", "dall-e"), ("-uncond", "-thumb", "dall-e")])
+def test_an_unknown_backbone_or_thumbnail_model_is_an_invalid_choice(
+    argv: tuple[str, ...], capsys: pytest.CaptureFixture[str]
+) -> None:
     with pytest.raises(SystemExit):
-        parse("a fox", "-bb", "dall-e")
+        parse("a fox", *argv)
     assert "invalid choice" in capsys.readouterr().err
 
 
@@ -147,17 +208,24 @@ def test_both_of_pytorchs_memory_errors_count_as_out_of_memory() -> None:
 
 
 @pytest.mark.parametrize(
-    ("argv", "fp16_advice", "iterations_advice"),
+    ("argv", "cutouts", "fp16_advice", "iterations_advice", "thumbnail_advice"),
     [
-        (("a",), False, False),
-        (("a", "-clip", "PE-Core-B-16"), True, False),
-        (("a", "-clip", "PE-Core-B-16", "-fp16"), False, False),
-        (("a", "-bb", "sd-turbo"), True, True),
+        (("a",), 16, False, False, False),
+        (("a", "-clip", "PE-Core-B-16"), 16, True, False, False),
+        (("a", "-clip", "PE-Core-B-16", "-fp16"), 16, False, False, False),
+        (("a", "-bb", "sd-turbo"), 16, True, True, False),
+        (("a", "-bb", "sd-turbo", "-cutn", "2"), 2, True, True, False),
+        (("a", "-uncond"), 4, True, False, False),
+        (("a", "-uncond", "-cutn", "8", "-clip", "ViT-B/32", "-thumb", "none"), 8, False, False, False),
+        (("a", "-uncond", "-thumb", "karlo"), 4, True, False, True),
     ],
 )
-def test_out_of_memory_advice_fits_the_run(argv: tuple[str, ...], fp16_advice: bool, iterations_advice: bool) -> None:
+def test_out_of_memory_advice_fits_the_run(
+    argv: tuple[str, ...], cutouts: int, fp16_advice: bool, iterations_advice: bool, thumbnail_advice: bool
+) -> None:
     advice = out_of_memory_advice(parse(*argv))
     assert advice.startswith("Ran out of GPU memory.")
-    assert "--num-cutouts/-cutn (currently 16)" in advice
+    assert f"--num-cutouts/-cutn (currently {cutouts})" in advice
     assert ("--clip-fp16" in advice) is fp16_advice
     assert ("--iterations" in advice) is iterations_advice
+    assert ("--thumbnail/-thumb clip or none needs less than karlo." in advice) is thumbnail_advice
