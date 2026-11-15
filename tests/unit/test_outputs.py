@@ -10,7 +10,7 @@ import torch as th
 import torchvision.transforms.functional as tvf
 from PIL import Image
 
-from cgd.outputs import MAX_NAME_LENGTH, frame_path, run_name, save_frame, save_frames, save_gif, save_video
+from cgd.outputs import MAX_NAME_LENGTH, frame_path, run_name, save_batch, save_frame, save_gif, save_video
 
 needs_ffmpeg = pytest.mark.skipif(not (shutil.which("ffmpeg") and shutil.which("ffprobe")), reason="needs ffmpeg")
 
@@ -37,11 +37,15 @@ def test_save_frame_writes_the_image_and_current_png(workdir: Path) -> None:
     assert (workdir / "current.png").read_bytes() == path.read_bytes()
 
 
-def test_save_frames_keeps_every_nth_step_and_the_final_one(workdir: Path) -> None:
-    batches = (th.full((2, 3, 4, 4), step / 10 - 0.5) for step in range(8))
-    saved = list(save_frames(batches, workdir, "run", save_frequency=3, final_step=7))
-    assert saved == [(index, frame_path(workdir, "run", step, index)) for step in (0, 3, 6, 7) for index in (0, 1)]
+def test_save_batch_saves_each_image_as_the_frame_of_its_step(workdir: Path) -> None:
+    images = th.stack([th.full((3, 4, 4), -0.5), th.full((3, 4, 4), 0.2)])
+    saved = list(save_batch(images, workdir, "run", 7))
+    assert saved == [(index, frame_path(workdir, "run", 7, index)) for index in (0, 1)]
     assert tvf.to_tensor(Image.open(saved[-1][1])).mean().item() == pytest.approx(0.6, abs=1 / 255)
+
+
+def test_a_sequence_is_named_after_every_image_of_it() -> None:
+    assert run_name(["a castle", ">a fox"]) == "a_castle_a_fox"
 
 
 @needs_ffmpeg
