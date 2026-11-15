@@ -4,7 +4,7 @@ import torch as th
 from torch import nn
 
 from cgd import backbone
-from cgd.backbone import BACKBONES, Backbone, optimise_noise
+from cgd.backbone import BACKBONES, Backbone, Prompt, best_noise, optimise_noise
 
 
 def test_the_noise_penalty_is_lowest_on_the_prior() -> None:
@@ -32,20 +32,21 @@ def test_an_epsilon_prediction_recovers_the_clean_latents() -> None:
 def loaded(name: str, pooled: th.Tensor | None) -> Backbone:
     """A backbone record with a prompt encoded but no networks, for what only reads the prompt."""
     unused = nn.Identity()
-    return Backbone(
-        BACKBONES[name], unused, unused, unused, th.ones(1, 77, 8), pooled, th.ones(1000), th.float32, "cpu"
-    )
+    prompt = Prompt(th.ones(1, 77, 8), pooled)
+    return Backbone(BACKBONES[name], unused, unused, unused, (prompt,), th.ones(1000), th.float32, "cpu")
 
 
 def test_stable_diffusion_is_conditioned_on_the_prompt_alone() -> None:
     model = loaded("sd-turbo", None)
-    assert backbone.unet_conditioning(model, 256, 320) == {"encoder_hidden_states": model.text}
+    (prompt,) = model.prompts
+    assert backbone.unet_conditioning(model, prompt, 256, 320) == {"encoder_hidden_states": prompt.text}
 
 
 def test_sdxl_is_also_told_the_size_and_that_the_image_is_uncropped() -> None:
     model = loaded("vega", th.ones(1, 4))
-    conditioning = backbone.unet_conditioning(model, 256, 320)
-    assert conditioning["added_cond_kwargs"]["text_embeds"] is model.pooled
+    (prompt,) = model.prompts
+    conditioning = backbone.unet_conditioning(model, prompt, 256, 320)
+    assert conditioning["added_cond_kwargs"]["text_embeds"] is prompt.pooled
     assert conditioning["added_cond_kwargs"]["time_ids"].tolist() == [[256, 320, 0, 0, 256, 320]]
 
 
@@ -76,3 +77,9 @@ class TestOptimiseNoise:
         assert th.equal(first.images, z)
         assert th.equal(first.best_z, z)
         assert not list(optimise_noise(th.tanh, self.loss, z, iterations=0, progress=False))
+
+    def test_the_best_noise_is_the_last_steps_or_the_start_when_it_took_none(self) -> None:
+        z = th.randn(1, 4, 8, 8, generator=th.Generator().manual_seed(0))
+        steps = list(optimise_noise(th.tanh, self.loss, z, iterations=10, progress=False))
+        assert best_noise(steps, z) is steps[-1].best_z
+        assert best_noise([], z) is z
