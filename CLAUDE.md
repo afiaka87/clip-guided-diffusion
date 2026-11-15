@@ -20,12 +20,15 @@ uv sync
 
 ```sh
 uv run pytest tests/unit  # Pure tests on the CPU, in seconds.
-uv run pytest             # Everything.
-uv run pytest tests/integration/test_adm.py::test_it_draws_the_prompt_without_blowing_out  # A single test.
+uv run pytest             # Everything, in about three and a half minutes on an RTX 4070.
+uv run pytest tests/integration/test_adm.py::test_a_different_seed_changes_the_image  # A single test.
 ```
 
 - `tests/unit` holds pure tests on small inputs and stand-ins built from real modules, such as Gaussian data whose exact denoiser is known, a linear projection with CLIP's interface, or a small U-Net of ADM's kind with random weights. No mocks.
 - `tests/integration` is marked `cuda` and runs the real models and checkpoints. `tests/conftest.py` skips it without a GPU. Give it a free GPU: if another process holds the VRAM it fails with a real out of memory error.
+- Keep `tests/integration` to what only the real models can show, each test a contrived run of a few steps: every checkpoint and backbone loads and draws, a seed makes the same image again, an image of a sequence is the one made alone, and the command saves what it says. All of it takes about three minutes, and should stay under four. What a part computes belongs in `tests/unit`, and how good an image is in a report.
+- Loading is most of what these tests cost. Only one CLIP model, one ImageNet checkpoint and one thumbnail model stay loaded, and every backbone run loads its backbone from disk, so tests of one model follow each other and an ensemble is used only where it is the point.
+- A run too short makes an image that shows nothing. Below four steps the unconditional 256 checkpoint clips nearly every pixel to black or white, and such images are the same whatever made them. Reproducibility of the ImageNet models shows at 128 over six steps, not at 64.
 - `tests/integration/test_cli.py` runs the command in this process with `main([...])`, and in a new one where the process matters: `python -m cgd`, and the allocator setting `import cgd` makes.
 - Lint with `uv run ruff check`, `uv run ruff format --check` and `uv run pylint cgd tests`. All three are clean, and should stay so.
 
@@ -94,13 +97,17 @@ The `guided-diffusion` package (git dependency from crowsonkb) provides only the
 
 `open-clip-torch` provides the PE-Core and SigLIP2 models. It is imported lazily, because it is slow to import and the default model does not need it. `transformers` and `sentencepiece` are only there for SigLIP2's tokenizer.
 
+`clip-anytorch` imports `pkg_resources`, which setuptools 81 removed, so `setuptools<81` is a dependency. It also reads OpenAI's weights with `torch.jit.load`, which PyTorch warns about on Python 3.14, and `clip_models._load_openai()` silences that.
+
+On Windows `torch` and `torchvision` come from PyTorch's CUDA 13.2 index, since PyPI's Windows wheels are CPU-only. `uv lock --upgrade` moves everything to the latest. A new PyTorch makes a different image from the same seed, so after one the README's GIFs are no longer what their commands make: they were made with PyTorch 2.9.1.
+
 `diffusers`, `accelerate` and `peft` provide the backbones, imported lazily for the same reason. The Hugging Face cache holds their weights, not `~/.cache/clip-guided-diffusion/`.
 
 `glide-text2im` (git dependency from OpenAI) provides GLIDE's 64x64 model and the CLIP of noisy images for `-thumb`, imported lazily. Their weights and LAIONIDE's go to `~/.cache/clip-guided-diffusion/glide/` through `download()`. Karlo's parts come from `diffusers` and `transformers`, into the Hugging Face cache.
 
 ### Determinism
 
-The same seed and options give the same image byte for byte, and the README's GIFs depend on it. Every backward pass on the GPU must sum in a fixed order: the hand-written pooling in `cutouts.py`, plain attention in open_clip and the backbones, cuDNN's deterministic flag for the backbones' U-Net and for LPIPS's VGG16 (`adm.perceptual_init_loss()`). `tests/integration/test_determinism.py` and the seed tests in `test_adm.py` and `test_backbone.py` check it. Random numbers are drawn in a fixed order, so moving a `th.randn` changes every image. Loading a thumbnail model must not move that order: each is built with the random stream forked, and Karlo's prior draws its image embedding from a generator of its own, seeded from the run's seed.
+The same seed and options give the same image byte for byte, and the README's GIFs depend on it. Every backward pass on the GPU must sum in a fixed order: the hand-written pooling in `cutouts.py`, plain attention in open_clip and the backbones, cuDNN's deterministic flag for both pipelines' U-Nets and for LPIPS's VGG16 (`adm.perceptual_init_loss()`). The ImageNet U-Net needs it at 128 and 256 since PyTorch 2.15, where three runs of one seed made three images without it. `tests/integration/test_determinism.py` and the seed tests in `test_adm.py` and `test_backbone.py` check it. Random numbers are drawn in a fixed order, so moving a `th.randn` changes every image. Loading a thumbnail model must not move that order: each is built with the random stream forked, and Karlo's prior draws its image embedding from a generator of its own, seeded from the run's seed.
 
 Every image of a sequence is byte for byte the image its prompts make alone, and the tests check it. Each starts from the same noise and replays the random stream from there (`device.replayed_rng()`), later images' image prompts are encoded with the stream forked, and the frames between images draw no random numbers at all.
 
