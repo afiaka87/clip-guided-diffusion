@@ -22,7 +22,7 @@ from tqdm.auto import tqdm
 from cgd import losses, pag, sampler, thumbnails
 from cgd.checks import check_common, require
 from cgd.clip_models import check_model, closest_imagenet_class, ensemble_members
-from cgd.device import default_device
+from cgd.device import default_device, limit_to_vram
 from cgd.download import download, fetch
 from cgd.guide import NUM_CUTOUTS, Guide, guide_loss, load_guide, query
 from cgd.imagenet_classes import IMAGENET_CLASSES
@@ -334,6 +334,7 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
     )
     check_model(clip_model)
     device = default_device(device)
+    limit_to_vram(device)
     _status(f"Using device {device}", progress)
 
     # Everything from here on draws random numbers in this order, so a seed always makes the same image.
