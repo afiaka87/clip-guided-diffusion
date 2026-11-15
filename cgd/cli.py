@@ -66,7 +66,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="",
         help="Text prompts, joined with |. Each can take a weight, negative to avoid it: 'a fox:2|blurry:-1'. "
         "Begin the next image of a sequence with >, and the GIF or video slides from each image to the next: "
-        "'a castle|>a fox|>a sailboat'.",
+        "'a castle|>a fox|>a sailboat'. End with |> and it slides back to the first image, so it loops.",
     )
     parser.add_argument(
         "-imgs",
