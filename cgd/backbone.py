@@ -24,7 +24,7 @@ from tqdm.auto import tqdm
 
 from cgd.checks import check_common, require
 from cgd.clip_models import check_model
-from cgd.device import default_device
+from cgd.device import default_device, limit_to_vram
 from cgd.guide import NUM_CUTOUTS, Guide, guide_loss, load_guide
 from cgd.losses import finite_gradient
 from cgd.outputs import frame_path, run_name, save_frame
@@ -334,6 +334,7 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
     )
     check_model(clip_model)
     device = default_device(device)
+    limit_to_vram(device)
 
     # Everything from here on draws random numbers in this order, so a seed always makes the same image.
     th.manual_seed(seed)
