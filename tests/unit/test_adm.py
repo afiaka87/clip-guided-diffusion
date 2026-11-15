@@ -49,14 +49,18 @@ def drawings(model: UNetModel, classes: tuple[int, ...]) -> list[adm.Drawing]:
 
 
 def frames(
-    model: UNetModel, log_alpha_bar: np.ndarray, classes: tuple[int, ...], transition_frames: int = 5
+    model: UNetModel,
+    log_alpha_bar: np.ndarray,
+    classes: tuple[int, ...],
+    transition_frames: int = 5,
+    loop: bool = False,
 ) -> list[tuple[int, th.Tensor]]:
     """Every (step, images) a sequence of one image per class saves, from seed 0, with every model call saved."""
     th.manual_seed(0)
     noise = th.randn(1, 3, SIZE, SIZE)
     ts = sampler.timesteps(log_alpha_bar, STEPS)
     settings = {"steps": STEPS, "save_frequency": 1, "transition_frames": transition_frames, "progress": False}
-    return list(adm.sampled_frames(drawings(model, classes), log_alpha_bar, ts, noise, noise, **settings))
+    return list(adm.sampled_frames(drawings(model, classes), log_alpha_bar, ts, noise, noise, loop=loop, **settings))
 
 
 class TestClassDenoisers:
@@ -105,6 +109,17 @@ class TestSampledFrames:
     def test_a_sequence_is_the_same_every_time(self, model: UNetModel, log_alpha_bar: np.ndarray) -> None:
         first, second = (frames(model, log_alpha_bar, (0, 1)) for _ in range(2))
         assert all(th.equal(a, b) for (_, a), (_, b) in zip(first, second, strict=True))
+
+    def test_a_loop_begins_at_the_first_image_and_slides_back_to_it(
+        self, model: UNetModel, log_alpha_bar: np.ndarray
+    ) -> None:
+        """Without the model calls that made the first image, so the last frame leads into the first."""
+        saved = frames(model, log_alpha_bar, (0, 1, 2), transition_frames=5, loop=True)
+        assert [step for step, _ in saved] == list(range(STEPS - 1, STEPS + 3 * 5))
+        assert th.equal(saved[-1][1], saved[0][1].clamp(-1, 1))
+        assert not th.equal(saved[-2][1], saved[-1][1])
+        once = frames(model, log_alpha_bar, (0, 1, 2), transition_frames=5)[STEPS - 1 :]
+        assert all(th.equal(a, b) for (_, a), (_, b) in zip(saved, once, strict=False))  # The same until it turns back.
 
 
 class TestBetween:
