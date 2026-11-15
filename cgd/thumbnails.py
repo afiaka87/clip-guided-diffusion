@@ -30,6 +30,7 @@ pushing away, and each scale is the one its model was measured with.
 import math
 import warnings
 from collections.abc import Callable, Sequence
+from contextlib import AbstractContextManager
 from functools import lru_cache, partial
 from typing import Any, NamedTuple
 
@@ -170,6 +171,16 @@ def load(name: str, prompts: Sequence[str], *, batch_size: int, seed: int, devic
     return Thumbnail(partial(matched, change, loaded.log_alpha_bar), SCALES[name])
 
 
+def forked_rng(device: str) -> AbstractContextManager[None]:
+    """Fork the CPU's random stream and the device's, so a model built inside draws none of the run's random numbers.
+
+    Both matter: a model built straight on the GPU initialises its weights from the GPU's stream,
+    which the seed's initial noise is drawn from.
+    """
+    place = th.device(device)
+    return th.random.fork_rng(devices=[place] if place.type == "cuda" else [])
+
+
 @lru_cache(maxsize=1)
 def load_model(name: str, device: str) -> NoisyClip | Glide | Karlo:
     """The thumbnail model `name`, frozen. Only one stays loaded, so trying another frees the last one's VRAM."""
@@ -188,8 +199,8 @@ def load_clip(device: str) -> NoisyClip:
     from glide_text2im.clip.model_creation import create_clip_model
     from glide_text2im.gaussian_diffusion import get_named_beta_schedule
 
-    # Building it draws random numbers, which must not move the seed's stream.
-    with th.random.fork_rng(devices=[]), skip_weight_init():
+    # Building it on the device draws random numbers there, which must not move the seed's stream.
+    with forked_rng(device), skip_weight_init():
         model = create_clip_model(device=th.device(device))
     for part, url in CLIP_WEIGHTS.items():
         path = download(url, url.rpartition("/")[2], GLIDE_CACHE_PATH)
@@ -226,7 +237,7 @@ def load_glide(name: str, device: str) -> Glide:
 
     options = model_and_diffusion_defaults() | {"use_fp16": device != "cpu"}
     # Building it draws random numbers, which must not move the seed's stream.
-    with th.random.fork_rng(devices=[]), skip_weight_init():
+    with forked_rng(device), skip_weight_init():
         model, diffusion = create_model_and_diffusion(**options)
     url = GLIDE_WEIGHTS[name]
     path = download(url, url.rpartition("/")[2], GLIDE_CACHE_PATH)
@@ -277,7 +288,7 @@ def load_karlo(device: str) -> Karlo:
         )
 
     # Building them may draw random numbers, which must not move the seed's stream.
-    with th.random.fork_rng(devices=[]), warnings.catch_warnings():
+    with forked_rng(device), warnings.catch_warnings():
         # diffusers passes the Hub an argument it has deprecated, which is nothing to act on.
         warnings.filterwarnings("ignore", message=".*local_dir_use_symlinks.*")
         schedule = UnCLIPScheduler.from_pretrained(KARLO, subfolder="decoder_scheduler")
