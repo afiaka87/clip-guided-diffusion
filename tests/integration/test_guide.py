@@ -10,7 +10,8 @@ from torch.nn import functional as tf
 
 from cgd.clip_models import preprocess
 from cgd.cutouts import make_cutouts
-from cgd.guide import Guide, aesthetic_rating, cutout_rating, guide_loss, load_guide
+from cgd.guide import Guide, aesthetic_rating, cutout_rating, guide_loss, load_guide, load_guides
+from cgd.prompts import Scene
 
 pytestmark = pytest.mark.cuda
 
@@ -95,3 +96,29 @@ class TestAesthetic:
         rating = cutout_rating(aesthetic, images, 4, 0.7)
         assert rating.shape == (2,)
         assert (rating - aesthetic_rating(aesthetic, crops).view(4, 2).mean(0)).abs().max().item() < 1e-3
+
+
+def test_the_guides_of_a_sequence_share_their_models_and_hold_what_each_image_would_alone(photon: Path) -> None:
+    images = [Scene((PROMPT,), ()), Scene(("a bowl of ramen", "steam:0.5"), (str(photon),))]
+    settings = {"image_size": 224, "num_cutouts": 1, "device": "cuda"}
+    first, second = load_guides("RN50+ViT-B/32", images, **settings)
+    assert len(first.towers) == len(second.towers) == 2
+    assert all(a.model is b.model for a, b in zip(first.towers, second.towers, strict=True))
+    alone = load_guide("RN50+ViT-B/32", [PROMPT], **settings)
+    for tower, expected in zip(first.towers, alone.towers, strict=True):
+        assert th.equal(tower.targets, expected.targets)
+        assert th.equal(tower.weights, expected.weights)
+    assert [len(tower.weights) for tower in second.towers] == [3, 3]
+
+
+def test_the_image_prompts_of_a_later_image_do_not_move_the_noise_the_seed_starts_from(photon: Path) -> None:
+    """Encoding an image prompt draws random cutouts, which only the first image's may take from the run's stream."""
+    settings = {"image_size": 224, "num_cutouts": 4, "device": "cuda"}
+
+    def noise_after(images: list[Scene]) -> th.Tensor:
+        th.manual_seed(3)
+        load_guides("ViT-B/32", images, **settings)
+        return th.randn(4, device="cuda")
+
+    alone = [Scene((PROMPT,), ())]
+    assert th.equal(noise_after([*alone, Scene((), (str(photon),))]), noise_after(alone))
