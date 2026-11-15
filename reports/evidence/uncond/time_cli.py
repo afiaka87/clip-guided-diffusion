@@ -4,13 +4,15 @@
 
 Each configuration runs three times: twice as `uv run cgd ...` in a new process, the second
 timed from start to exit so that startup and model loading count and the weights are already
-in the disk cache, and once in this process for torch's peak of allocated VRAM. Appends to
+in the disk cache, and once in this process for torch's peak of allocated VRAM, with no model
+left loaded by the configuration before, as in a new process. Appends to
 time_cli.jsonl next to this file. With words, only the configurations whose name has one.
 
 The records without `options` are from 2026-11-14, when `-uncond` alone was
 `-uncond -clip ViT-B/32 -thumb none` and every command carried `-cutn 4`.
 """
 
+import gc
 import json
 import subprocess
 import sys
@@ -20,6 +22,7 @@ from pathlib import Path
 
 import torch as th
 
+from cgd import adm, clip_models, thumbnails
 from cgd.cli import main
 
 REPO = Path(__file__).resolve().parents[3]
@@ -55,6 +58,10 @@ def run() -> None:
                 command = ["uv", "run", "--project", str(REPO), "cgd", *arguments]
                 subprocess.run(command, check=True, cwd=scratch, capture_output=True)
                 seconds = time.perf_counter() - start
+            for cached in (adm.load_model, clip_models.load_clip, thumbnails.load_model):
+                cached.cache_clear()
+            gc.collect()
+            th.cuda.empty_cache()
             th.cuda.reset_peak_memory_stats()
             main(arguments)
             peak = th.cuda.max_memory_allocated() / 2**30
