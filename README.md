@@ -199,51 +199,71 @@ uv run cgd -gif -freq 3 -size 256 -clip ViT-B/32+PE-Core-B-16 -n 90 -gl 0.99 -cu
 
 `--unconditional` / `-uncond`
 
-`uv run cgd -uncond "A red fox in the snow"`
+`uv run cgd -uncond -gif -freq 3 "A red fox in the snow"`
 
-Draws with a model that takes no class label: OpenAI's at 256x256, the default size, and at 512x512 Katherine Crowson's fine-tune of OpenAI's class-conditional model. Without a class only guidance brings the subject, so it is less reliable than the default. `-uncond` alone runs the settings that made its best images for the time they take, and each of these options overrides its own:
+![A red fox in the snow, with -uncond](images/A_red_fox_in_the_snow_uncond.gif)
+
+That took 31 s on an RTX 4070, from start to GIF. `-uncond` draws with a model that takes no class label: OpenAI's at 256x256, the default size, and at 512x512 Katherine Crowson's fine-tune of OpenAI's class-conditional model. Without a class only guidance brings the subject, so it is less reliable than the default. `-uncond` alone runs the settings that made its best images for the time they take, and each of these options overrides its own:
 
 | Option | With `-uncond` | Why |
 |---|---|---|
 | `-clip` | `ViT-B/32+PE-Core-B-16` | The [ensemble](#ensembles) |
-| `-cutn` | `4` | Ties `16` in two thirds of the time, see [Cutouts](#cutouts) |
+| `-cutn` | `4` | Scores as `16` does, in three quarters of the time, see [Thumbnail guidance](#thumbnail-guidance) |
 | `-n` | `60` | Guidance starts at the very beginning of the schedule, where the composition is set, and twice the steps keep that from overshooting |
 | `-recur` | `2` | Each guided step in the first 70% of the schedule runs twice, 91 model calls in all, see [Recurrence](#recurrence) |
 | `-thumb` | `clip` | A second model sets the composition, see [Thumbnail guidance](#thumbnail-guidance) |
 
-So `uv run cgd -uncond -thumb karlo "A red fox in the snow"` changes the thumbnail model and keeps the rest. Add `-gif` or `-mp4` to any of them as usual. Examples of each option with its GIF are still to come: the GPU was busy when this was written.
+So `uv run cgd -uncond -thumb karlo -cutn 16 "A red fox in the snow"` changes the thumbnail model and the cutouts, and keeps the rest. Add `-gif` or `-mp4` to any of them as usual.
 
 ### Thumbnail guidance
 
 `--thumbnail` / `-thumb` (default: `clip` with `-uncond`; one of `clip`, `glide`, `laionide`, `karlo`, `none`)
 
-`uv run cgd -uncond -thumb glide -gif "A red fox in the snow"`
+`uv run cgd -uncond -thumb karlo -cutn 16 -gif -freq 3 "A red fox in the snow"`
+
+![A red fox in the snow, with -uncond -thumb karlo -cutn 16](images/A_red_fox_in_the_snow_uncond_karlo.gif)
 
 CLIP is a poor judge of a nearly pure noise image, and that is when the composition forms. A model trained on noisy 64x64 images is a good one. Each step the noisy image is averaged down to a 64x64 thumbnail, the model says what the text prompts change about the thumbnail's noise, and that is added to the U-Net's prediction, enlarged. The U-Net still draws every detail, and CLIP guides as before. It needs a text prompt and a square image: without either `-uncond` runs without it and says so.
 
-| `-thumb` | What it is | PickScore | Rating | Time | Peak VRAM | Download | License |
-|---|---|---|---|---|---|---|---|
-| `none` | CLIP alone | 20.71 | 5.14 | 30.2 s | 5.9 GiB | | |
-| `clip` (default) | OpenAI's CLIP of noisy images, released with GLIDE | 21.26 | 5.57 | 30.3 s | 6.5 GiB | 0.6 GB | MIT |
-| `clip` with [`-pag`](#perturbed-attention-guidance) | | 21.72 | 5.72 | 39.0 s | 6.6 GiB | | |
-| `glide` | [GLIDE](https://github.com/openai/glide-text2im)'s 64x64 text-to-image model | 21.50 | 5.55 | 32.1 s | 6.7 GiB | 1.5 GB | MIT |
-| `laionide` | [LAIONIDE v3](https://github.com/afiaka87/laionide), GLIDE fine-tuned on LAION | 21.47 | 5.59 | 32.6 s | 6.7 GiB | 1.5 GB | Its repository is MIT. The checkpoint states none |
-| `karlo` | The decoder and prior of [Karlo](https://huggingface.co/kakaobrain/karlo-v1-alpha), an open unCLIP | 22.65 | 5.81 | 34.1 s | 7.8 GiB | 8.2 GB | CreativeML Open RAIL-M |
+| `-thumb` | What it is | PickScore | Rating | Time | Peak VRAM | At `-cutn 4` | Download | License |
+|---|---|---|---|---|---|---|---|---|
+| `none` | CLIP alone | 20.71 | 5.14 | 30.2 s | 5.9 GiB | 20.68, 5.32, 20.5 s | | |
+| `clip` (default) | OpenAI's CLIP of noisy images, released with GLIDE | 21.26 | 5.57 | 30.3 s | 6.5 GiB | **21.43, 5.55, 22.4 s** | 0.6 GB | MIT |
+| `clip` with [`-pag`](#perturbed-attention-guidance) | | 21.72 | 5.72 | 39.0 s | 6.6 GiB | 21.44, 5.64, 31.5 s | | |
+| `glide` | [GLIDE](https://github.com/openai/glide-text2im)'s 64x64 text-to-image model | 21.50 | 5.55 | 32.1 s | 6.7 GiB | 21.05, 5.48, 24.4 s | 1.5 GB | MIT |
+| `laionide` | [LAIONIDE v3](https://github.com/afiaka87/laionide), GLIDE fine-tuned on LAION | 21.47 | 5.59 | 32.6 s | 6.7 GiB | | 1.5 GB | Its repository is MIT. The checkpoint states none |
+| `karlo` | The decoder and prior of [Karlo](https://huggingface.co/kakaobrain/karlo-v1-alpha), an open unCLIP | 22.65 | 5.81 | 34.1 s | 7.8 GiB | | 8.2 GB | CreativeML Open RAIL-M |
 
-12 prompts held out from tuning over 3 seeds at 256, with `-cutn 16`, on an RTX 4070. [PickScore](https://github.com/yuvalkirstain/PickScore) is a model of which image people pick for a prompt, the rating is the predictor from [Modern backbones](#modern-backbones), and neither guided the images. Time is per image with the models loaded. For scale, `-bb sd-turbo` scores 24.07 and 7.07. These were measured with the experiments the options were built from, in [the report](<reports/Unconditional ADM CLIP guidance quality.md>). The command's own times, and how thumbnail guidance does at 512, are still to be measured.
+12 prompts held out from tuning over 3 seeds at 256, with `-cutn 16` but for the column that says otherwise, on an RTX 4070. The `-uncond` default is in bold. [PickScore](https://github.com/yuvalkirstain/PickScore) is a model of which image people pick for a prompt, the rating is the predictor from [Modern backbones](#modern-backbones), and neither guided the images. Time is per image with the models loaded. For scale, `-bb sd-turbo` scores 24.07 and 7.07. These were measured with the experiments the options were built from, in [the report](<reports/Unconditional ADM CLIP guidance quality.md>), and the options make those experiments' images byte for byte. Nothing was measured at 512, where the thumbnail is an eighth of the image.
 
-- **`clip` is the default** because it costs no time: +0.56 ± 0.54 PickScore over `none`, and a judge who saw only unlabelled pairs preferred it in 18 of 24. It keeps the gain at 4 cutouts, +0.75 ± 0.40 at 22.4 s against 20.5 s, which is what `-uncond` runs. It is a classifier, so with it nothing in the pipeline was trained to draw from text.
+- **`clip` is the default** because it costs little time: +0.75 ± 0.40 PickScore over `none` at 4 cutouts, in 22.4 s against 20.5 s, and at 16 a judge who saw only unlabelled pairs preferred it in 18 of 24. 16 cutouts add nothing to it, +0.17 ± 0.34, for 8 s more, so `-uncond` runs 4. It is a classifier, so with it nothing in the pipeline was trained to draw from text.
 - **`karlo` makes the best images**, preferred blind in 23 of 24 pairs, for an 8.2 GB download and 2 GiB more VRAM. But Karlo's own pipeline scores the same in 3 seconds, so it is here to play with, not as the way to use Karlo.
-- **`glide` and `laionide`** tie each other, a little ahead of `clip` on PickScore and level on the rating, for 2 s more. They were trained to draw from text.
+- **`glide` and `laionide`** tie each other at 16 cutouts, a little ahead of `clip` on PickScore and level on the rating, for 2 s more. They were trained to draw from text. At 4, GLIDE fell behind `clip`, -0.45 ± 0.52 PickScore against itself at 16, so run these two and `karlo` with `-cutn 16`, as they were measured.
 - **`none`** is CLIP alone, what `-uncond` was before.
+
+The same prompt and seed with each of the others, and how long the command took on an RTX 4070, from start to GIF: 50 s with `karlo` above, 31 s with `clip` in [Unconditional checkpoints](#unconditional-checkpoints), and
+
+`uv run cgd -uncond -thumb glide -cutn 16 -gif -freq 3 "A red fox in the snow"`, 45 s
+
+![A red fox in the snow, with -uncond -thumb glide -cutn 16](images/A_red_fox_in_the_snow_uncond_glide.gif)
+
+`uv run cgd -uncond -thumb laionide -cutn 16 -gif -freq 3 "A red fox in the snow"`, 43 s
+
+![A red fox in the snow, with -uncond -thumb laionide -cutn 16](images/A_red_fox_in_the_snow_uncond_laionide.gif)
+
+`uv run cgd -uncond -thumb none -gif -freq 3 "A red fox in the snow"`, 30 s
+
+![A red fox in the snow, with -uncond -thumb none](images/A_red_fox_in_the_snow_uncond_thumb_none.gif)
 
 ### Perturbed attention guidance
 
 `--perturbed-attention` / `-pag`
 
-`uv run cgd -uncond -pag -gif "A red fox in the snow"`
+`uv run cgd -uncond -pag -cutn 16 -gif -freq 3 "A red fox in the snow"`
 
-Also moves each prediction away from one the U-Net makes with the self-attention of four layers switched off, the layers and scale of the [PAG paper](https://arxiv.org/abs/2403.17377) for this checkpoint. That is one more model call a step, and only for `-uncond` at 256. Pictures come out more finished and follow the prompt a little less. With `-thumb clip` at 16 cutouts it beat `-thumb none` in 20 of 24 blind pairs. Over `-thumb clip` alone it adds less: +0.46 ± 0.53 PickScore for 9 s, and on 66 more prompts +0.18 ± 0.15 with the held-out CLIP models' score down 0.012 ± 0.006. At 4 cutouts, the default, it added nothing to PickScore, 21.44 against 21.43 at 31.5 s against 22.4 s. Without thumbnail guidance it loses the subject, -0.029 ± 0.018 on the CLIP models. Off by default.
+![A red fox in the snow, with -uncond -pag -cutn 16](images/A_red_fox_in_the_snow_uncond_pag.gif)
+
+That took 49 s on an RTX 4070, from start to GIF. It also moves each prediction away from one the U-Net makes with the self-attention of four layers switched off, the layers and scale of the [PAG paper](https://arxiv.org/abs/2403.17377) for this checkpoint. That is one more model call a step, and only for `-uncond` at 256. Pictures come out more finished and follow the prompt a little less. With `-thumb clip` at 16 cutouts it beat `-thumb none` in 20 of 24 blind pairs. Over `-thumb clip` alone it adds less: +0.46 ± 0.53 PickScore for 9 s, and on 66 more prompts +0.18 ± 0.15 with the held-out CLIP models' score down 0.012 ± 0.006. At 4 cutouts, the default, it added nothing to PickScore, 21.44 against 21.43 at 31.5 s against 22.4 s. At 16 it scores 0.28 ± 0.29 more than at 4, the highest PickScore and rating of any option without a text-to-image model, so give it `-cutn 16`. Without thumbnail guidance it loses the subject, -0.029 ± 0.018 on the CLIP models. Off by default.
 
 ## Modern backbones
 
@@ -297,7 +317,7 @@ Wall clock for `uv run cgd -cutn 4`, including startup and model loading, on an 
 | 128 | the original, since removed | 1000 | 2 min 16 s | |
 | 256 | the original with `-uncond`, since removed | 1000 | 6 min | |
 
-`-uncond` has since taken its early steps twice by default, see [Recurrence](#recurrence), and guides with the ensemble and a thumbnail model, see [Unconditional checkpoints](#unconditional-checkpoints). Its time with those defaults is still to be measured. The same on an RTX 4070 with 12 GB under Windows, where starting up takes longer:
+`-uncond` has since taken its early steps twice by default, see [Recurrence](#recurrence), and guides with the ensemble and a thumbnail model, see [Unconditional checkpoints](#unconditional-checkpoints). With those defaults it takes 22.4 s an image on an RTX 4070 once the models are loaded, see [Thumbnail guidance](#thumbnail-guidance). The same on an RTX 4070 with 12 GB under Windows, where starting up takes longer:
 
 | Size | Sampler | Model calls | Time | Peak VRAM |
 |---|---|---|---|---|
@@ -501,7 +521,7 @@ The rating is a `ViT-B/16` predictor that did not guide the image. The rating an
 
 `--num-cutouts` / `-cutn` (default: `16`, or `4` with [`--unconditional`](#unconditional-checkpoints))
 
-How many random cutouts of the image CLIP sees each step, and the aesthetic term rates. 16 is the original's number. Fewer is faster and takes less VRAM, and scored the same: on ADM at 128, against 4 cutouts, 8, 16, 32 and 64 scored -0.002 ± 0.009, +0.005 ± 0.011, +0.002 ± 0.007 and 0.000 ± 0.010. That is why everything in this README was made with `-cutn 4`. Try fewer when a big [CLIP model](#clip-models) runs out of memory.
+How many random cutouts of the image CLIP sees each step, and the aesthetic term rates. 16 is the original's number. Fewer is faster and takes less VRAM, and scored the same: on ADM at 128, against 4 cutouts, 8, 16, 32 and 64 scored -0.002 ± 0.009, +0.005 ± 0.011, +0.002 ± 0.007 and 0.000 ± 0.010. That is why everything in this README was made with `-cutn 4`. With `-uncond`, 4 scored as well as 16, except with GLIDE's thumbnail guidance and with PAG, which do better at 16, see [Thumbnail guidance](#thumbnail-guidance). Try fewer when a big [CLIP model](#clip-models) runs out of memory.
 
 How the cutouts are laid out is fixed, because nothing tried beat 4 random ones. On 2 seeds, stratified layouts, mirrored cutouts and adding a whole frame tied, while keeping only the whole frame lost (-0.017 ± 0.010), and so did the Disco Diffusion mix of whole frame and small crops (-0.017 ± 0.010), reflect padding (-0.022 ± 0.023) and sizes that change during sampling (-0.007 to -0.012). On SD-Turbo at 512, where the idea should work best, eleven layouts all stayed within 0.007 of 4 random cutouts, on one seed, and the whole frame plus small crops lost a little on three (-0.003 ± 0.003). Cutout gradients are noisy, but removing the noise changes nothing, because the guidance step is capped and the model discards most of the gradient anyway.
 
