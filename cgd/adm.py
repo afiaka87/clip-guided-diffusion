@@ -2,13 +2,15 @@
 
 CLIP picks the ImageNet class closest to the prompts for the U-Net to draw, and its
 gradient steers each denoised image towards them, through sampler.sample(). The
-unconditional checkpoints draw no class, so CLIP alone brings the subject.
+unconditional checkpoints draw no class, so guidance alone brings the subject: CLIP's,
+and that of a model which reads the noisy image as a thumbnail, see thumbnails.py.
 """
 
 import warnings
 from collections.abc import Callable, Iterator, Sequence
 from functools import lru_cache, partial
 from pathlib import Path
+from typing import NamedTuple, TypeVar
 
 import numpy as np
 import torch as th
@@ -17,7 +19,7 @@ from PIL import Image
 from torch import nn
 from tqdm.auto import tqdm
 
-from cgd import losses, sampler
+from cgd import losses, pag, sampler, thumbnails
 from cgd.checks import check_common, require
 from cgd.clip_models import check_model, closest_imagenet_class, ensemble_members
 from cgd.device import default_device
@@ -30,13 +32,12 @@ with warnings.catch_warnings():  # It uses a deprecated spelling of torch.amp, w
     warnings.simplefilter("ignore", FutureWarning)
     from guided_diffusion.script_util import create_model_and_diffusion, model_and_diffusion_defaults
 
-DEFAULT_IMAGE_SIZE = 128
-DEFAULT_UNCONDITIONAL_SIZE = 256
-DEFAULT_CLIP_MODEL = "ViT-B/32"
+NO_THUMBNAIL = "none"
 CLIP_SCALE = 1000
 TV_SCALE = 150  # Smoothness.
 RANGE_SCALE = 50  # How far out of RGB range the denoised image may get.
 NUM_TIMESTEPS = 1000  # Every checkpoint was trained on this schedule length.
+PAG_SIZE = 256  # The unconditional checkpoint that pag.LAYERS names the attention blocks of.
 # Guidance backpropagates through the U-Net. Above this many pixels per batch, recompute
 # its activations instead of storing them: 1.5x the time per guided step for under half
 # the memory, which is what lets 512px run in 8 GB.
@@ -80,6 +81,43 @@ CHECKPOINT_FLAGS = {
 }
 
 InitLoss = Callable[[th.Tensor], th.Tensor]
+T = TypeVar("T")
+
+
+class Defaults(NamedTuple):
+    """What the options a run leaves unset default to."""
+
+    image_size: int
+    steps: int
+    recurrence: int
+    clip_model: str
+    num_cutouts: int
+    thumbnail: str  # One of thumbnails.MODELS, or NO_THUMBNAIL.
+
+
+DEFAULTS = Defaults(128, sampler.DEFAULT_STEPS, 1, "ViT-B/32", NUM_CUTOUTS, NO_THUMBNAIL)
+# What made the best images without a class to bring the subject, for the time it takes. The README has the numbers.
+UNCONDITIONAL_DEFAULTS = Defaults(
+    256, sampler.UNCONDITIONAL_STEPS, sampler.UNCONDITIONAL_RECURRENCE, "ViT-B/32+PE-Core-B-16", 4, "clip"
+)
+
+
+def defaults(unconditional: bool) -> Defaults:
+    """The defaults of the class-conditional checkpoints, or of the unconditional ones."""
+    return UNCONDITIONAL_DEFAULTS if unconditional else DEFAULTS
+
+
+def chosen(given: T | None, default: T) -> T:
+    """An option's value: the one given, or its default when none was."""
+    return default if given is None else given
+
+
+def default_thumbnail(unconditional: bool, prompts: Sequence[str], square: bool) -> str:
+    """The thumbnail model of a run that names none: its checkpoint's, if the run has what such a model reads.
+
+    That is a text prompt, and a square image to average down to a thumbnail.
+    """
+    return defaults(unconditional).thumbnail if prompts and square else NO_THUMBNAIL
 
 
 def check_parameters(  # pylint: disable=too-many-locals  # Its keyword arguments are the command's options.
@@ -93,8 +131,11 @@ def check_parameters(  # pylint: disable=too-many-locals  # Its keyword argument
     batch_size: int,
     num_cutouts: int,
     steps: int,
+    recurrence: int,
     guidance_rate: float,
     guidance_limit: float | None,
+    thumbnail: str,
+    perturbed_attention: bool,
     aesthetic_scale: float,
     init_image: str | None,
     init_scale: float,
@@ -120,9 +161,23 @@ def check_parameters(  # pylint: disable=too-many-locals  # Its keyword argument
         f"At size {image_size}, height and width must be positive multiples of {stride}. Got {height}x{width}.",
     )
     require(steps >= 1, "--steps must be at least 1.")
+    require(recurrence >= 1, "--recurrence must be at least 1.")
     require(guidance_rate >= 0, "--guidance-rate must not be negative.")
     require(
         guidance_limit is None or 0 < guidance_limit <= 1, "--guidance-limit must be a quantile, above 0 and at most 1."
+    )
+    names = [*thumbnails.MODELS, NO_THUMBNAIL]
+    require(thumbnail in names, f"Unknown thumbnail model {thumbnail!r}. Choose one of {names}.")
+    if thumbnail != NO_THUMBNAIL:
+        require(unconditional, "--thumbnail only applies with --unconditional.")
+        require(bool(prompts), "--thumbnail reads the text prompts, and there are none.")
+        require(
+            height == width == image_size,
+            f"--thumbnail needs a square image: its models read {thumbnails.SIZE}x{thumbnails.SIZE} thumbnails.",
+        )
+    require(
+        not perturbed_attention or (unconditional and image_size == PAG_SIZE),
+        f"--perturbed-attention only applies with --unconditional at {PAG_SIZE}, the checkpoint its layers are from.",
     )
     require(0 <= skip_timesteps < NUM_TIMESTEPS, f"--skip-timesteps must be between 0 and {NUM_TIMESTEPS - 1}.")
     require(
@@ -216,11 +271,14 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
     width_offset: int = 0,
     height_offset: int = 0,
     batch_size: int = 1,
-    num_cutouts: int = NUM_CUTOUTS,
+    num_cutouts: int | None = None,
     steps: int | None = None,
+    recurrence: int | None = None,
     guidance_rate: float = sampler.DEFAULT_GUIDANCE_RATE,
     guidance_limit: float | None = None,
-    clip_model: str = DEFAULT_CLIP_MODEL,
+    thumbnail: str | None = None,
+    perturbed_attention: bool = False,
+    clip_model: str | None = None,
     clip_fp16: bool = False,
     aesthetic_scale: float = 0.0,
     init_image: str | None = None,
@@ -236,14 +294,23 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
 
     An image is saved every `save_frequency` model calls, and the result always last. The
     prompts take weights, as in "a fox:2", and image prompts are paths or URLs. Without
-    `skip_timesteps`, an init image skips half the schedule. `image_size` and `steps`
-    default to 128 and 30, or 256 and 60 for an unconditional checkpoint.
+    `skip_timesteps`, an init image skips half the schedule.
+
+    `image_size`, `steps`, `recurrence`, `clip_model`, `num_cutouts` and `thumbnail` default to
+    DEFAULTS, or to UNCONDITIONAL_DEFAULTS for an unconditional checkpoint. `thumbnail` is
+    one of thumbnails.MODELS, whose guidance sets the composition, or "none". It reads the
+    text prompts off a square image, so by default a run without either does without it.
+    `perturbed_attention` adds pag.py's guidance.
     """
-    if image_size is None:
-        image_size = DEFAULT_UNCONDITIONAL_SIZE if unconditional else DEFAULT_IMAGE_SIZE
-    if steps is None:
-        steps = sampler.UNCONDITIONAL_STEPS if unconditional else sampler.DEFAULT_STEPS
+    default = defaults(unconditional)
+    image_size = chosen(image_size, default.image_size)
+    steps, recurrence = chosen(steps, default.steps), chosen(recurrence, default.recurrence)
+    clip_model, num_cutouts = chosen(clip_model, default.clip_model), chosen(num_cutouts, default.num_cutouts)
     height, width = image_size + height_offset, image_size + width_offset
+    if thumbnail is None:
+        thumbnail = default_thumbnail(unconditional, prompts, height == width == image_size)
+        if thumbnail != default.thumbnail:
+            _status("No thumbnail guidance: it reads a text prompt off a square image.", progress)
     check_parameters(
         prompts,
         image_prompts,
@@ -254,8 +321,11 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
         batch_size=batch_size,
         num_cutouts=num_cutouts,
         steps=steps,
+        recurrence=recurrence,
         guidance_rate=guidance_rate,
         guidance_limit=guidance_limit,
+        thumbnail=thumbnail,
+        perturbed_attention=perturbed_attention,
         aesthetic_scale=aesthetic_scale,
         init_image=init_image,
         init_scale=init_scale,
@@ -301,14 +371,21 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
         if init_scale:
             init_loss = partial(perceptual_init_loss, load_lpips(device), init, init_scale)
 
+    unet: sampler.Denoiser = partial(denoise, model, labels)
+    if perturbed_attention:
+        unet = partial(pag.denoise, unet, model, pag.LAYERS)
+    if thumbnail != NO_THUMBNAIL:
+        guidance_of = thumbnails.load(thumbnail, prompts, batch_size=batch_size, seed=seed, device=device)
+        unet = partial(thumbnails.guided_denoise, unet, log_alpha_bar, guidance_of)
+
     ts = sampler.timesteps(log_alpha_bar, steps, start)
     x = th.randn((batch_size, 3, height, width), device=device)
     if init is not None:
         x = sampler.noised(log_alpha_bar, ts[0], init, x)
     window = sampler.UNCONDITIONAL_GUIDANCE_WINDOW if unconditional else sampler.GUIDANCE_WINDOW
     loss_fn = partial(guidance_loss, guide, init_loss=init_loss)
-    guidance = sampler.Guidance(loss_fn, guidance_rate, window, guidance_limit)
-    samples = sampler.sample(partial(denoise, model, labels), log_alpha_bar, ts, x, guidance, progress=progress)
+    guidance = sampler.Guidance(loss_fn, guidance_rate, window, guidance_limit, recurrence)
+    samples = sampler.sample(unet, log_alpha_bar, ts, x, guidance, progress=progress)
     yield from save_frames(samples, output_dir, run_name(prompts, image_prompts), save_frequency, len(ts) - 2)
 
 
