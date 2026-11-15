@@ -53,7 +53,7 @@ Records are NamedTuples or frozen dataclasses, and the modules are functions ove
 
 - **`cgd/cli.py`**: The `cgd` command, also `python -m cgd`. `pipeline()` picks `adm.generate` or `backbone.generate` and its settings from the options, `judged_candidates()` is `-best`, and `save_outputs()` upscales and makes the GIF or video, and only deletes frames once every requested output exists.
 
-- **`cgd/__init__.py`**: Turns on PyTorch's expandable segments unless the user configured the allocator. It sets both names of that variable on purpose, see its comment: renaming it to the one PyTorch's warning asks for turns the setting off.
+- **`cgd/__init__.py`**: Turns on PyTorch's expandable segments unless the user configured the allocator, or on Windows, where PyTorch has none and would only warn. It sets both names of that variable on purpose, see its comment: renaming it to the one PyTorch's warning asks for turns the setting off.
 
 - **`cgd/adm.py`**: The default pipeline. `generate()` loads OpenAI's ImageNet U-Net (`load_model()`, cached), conditions it on the ImageNet class closest to the prompts (`closest_class()`), or on nothing with an unconditional checkpoint (`UNCONDITIONAL_URLS`), and runs `sampler.sample()` with `guidance_loss()`: CLIP plus TV and range losses, and LPIPS to the init image with `-is`. The options a run leaves unset come from `DEFAULTS`, or `UNCONDITIONAL_DEFAULTS` for an unconditional checkpoint, and the U-Net's noise prediction passes through `pag.denoise()` and `thumbnails.guided_denoise()` when those are on. Yields `(batch_index, path)` of each saved frame, the result last.
 
@@ -83,7 +83,7 @@ Records are NamedTuples or frozen dataclasses, and the modules are functions ove
 
 - **`cgd/upscale.py`**: Real-ESRGAN x4plus, tiled, for `-up`.
 
-- **`cgd/device.py`** and **`cgd/imagenet_classes.py`**: The default device, and the 1000 class names.
+- **`cgd/device.py`** and **`cgd/imagenet_classes.py`**: The default device and `limit_to_vram()`, and the 1000 class names. On Windows NVIDIA's driver backs a CUDA allocation that does not fit in VRAM with system memory instead of failing it, which is many times slower and can take all of it, so both pipelines cap PyTorch at what the GPU has free. Running out then raises, as elsewhere.
 
 ### External Dependency
 
