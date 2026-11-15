@@ -177,6 +177,8 @@ class TestSequence:
         ("argv", "expected"),
         [
             (("a castle|>a fox",), True),
+            (("a castle|>a fox|>",), True),
+            (("a castle|>",), False),
             (("a castle|a fox",), False),
             (("a fox", "-imgs", "castle.png|>fox.png"), True),
             (("",), False),
@@ -208,6 +210,7 @@ def test_collect_groups_each_images_frames_in_order() -> None:
     [
         (("-q",), "at least one prompt"),
         (("a fox", "-best", "0"), "--candidates must be at least 1"),
+        (("a castle|>",), "takes another image to come back from"),
         (("a fox", "-size", "100"), "No checkpoint for size 100"),
         (("a fox", "-uncond", "-size", "128"), "No unconditional checkpoint for size 128"),
         (("a fox", "-thumb", "glide"), "--thumbnail only applies with --unconditional"),
