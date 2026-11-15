@@ -170,6 +170,17 @@ class TestSequence:
         assert saved[-1] == results(workdir / "b", prompts=[OTHER_PROMPT], **UNCONDITIONAL)[0]
         assert saved[-2] != saved[-1]
 
+    def test_a_sequence_that_ends_with_the_mark_begins_at_its_first_image_and_slides_back_to_it(
+        self, workdir: Path
+    ) -> None:
+        saved = generate(workdir / "loop", prompts=[*SEQUENCE, ">"], transition_frames=2, save_frequency=1)
+        assert [path.name for _, path in saved] == [f"{step:04}.png" for step in range(1, 6)]
+        first, there, second, back, last = (path.read_bytes() for _, path in saved)
+        assert first == last == results(workdir / "first", prompts=[PROMPT])[0]
+        assert second == results(workdir / "second", prompts=[OTHER_PROMPT])[0]
+        assert there not in {first, second}
+        assert back not in {first, second}
+
     def test_a_batch_of_image_prompts_slides_each_of_its_images(self, workdir: Path, photon: Path, goose: Path) -> None:
         settings = {"prompts": [], "image_prompts": [str(photon), f">{goose}"], "batch_size": 2}
         saved = generate(workdir, transition_frames=2, **settings)
