@@ -5,10 +5,16 @@ real models, and its tests are marked cuda: they need a GPU and the cached check
 and are skipped without a GPU.
 """
 
+from collections.abc import Callable, Sequence
+from itertools import pairwise
 from pathlib import Path
 
 import pytest
 import torch as th
+import torchvision.transforms.functional as tvf
+from PIL import Image
+
+from cgd import slide
 
 IMAGES = Path(__file__).resolve().parent.parent / "images"
 
@@ -46,3 +52,14 @@ def goose() -> Path:
 def mushroom() -> Path:
     """An image of a mushroom in the repository, for init images."""
     return IMAGES / "32K_HUHD_Mushroom.png"
+
+
+@pytest.fixture
+def changes() -> Callable[[Sequence[Path]], list[float]]:
+    """How much each saved image of a list differs from the one before it, as slide.change() measures it."""
+
+    def measure(paths: Sequence[Path]) -> list[float]:
+        frames = [tvf.to_tensor(Image.open(path).convert("RGB")).unsqueeze(0).mul(2).sub(1) for path in paths]
+        return [slide.change(before, after) for before, after in pairwise(frames)]
+
+    return measure
