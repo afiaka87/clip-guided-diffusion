@@ -299,6 +299,17 @@ def test_a_seed_reproduces_the_image_exactly(workdir: Path, mushroom: Path, sett
     assert run(workdir / "a")[-1][1].read_bytes() == run(workdir / "b")[-1][1].read_bytes()
 
 
+@pytest.mark.parametrize("name", thumbnails.MODELS)
+def test_loading_a_thumbnail_model_draws_none_of_the_runs_random_numbers(name: str) -> None:
+    """A run loads its thumbnail model after setting the seed, and before drawing the noise it starts from."""
+    thumbnails.load_model.cache_clear()
+    th.manual_seed(3)
+    cpu, gpu = th.random.get_rng_state(), th.cuda.get_rng_state()
+    thumbnails.load_model(name, "cuda")
+    assert th.equal(th.random.get_rng_state(), cpu)
+    assert th.equal(th.cuda.get_rng_state(), gpu)
+
+
 def test_a_different_seed_changes_the_image(workdir: Path) -> None:
     first, second = (generate(workdir / str(seed), image_size=64, steps=6, seed=seed)[-1][1] for seed in (3, 4))
     assert first.read_bytes() != second.read_bytes()
