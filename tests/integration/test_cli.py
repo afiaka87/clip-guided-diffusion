@@ -173,6 +173,32 @@ class TestOutputs:
             assert count.stdout.strip() == "4"
         assert not (workdir / "outputs/Loose_seal/00").exists()
 
+    @pytest.mark.parametrize(
+        ("argv", "count"),
+        [
+            (FAST, 6 + 3),
+            (("-uncond", "-n", "4", "-q"), 4 + 3),
+            (("-bb", "sd-turbo", "-size", "136", "-iters", "2", "-clip", "ViT-B/32", "-q"), 3 + 3),
+        ],
+        ids=["default", "unconditional", "backbone"],
+    )
+    def test_a_sequence_becomes_a_gif_of_its_first_image_and_the_frames_to_each_next_one(
+        self, workdir: Path, argv: tuple[str, ...], count: int, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        output = run("Loose seal.|>Loose goose.", *argv, "-frames", "3", capsys=capsys)
+        assert saved("outputs/Loose_seal_Loose_goose/00.gif", "Created") in output
+        gif = workdir / "outputs/Loose_seal_Loose_goose/00.gif"
+        frames_read = subprocess.run([*COUNT_FRAMES.split(), str(gif)], capture_output=True, text=True, check=True)
+        assert frames_read.stdout.strip() == str(count)
+        assert not (workdir / "outputs/Loose_seal_Loose_goose/00").exists()
+
+    def test_a_sequence_that_asks_for_a_video_gets_only_that(
+        self, workdir: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        run("Loose seal.|>Loose goose.", *FAST, "-frames", "3", "-mp4", capsys=capsys)
+        assert (workdir / "outputs/Loose_seal_Loose_goose/00.mp4").stat().st_size > 0
+        assert not (workdir / "outputs/Loose_seal_Loose_goose/00.gif").exists()
+
     def test_the_frames_survive_without_ffmpeg(
         self, workdir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
