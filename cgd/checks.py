@@ -4,7 +4,7 @@ from collections.abc import Iterable, Sequence
 from pathlib import Path
 
 from cgd.download import is_url
-from cgd.prompts import by_image, parse_prompt, scenes
+from cgd.prompts import by_image, loops, parse_prompt, scenes
 
 
 class ConfigError(ValueError):
@@ -45,6 +45,11 @@ def check_common(
         "as in 'a castle|>a fox'.",
     )
     require(transition_frames is None or transition_frames >= 1, "--transition-frames must be at least 1.")
+    require(
+        not loops(prompts, image_prompts) or len(scenes(prompts, image_prompts)) > 1,
+        "A > at the end slides back to the first image, which takes another image to come back from, "
+        "as in 'a castle|>a fox|>'.",
+    )
     require(batch_size >= 1, "--batch-size must be at least 1.")
     require(num_cutouts >= 1, "--num-cutouts must be at least 1.")
     require(save_frequency >= 1, "--save-frequency must be at least 1.")
