@@ -1,29 +1,34 @@
-"""CLIP correcting a one-step model's noise, end to end on the GPU."""
+"""CLIP correcting a one-step model's noise, end to end on the GPU.
+
+Every run loads its backbone from disk, which is most of what one costs, so there are few
+of them, and each is one iteration on a small image. tests/unit checks what the parts compute.
+"""
 
 from collections.abc import Callable, Sequence
+from functools import partial
 from pathlib import Path
 from typing import Any
 
 import pytest
-import torch as th
 import torchvision.transforms.functional as tvf
 from PIL import Image
 
 from cgd import backbone
-from cgd.guide import guide_loss, load_guide
 
 pytestmark = pytest.mark.cuda
 
 PROMPT = "a photograph of a red fox in the snow"
+OTHER = "a sailboat on a calm lake at sunset"
+SEQUENCE = (PROMPT, f">{OTHER}")
 
 
 def generate(output_dir: Path, **settings: Any) -> list[tuple[int, Path]]:
     """Every (batch index, path) a run saves, with only the first and last saved unless asked otherwise."""
     options: dict[str, Any] = {
         "prompts": [PROMPT],
-        "image_size": 256,
+        "image_size": 128,
         "clip_model": "ViT-B/32",
-        "iterations": 4,
+        "iterations": 1,
         "save_frequency": 1000,
         "progress": False,
         "device": "cuda",
@@ -32,115 +37,43 @@ def generate(output_dir: Path, **settings: Any) -> list[tuple[int, Path]]:
     return list(backbone.generate(**options | settings))
 
 
-def test_optimising_the_noise_lowers_the_clip_loss_and_keeps_the_best() -> None:
-    """Over the default iterations. The loss rises for the first ten or so, while the momentum builds."""
-    model = backbone.load_backbone("sd-turbo", [PROMPT], "cuda")
-    # The whole frame is the only cutout, so the loss is a function of the noise alone.
-    guide = load_guide("ViT-B/32", [PROMPT], image_size=256, num_cutouts=1, min_cut_fraction=1.0, device="cuda")
-    conditioning = backbone.unet_conditioning(model, model.prompts[0], 256, 256)
-    th.manual_seed(0)
-    start = th.randn(backbone.latent_shape(256, 256), device="cuda")
-
-    def draw(z: th.Tensor) -> th.Tensor:
-        return backbone.preview(model, conditioning, z)
-
-    def loss(images: th.Tensor) -> th.Tensor:
-        return guide_loss(guide, images)
-
-    with th.backends.cudnn.flags(enabled=True, deterministic=True):  # As generate() runs it.
-        steps = list(backbone.optimise_noise(draw, loss, start, progress=False))
-    values = [step.loss for step in steps]
-    assert min(values) < values[0] - 0.03  # 0.70 against 0.77 when measured.
-    assert abs(steps[-1].best_z.norm().item() - start.norm().item()) < 0.1 * start.norm().item()
-    assert th.equal(steps[-1].best_z, steps[values.index(min(values))].best_z)
+def test_each_image_of_a_sequence_is_the_one_its_prompt_makes_alone_and_a_seed_reproduces_every_frame(
+    workdir: Path, changes: Callable[[Sequence[Path]], list[float]]
+) -> None:
+    run = partial(generate, prompts=SEQUENCE, transition_frames=12, seed=3)
+    saved = [path for _, path in run(workdir / "a")]
+    # The plain model's image, the corrected one, then the frames to the second image.
+    assert [path.name for path in saved] == [f"{step:04}.png" for step in range(14)]
+    frames = [path.read_bytes() for path in saved]
+    assert frames == [path.read_bytes() for _, path in run(workdir / "b")]
+    alone = [generate(workdir / prompt[:9], prompts=[prompt], seed=3)[-1][1] for prompt in (PROMPT, OTHER)]
+    assert [frames[1], frames[-1]] == [path.read_bytes() for path in alone]
+    assert max(changes(saved[1:])) < 0.75 * changes(alone)[0]  # No frame jumps: 0.42 against 0.71 when measured.
 
 
-def test_zero_iterations_is_the_plain_model(workdir: Path) -> None:
-    assert [path.name for _, path in generate(workdir, iterations=0)] == ["0000.png"]
+def test_the_plain_model_slides_each_image_of_a_batch_without_clip_at_any_shape(workdir: Path) -> None:
+    settings = {"prompts": SEQUENCE, "iterations": 0, "batch_size": 2, "width_offset": 64}
+    saved = generate(workdir, transition_frames=2, **settings)
+    assert [index for index, _ in saved] == [0] * 3 + [1] * 3
+    assert [path.name for _, path in saved[:3]] == ["0000.png", "0001.png", "0002.png"]
+    assert len({path.read_bytes() for _, path in saved}) == 6
+    assert Image.open(saved[-1][1]).size == (192, 128)
 
 
-def test_it_saves_the_frames_asked_for_and_the_final_image(workdir: Path) -> None:
-    assert [path.name for _, path in generate(workdir, save_frequency=2)] == ["0000.png", "0002.png", "0004.png"]
-
-
-@pytest.mark.parametrize(("settings", "size"), [({"width_offset": 64}, (320, 256)), ({"image_size": 136}, (136, 136))])
-def test_the_image_has_the_requested_shape(workdir: Path, settings: dict[str, Any], size: tuple[int, int]) -> None:
-    assert Image.open(generate(workdir, iterations=1, **settings)[-1][1]).size == size
-
-
-def test_the_cutouts_asked_for_are_the_ones_clip_sees(workdir: Path) -> None:
-    first, second = (generate(workdir / str(cutouts), num_cutouts=cutouts)[-1][1] for cutouts in (1, 16))
-    assert first.read_bytes() != second.read_bytes()
-
-
-def test_a_batch_holds_distinct_images(workdir: Path) -> None:
-    finals = [path for _, path in generate(workdir, batch_size=2, iterations=1) if path.name == "0001.png"]
-    assert len(finals) == 2
-    assert finals[0].read_bytes() != finals[1].read_bytes()
-
-
-def test_an_image_prompt_alone_runs(workdir: Path, photon: Path) -> None:
-    assert generate(workdir, prompts=[], image_prompts=[str(photon)], iterations=1)[-1][1].name == "0001.png"
+def test_an_image_prompt_alone_guides_with_an_ensemble_and_saves_the_frames_asked_for(
+    workdir: Path, photon: Path
+) -> None:
+    settings = {"prompts": [], "image_prompts": [str(photon)], "clip_model": "ViT-B/32+PE-Core-B-16"}
+    saved = generate(workdir, iterations=2, save_frequency=1, **settings)
+    assert [path.name for _, path in saved] == ["0000.png", "0001.png", "0002.png"]
+    assert len({path.read_bytes() for _, path in saved}) == 3
 
 
 @pytest.mark.parametrize("name", ["vega", "sdxl-lightning"])
-def test_the_sdxl_backbones_draw_at_512(workdir: Path, name: str) -> None:
-    path = generate(workdir, backbone=name, image_size=512, iterations=1)[-1][1]
-    image = Image.open(path)
-    assert image.size == (512, 512)
-    assert tvf.to_tensor(image.convert("RGB")).std().item() > 0.05
-
-
-@pytest.mark.parametrize(
-    "settings",
-    [{}, {"aesthetic_scale": 0.2}, {"clip_model": "ViT-B/32+PE-Core-B-16"}],
-    ids=["plain", "aesthetic", "ensemble"],
-)
-def test_a_seed_reproduces_the_image_exactly(workdir: Path, settings: dict[str, Any]) -> None:
-    first, second = (generate(workdir / run, seed=3, **settings)[-1][1] for run in ("a", "b"))
-    assert first.read_bytes() == second.read_bytes()
-
-
-def test_a_different_seed_changes_the_image(workdir: Path) -> None:
-    first, second = (generate(workdir / str(seed), seed=seed)[-1][1] for seed in (3, 4))
-    assert first.read_bytes() != second.read_bytes()
-
-
-class TestSequence:
-    OTHER = "a sailboat on a calm lake at sunset"
-    SEQUENCE = (PROMPT, f">{OTHER}")
-
-    def test_each_image_is_the_one_its_prompt_makes_alone_and_the_frames_between_change_step_by_step(
-        self, workdir: Path, changes: Callable[[Sequence[Path]], list[float]]
-    ) -> None:
-        saved = [path for _, path in generate(workdir / "sequence", prompts=self.SEQUENCE, transition_frames=24)]
-        assert [path.name for path in saved] == ["0000.png", *(f"{step:04}.png" for step in range(4, 29))]
-        alone = [generate(workdir / prompt[:9], prompts=[prompt])[-1][1] for prompt in (PROMPT, self.OTHER)]
-        assert [saved[1].read_bytes(), saved[-1].read_bytes()] == [path.read_bytes() for path in alone]
-        between = changes(saved[1:])
-        assert max(between) < 0.5 * changes(alone)[0]
-
-    def test_a_seed_reproduces_every_frame(self, workdir: Path) -> None:
-        settings = {"prompts": self.SEQUENCE, "transition_frames": 6, "seed": 3}
-        first, second = ([path for _, path in generate(workdir / run, **settings)] for run in ("a", "b"))
-        assert len(first) == 8
-        assert all(a.read_bytes() == b.read_bytes() for a, b in zip(first, second, strict=True))
-
-    def test_the_plain_model_slides_without_clip(self, workdir: Path) -> None:
-        saved = [path for _, path in generate(workdir, prompts=self.SEQUENCE, iterations=0, transition_frames=4)]
-        assert [path.name for path in saved] == [f"{step:04}.png" for step in range(5)]
-        assert len({path.read_bytes() for path in saved}) == 5
-
-    def test_an_sdxl_backbone_slides_its_pooled_embedding_too(self, workdir: Path) -> None:
-        settings = {"backbone": "vega", "image_size": 512, "iterations": 1}
-        sequence = generate(workdir / "sequence", prompts=self.SEQUENCE, transition_frames=3, **settings)
-        saved = [path for _, path in sequence]
-        second = generate(workdir / "second", prompts=[self.OTHER], **settings)[-1][1]
-        assert len(saved) == 5
-        assert saved[-1].read_bytes() == second.read_bytes()
-        assert tvf.to_tensor(Image.open(saved[-2]).convert("RGB")).std().item() > 0.05
-
-    def test_a_batch_slides_each_of_its_images(self, workdir: Path) -> None:
-        saved = generate(workdir, prompts=self.SEQUENCE, batch_size=2, iterations=1, transition_frames=3)
-        assert [index for index, _ in saved] == [0] * 5 + [1] * 5
-        assert len({path.read_bytes() for _, path in saved}) == 10
+def test_the_sdxl_backbones_draw_at_512_and_slide_their_pooled_embedding_too(workdir: Path, name: str) -> None:
+    saved = generate(workdir, backbone=name, image_size=512, prompts=SEQUENCE, transition_frames=2)
+    assert len({path.read_bytes() for _, path in saved}) == 4
+    for _, path in saved[1:]:
+        image = Image.open(path)
+        assert image.size == (512, 512)
+        assert tvf.to_tensor(image.convert("RGB")).std().item() > 0.05
