@@ -36,6 +36,13 @@ def unconditional(image_size: int) -> dict[str, Any]:
     return ADM_SETTINGS | {"image_size": image_size, "unconditional": True, "height": image_size, "width": image_size}
 
 
+def finetuned(folder: Path) -> dict[str, Any]:
+    """The settings of a square image from a fine-tune, which is a file in `folder`."""
+    path = folder / "cgd.pt"
+    path.touch()
+    return ADM_SETTINGS | {"image_size": 256, "height": 256, "width": 256, "finetuned": str(path)}
+
+
 BACKBONE_SETTINGS: dict[str, Any] = {
     "height": 512,
     "width": 512,
@@ -128,6 +135,28 @@ class TestAdmParameters:
         with pytest.raises(ConfigError, match="--perturbed-attention only applies with --unconditional at 256"):
             adm.check_parameters(["a fox"], [], **unconditional(512) | {"perturbed_attention": True})
 
+    def test_a_fine_tune_passes_at_256_told_a_prompt_of_positive_weight(self, photon: Path, tmp_path: Path) -> None:
+        settings = finetuned(tmp_path)
+        adm.check_parameters(["a fox", "blurry:-1"], [], **settings)
+        adm.check_parameters([], [str(photon)], **settings)
+        adm.check_parameters(["a castle", ">a fox"], [], **settings | {"width": 288})
+
+    @pytest.mark.parametrize(
+        ("prompts", "overrides", "message"),
+        [
+            (["a fox"], {"unconditional": True}, "--finetuned is a fine-tune of the class-conditional checkpoint"),
+            (["a fox"], {"image_size": 128, "height": 128, "width": 128}, "--finetuned draws at 256"),
+            (["a fox"], {"finetuned": "missing.pt"}, "No such fine-tune: missing.pt"),
+            (["blurry:-1"], {}, "--finetuned is told the prompts of positive weight, and an image has none"),
+            (["a castle", ">blurry:-1"], {}, "an image has none"),
+        ],
+    )
+    def test_a_fine_tune_that_cannot_draw_the_run_is_explained(
+        self, tmp_path: Path, prompts: list[str], overrides: dict[str, Any], message: str
+    ) -> None:
+        with pytest.raises(ConfigError, match=message):
+            adm.check_parameters(prompts, [], **finetuned(tmp_path) | overrides)
+
     @pytest.mark.parametrize("skip", [-1, 1000])
     def test_skipping_off_the_schedule_is_explained(self, photon: Path, skip: int) -> None:
         with pytest.raises(ConfigError, match="between 0 and 999"):
@@ -140,6 +169,9 @@ class TestAdmDefaults:
 
     def test_the_unconditional_checkpoints_get_what_made_their_best_images(self) -> None:
         assert adm.defaults(True) == adm.Defaults(256, 60, 2, "ViT-B/32+PE-Core-B-16", 4, "clip")
+
+    def test_the_fine_tune_gets_what_it_was_scored_with(self) -> None:
+        assert adm.defaults(False, finetuned=True) == adm.Defaults(256, 30, 1, "ViT-B/32+PE-Core-B-16", 16, "none")
 
     @pytest.mark.parametrize(("given", "default", "value"), [(None, 4, 4), (16, 4, 16), (0, 4, 0), ("", "x", "")])
     def test_an_option_given_wins_over_its_default(self, given: Any, default: Any, value: Any) -> None:
