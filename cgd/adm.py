@@ -3,7 +3,9 @@
 CLIP picks the ImageNet class closest to the prompts for the U-Net to draw, and its
 gradient steers each denoised image towards them, through sampler.sample(). The
 unconditional checkpoints draw no class, so guidance alone brings the subject: CLIP's,
-and that of a model which reads the noisy image as a thumbnail, see thumbnails.py.
+and that of a model which reads the noisy image as a thumbnail, see thumbnails.py. A
+fine-tune of the class-conditional 256 checkpoint is also told the prompts' CLIP
+embeddings, see finetuned.py.
 
 A sequence of images, "a castle|>a fox", is each image as its prompts make it alone, and
 frames that slide from each one to the next, see slide.py and between().
@@ -22,15 +24,16 @@ from PIL import Image
 from torch import nn
 from tqdm.auto import tqdm
 
+from cgd import finetuned as ft
 from cgd import losses, pag, sampler, slide, thumbnails
 from cgd.checks import check_common, require
-from cgd.clip_models import check_model, closest_imagenet_class, ensemble_members
+from cgd.clip_models import check_model, closest_imagenet_class, encode_texts, encode_whole_image, ensemble_members
 from cgd.device import default_device, limit_to_vram, random_state, replayed_rng
 from cgd.download import download, fetch
 from cgd.guide import NUM_CUTOUTS, Guide, guide_loss, load_guides, query
 from cgd.imagenet_classes import IMAGENET_CLASSES
 from cgd.outputs import run_name, save_batch
-from cgd.prompts import by_image, loops, scenes
+from cgd.prompts import Scene, by_image, loops, parse_prompt, scenes
 
 with warnings.catch_warnings():  # It uses a deprecated spelling of torch.amp, which is nothing to act on.
     warnings.simplefilter("ignore", FutureWarning)
@@ -113,10 +116,14 @@ DEFAULTS = Defaults(128, sampler.DEFAULT_STEPS, 1, "ViT-B/32", NUM_CUTOUTS, NO_T
 UNCONDITIONAL_DEFAULTS = Defaults(
     256, sampler.UNCONDITIONAL_STEPS, sampler.UNCONDITIONAL_RECURRENCE, "ViT-B/32+PE-Core-B-16", 4, "clip"
 )
+# What the fine-tune was scored with: the two CLIP models it is told the embeddings of also guide it.
+FINETUNED_DEFAULTS = Defaults(ft.SIZE, sampler.DEFAULT_STEPS, 1, "ViT-B/32+PE-Core-B-16", NUM_CUTOUTS, NO_THUMBNAIL)
 
 
-def defaults(unconditional: bool) -> Defaults:
-    """The defaults of the class-conditional checkpoints, or of the unconditional ones."""
+def defaults(unconditional: bool, finetuned: bool = False) -> Defaults:
+    """The defaults of the class-conditional checkpoints, of the unconditional ones, or of the fine-tune."""
+    if finetuned:
+        return FINETUNED_DEFAULTS
     return UNCONDITIONAL_DEFAULTS if unconditional else DEFAULTS
 
 
@@ -155,6 +162,7 @@ def check_parameters(  # pylint: disable=too-many-locals  # Its keyword argument
     skip_timesteps: int,
     save_frequency: int,
     transition_frames: int | None = None,
+    finetuned: str | None = None,
 ) -> None:
     """Reject a configuration that cannot work, before loading anything."""
     check_common(
@@ -170,6 +178,8 @@ def check_parameters(  # pylint: disable=too-many-locals  # Its keyword argument
     sizes = list(UNCONDITIONAL_URLS if unconditional else CHECKPOINT_URLS)
     kind = "unconditional checkpoint" if unconditional else "checkpoint"
     require(image_size in sizes, f"No {kind} for size {image_size}. Choose one of {sizes}.")
+    if finetuned is not None:
+        check_finetuned(finetuned, scenes(prompts, image_prompts), unconditional=unconditional, image_size=image_size)
     stride = image_size // 8  # The U-Net halves the resolution down to 8x8.
     require(
         height > 0 and width > 0 and not height % stride and not width % stride,
@@ -204,6 +214,17 @@ def check_parameters(  # pylint: disable=too-many-locals  # Its keyword argument
     )
 
 
+def check_finetuned(path: str, images: Sequence[Scene], *, unconditional: bool, image_size: int) -> None:
+    """Reject a fine-tune that cannot draw this run."""
+    require(not unconditional, "--finetuned is a fine-tune of the class-conditional checkpoint, not --unconditional.")
+    require(image_size == ft.SIZE, f"--finetuned draws at {ft.SIZE}, the size of the checkpoint it is a fine-tune of.")
+    require(Path(path).is_file(), f"No such fine-tune: {path}")
+    require(
+        all(any(parse_prompt(prompt)[1] > 0 for prompt in (*image.prompts, *image.image_prompts)) for image in images),
+        "--finetuned is told the prompts of positive weight, and an image has none.",
+    )
+
+
 @lru_cache(maxsize=1)
 def load_model(
     image_size: int, device: str, fp16: bool, use_checkpoint: bool = False, unconditional: bool = False
@@ -212,6 +233,24 @@ def load_model(
 
     `use_checkpoint` recomputes activations during the backward pass instead of storing them.
     """
+    return build_model(image_size, device, fp16, use_checkpoint, unconditional)
+
+
+@lru_cache(maxsize=1)
+def load_finetuned(path: str, device: str, use_checkpoint: bool = False) -> tuple[ft.Finetuned, np.ndarray]:
+    """The fine-tune at `path`, frozen, and the log(alpha_bar) of its schedule.
+
+    It is on a U-Net of its own, since its weights replace the pretrained ones of the one load_model() keeps. It
+    stays at full precision, and runs under autocast on a GPU, as it was trained and scored.
+    """
+    unet, log_alpha_bar = build_model(ft.SIZE, "cpu", fp16=False, use_checkpoint=use_checkpoint)
+    return ft.load(path, unet, device), log_alpha_bar
+
+
+def build_model(
+    image_size: int, device: str, fp16: bool, use_checkpoint: bool = False, unconditional: bool = False
+) -> tuple[nn.Module, np.ndarray]:
+    """A new U-Net for `image_size`, as load_model() describes."""
     url = (UNCONDITIONAL_URLS if unconditional else CHECKPOINT_URLS)[image_size]
     path = download(url, url.rpartition("/")[2])
     flags = model_and_diffusion_defaults() | CHECKPOINT_FLAGS[image_size]
@@ -296,6 +335,7 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
     guidance_limit: float | None = None,
     thumbnail: str | None = None,
     perturbed_attention: bool = False,
+    finetuned: str | None = None,
     clip_model: str | None = None,
     clip_fp16: bool = False,
     aesthetic_scale: float = 0.0,
@@ -326,8 +366,12 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
     one of thumbnails.MODELS, whose guidance sets the composition, or "none". It reads the
     text prompts off a square image, so by default a run without either does without it.
     `perturbed_attention` adds pag.py's guidance.
+
+    `finetuned` is the path of a fine-tune of the class-conditional 256 checkpoint that
+    finetune.export wrote, which draws told the prompts' CLIP embeddings as well, see
+    finetuned.py. Its defaults are FINETUNED_DEFAULTS.
     """
-    default = defaults(unconditional)
+    default = defaults(unconditional, finetuned is not None)
     image_size = chosen(image_size, default.image_size)
     steps, recurrence = chosen(steps, default.steps), chosen(recurrence, default.recurrence)
     clip_model, num_cutouts = chosen(clip_model, default.clip_model), chosen(num_cutouts, default.num_cutouts)
@@ -357,6 +401,7 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
         skip_timesteps=skip_timesteps,
         save_frequency=save_frequency,
         transition_frames=transition_frames,
+        finetuned=finetuned,
     )
     check_model(clip_model)
     images = scenes(prompts, image_prompts)
@@ -366,6 +411,10 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
 
     # Everything from here on draws random numbers in this order, so a seed always makes the same image.
     th.manual_seed(seed)
+    use_checkpoint = batch_size * height * width > GRADIENT_CHECKPOINT_PIXELS
+    common = {"batch_size": batch_size, "device": device, "fp16": clip_fp16, "progress": progress}
+    # Before the guides load the same CLIP models again: only one is kept at a time.
+    drawn = None if finetuned is None else finetuned_drawing(finetuned, images, use_checkpoint=use_checkpoint, **common)
     guides = load_guides(
         clip_model,
         images,
@@ -376,15 +425,8 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
         aesthetic_scale=aesthetic_scale,
     )
     init = load_init_image(init_image, height, width, device) if init_image else None
-    labels: list[th.Tensor | None] = [None] * len(images)
-    if not unconditional:
-        labels = [
-            closest_class(guide, clip_model, batch_size=batch_size, device=device, fp16=clip_fp16, progress=progress)
-            for guide in guides
-        ]
-    use_checkpoint = batch_size * height * width > GRADIENT_CHECKPOINT_PIXELS
-    model, log_alpha_bar = load_model(
-        image_size, device, fp16=device != "cpu", use_checkpoint=use_checkpoint, unconditional=unconditional
+    model, log_alpha_bar, plains = drawn or class_drawing(
+        guides, clip_model, image_size, unconditional=unconditional, use_checkpoint=use_checkpoint, **common
     )
 
     start, init_loss = None, None
@@ -401,7 +443,7 @@ def generate(  # pylint: disable=too-many-locals  # Its keyword arguments are th
 
     window = sampler.UNCONDITIONAL_GUIDANCE_WINDOW if unconditional else sampler.GUIDANCE_WINDOW
     drawings = []
-    for image, guide, plain in zip(images, guides, class_denoisers(model, labels), strict=True):
+    for image, guide, plain in zip(images, guides, plains, strict=True):
         unet = plain
         if perturbed_attention:
             unet = partial(pag.denoise, unet, model, pag.LAYERS)
@@ -520,6 +562,72 @@ def between(
     unet = partial(sampler.blend, *denoisers, share)
     faded = th.lerp(*ends, share)
     return sampler.redraw(unet, log_alpha_bar, faded, noise, t=slide.noise_timestep(position), steps=steps).clamp(-1, 1)
+
+
+Drawn = tuple[nn.Module, np.ndarray, list[sampler.Denoiser]]
+"""The U-Net, the log(alpha_bar) of its schedule, and what it draws each image of a sequence with."""
+
+
+def class_drawing(  # pylint: disable=too-many-arguments  # The options it loads the U-Net with.
+    guides: Sequence[Guide],
+    clip_model: str,
+    image_size: int,
+    *,
+    unconditional: bool,
+    batch_size: int,
+    device: str,
+    fp16: bool,
+    use_checkpoint: bool,
+    progress: bool,
+) -> Drawn:
+    """The checkpoint for `image_size`, drawing the ImageNet class closest to each image's prompts, or none."""
+    labels: list[th.Tensor | None] = [None] * len(guides)
+    if not unconditional:
+        labels = [
+            closest_class(guide, clip_model, batch_size=batch_size, device=device, fp16=fp16, progress=progress)
+            for guide in guides
+        ]
+    model, log_alpha_bar = load_model(
+        image_size, device, fp16=device != "cpu", use_checkpoint=use_checkpoint, unconditional=unconditional
+    )
+    return model, log_alpha_bar, class_denoisers(model, labels)
+
+
+def finetuned_drawing(
+    path: str,
+    images: Sequence[Scene],
+    *,
+    batch_size: int,
+    device: str,
+    fp16: bool,
+    use_checkpoint: bool,
+    progress: bool,
+) -> Drawn:
+    """The fine-tune at `path`, told each image's prompts, with classifier-free guidance."""
+    tuned, log_alpha_bar = load_finetuned(path, device, use_checkpoint)
+    conditions = finetuned_conditions(tuned, images, batch_size=batch_size, device=device, fp16=fp16, progress=progress)
+    amp = th.device(device).type == "cuda"
+    return tuned.model, log_alpha_bar, [ft.cfg_denoiser(tuned.model, amp, told, ft.CFG_SCALE) for told in conditions]
+
+
+def finetuned_conditions(
+    tuned: ft.Finetuned, images: Sequence[Scene], *, batch_size: int, device: str, fp16: bool, progress: bool
+) -> list[ft.Condition]:
+    """What the fine-tune is told for each image of a sequence: its prompts' embeddings, and the closest class."""
+
+    def encode_text(name: str, text: str) -> th.Tensor:
+        return encode_texts([text], name, device, fp16)
+
+    def encode_image(name: str, path: str) -> th.Tensor:
+        return encode_whole_image(path, name, device, fp16)
+
+    conditions = []
+    for embeds in ft.prompt_embeddings(tuned, images, encode_text, encode_image):
+        name, anchor = ft.anchor(tuned, embeds)
+        label = closest_imagenet_class(anchor, name, device, fp16)
+        _status(f"Conditioning on ImageNet class {IMAGENET_CLASSES[label]} and the prompts' CLIP embeddings", progress)
+        conditions.append(ft.batch_condition(tuned, embeds, label, batch_size=batch_size, device=device))
+    return conditions
 
 
 def closest_class(
