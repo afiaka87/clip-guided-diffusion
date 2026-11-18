@@ -64,6 +64,9 @@ name = "pytorch-cu132"
 url = "https://download.pytorch.org/whl/cu132"
 explicit = true
 
+[tool.uv]
+default-groups = ["dev", "train"]  # The fine-tune's tests need its libraries.
+
 [tool.hatch.metadata]
 allow-direct-references = true
 
@@ -72,6 +75,7 @@ packages = ["cgd"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]  # For finetune, which is scripts beside the package and not part of it.
 addopts = ["--strict-markers", "-ra", "--import-mode=importlib"]  # So unit and integration tests can share a name.
 markers = ["cuda: runs real models on a CUDA GPU, with their checkpoints cached or downloaded"]
 filterwarnings = ["ignore::UserWarning:clip", "ignore::DeprecationWarning", "ignore::FutureWarning:guided_diffusion"]
@@ -115,4 +119,9 @@ dev = [
     "pylint>=4.1.3",
     "pytest>=9.2.0",
     "ruff>=0.17.3",
+]
+train = [
+    "pandas>=2.3.3",
+    "pyarrow>=25.0.1",
+    "wandb>=0.31.0",
 ]
