@@ -1,0 +1,8 @@
+{
+ "best_n": 0,
+ "dedup_cos": 0.98,
+ "zs": {"text": -0.001, "collage": 0.02, "screenshot": 0.038, "logo": 0.007, "nsfw": 0.03},
+ "_note": "Set 2026-11-15 from D:/imagenet-filter/sheets/validation_*.jpg. Padding, the YOLO watermark cut (.25), text and logo keep the LAION values: on the sheets they catch frames, watermarks and date stamps, and pages of text. Three cuts are raised, because at the LAION values they caught ordinary ImageNet photographs: screenshot (.003 caught dashboards, monitors and dials; real screenshots start near .038), nsfw (.004 caught monkeys, babies and shoes; .019 to .03 is still mostly clothed people) and collage (.007 caught any two objects side by side; real collages are about a quarter of .015 to .022). The near-duplicate cosine is .98, not .95: at .95 the pairs were different photographs of one subject (19 of 20 on the sheet), and at .98 they are the same scene shot twice.",
+ "train": {"leaves": 8000, "parents": 1000},
+ "validation": {"leaves": 400, "parents": 100}
+}
