@@ -99,6 +99,12 @@ class TestPipeline:
         assert "perturbed_attention" not in pipeline(parse("a fox", "-uncond"))[1]
         assert pipeline(parse("a fox", "-uncond", "-pag"))[1]["perturbed_attention"] is True
 
+    def test_a_fine_tune_is_passed_only_when_asked_for(self) -> None:
+        assert "finetuned" not in pipeline(parse("a fox"))[1]
+        generate, settings = pipeline(parse("a fox", "-ft", "cgd.pt"))
+        assert generate is adm.generate
+        assert settings["finetuned"] == "cgd.pt"
+
     def test_an_animation_saves_every_frame_unless_told_otherwise(self) -> None:
         assert pipeline(parse("a fox", "-gif"))[1]["save_frequency"] == 1
         assert pipeline(parse("a fox", "-mp4", "-freq", "3"))[1]["save_frequency"] == 3
@@ -118,6 +124,7 @@ class TestPipeline:
             (("-bb", "sd-turbo", "-recur", "2"), "--recurrence only applies without --backbone."),
             (("-bb", "sd-turbo", "-thumb", "glide"), "--thumbnail only applies without --backbone."),
             (("-bb", "sd-turbo", "-pag"), "--perturbed-attention only applies without --backbone."),
+            (("-bb", "sd-turbo", "-ft", "cgd.pt"), "--finetuned only applies without --backbone."),
             (("-bb", "sd-turbo", "-rate", "0.1", "-init", "x.png"), "--guidance-rate, --init-image only apply without"),
             (("-iters", "4"), "--iterations only applies with --backbone."),
         ],
@@ -270,6 +277,7 @@ def test_both_of_pytorchs_memory_errors_count_as_out_of_memory() -> None:
         (("a", "-uncond"), 4, True, False, False),
         (("a", "-uncond", "-cutn", "8", "-clip", "ViT-B/32", "-thumb", "none"), 8, False, False, False),
         (("a", "-uncond", "-thumb", "karlo"), 4, True, False, True),
+        (("a", "-ft", "cgd.pt"), 16, True, False, False),
     ],
 )
 def test_out_of_memory_advice_fits_the_run(
