@@ -195,7 +195,7 @@ The init image is [this mushroom](images/32K_HUHD_Mushroom.png), a generation fr
 
 ### Image size
 
-- options: `64, 128, 256, 512 pixels (square)`, `256` or `512` with [`--unconditional`](#unconditional-checkpoints), or any multiple of 8 with [`--backbone`](#modern-backbones)
+- options: `64, 128, 256, 512 pixels (square)`, `256` or `512` with [`--unconditional`](#unconditional-checkpoints), `256` with [`--finetuned`](#fine-tuned-model), or any multiple of 8 with [`--backbone`](#modern-backbones)
 - Every size runs in 8 GB of VRAM with the default CLIP model. See [Speed](#speed) for the time and memory each one takes, and [CLIP models](#clip-models) for the models that need more.
 - Above 256x256 pixels per batch, the U-Net recomputes its activations during guidance instead of storing them. That takes about 1.5x the time per guided step and under half the memory, and it is automatic.
 
@@ -303,6 +303,25 @@ The same prompt and seed with each of the others, and how long the command took 
 ![A red fox in the snow, with -uncond -pag -cutn 16](images/A_red_fox_in_the_snow_uncond_pag.gif)
 
 That took 49 s on an RTX 4070, from start to GIF. It also moves each prediction away from one the U-Net makes with the self-attention of four layers switched off, the layers and scale of the [PAG paper](https://arxiv.org/abs/2403.17377) for this checkpoint. That is one more model call a step, and only for `-uncond` at 256. Pictures come out more finished and follow the prompt a little less. With `-thumb clip` at 16 cutouts it beat `-thumb none` in 20 of 24 blind pairs. Over `-thumb clip` alone it adds less: +0.46 ± 0.53 PickScore for 9 s, and on 66 more prompts +0.18 ± 0.15 with the held-out CLIP models' score down 0.012 ± 0.006. At 4 cutouts, the default, it added nothing to PickScore, 21.44 against 21.43 at 31.5 s against 22.4 s. At 16 it scores 0.28 ± 0.29 more than at 4, the highest PickScore and rating of any option without a text-to-image model, so give it `-cutn 16`. Without thumbnail guidance it loses the subject, -0.029 ± 0.018 on the CLIP models. Off by default.
+
+### Fine-tuned model
+
+`--finetuned` / `-ft` PATH
+
+`uv run cgd -ft D:/cgd-finetune/cond256-vast/cgd.pt "Men standing near a cannon"`
+
+A fine-tune of the class-conditional 256 checkpoint that is told the prompts' CLIP embeddings as well as their ImageNet class, so the U-Net itself draws more of what the text says than its class, and CLIP guides it on top as it guides the default. It keeps the class `cgd` would pick, the closest to the text by ViT-B/32, and is told two embeddings by each of ViT-B/32 and PE-Core-B-16: the text prompts', and the image prompts' seen whole or, without any, the image embedding a linear map predicts from the text's. A prompt of negative weight steers only through CLIP's guidance, since the embeddings have no way to say "not". The model runs with classifier-free guidance at 3 against the class alone, which is the second forward pass a step.
+
+The checkpoint is not published. [`finetune/`](finetune/README.md) trains it, on filtered LAION and ImageNet, and `uv run python -m finetune.export <run folder>` writes the 1.7 GB file this option takes. It draws at 256, with the class-conditional checkpoint's other options, and guides with `-clip ViT-B/32+PE-Core-B-16` at 16 cutouts by default, what it was scored with. Not with `-uncond`, its thumbnail models or `-pag`, which are for the unconditional checkpoint.
+
+16 texts held out from its training, each from its own seed, against `cgd -size 256` with the same guide, scored by SigLIP2, which neither was trained or guided with (`reports/evidence/finetune/check_cgd_finetuned.py`):
+
+| | Against the texts | Against the real images | Time an image | Peak VRAM |
+|---|---|---|---|---|
+| `cgd -size 256 -clip ViT-B/32+PE-Core-B-16` | 0.120 | 0.619 | 8.6 s | 5.9 GiB |
+| `cgd -ft ...` | 0.163 (+0.044 ± 0.014) | 0.678 (+0.059 ± 0.018) | 13.0 s | 6.3 GiB |
+
+It was better on 12 of the 16 against both. It draws the people at the tables by the river, the silver Porsche and the motorcyclist where the default draws empty tables, a green blur and a road ([the images](reports/evidence/finetune/vast_check_cgd_finetuned.jpg), the default's row on top). On 32 other held-out texts, drawn by the fine-tune's own evaluation, it scored +0.042 ± 0.009 and +0.063 ± 0.014. Without CLIP's guidance it scores below the default, so it does not replace guidance, and its images are as high in contrast as the default's, which is the guidance. Measured on an RTX 4070 with the models loaded. [`finetune/README.md`](finetune/README.md#in-cgd) has the training and the rest of what was measured.
 
 ## Modern backbones
 
@@ -633,7 +652,7 @@ usage: cgd [-h] [-imgs IMAGE_PROMPTS] [-size IMAGE_SIZE] [-wd WIDTH_OFFSET]
            [-ht HEIGHT_OFFSET] [-bs BATCH_SIZE] [-seed SEED]
            [-clip CLIP_MODEL] [-fp16] [-cutn NUM_CUTOUTS]
            [-aes AESTHETIC_SCALE] [-best CANDIDATES]
-           [-frames TRANSITION_FRAMES] [-dev DEVICE] [-uncond]
+           [-frames TRANSITION_FRAMES] [-dev DEVICE] [-uncond] [-ft PATH]
            [-thumb {clip,glide,laionide,karlo,none}] [-pag] [-n STEPS]
            [-recur RECURRENCE] [-rate GUIDANCE_RATE] [-gl GUIDANCE_LIMIT]
            [-init INIT_IMAGE] [-skip SKIP_TIMESTEPS] [-is INIT_SCALE]
@@ -661,8 +680,8 @@ options:
   -size, --image-size IMAGE_SIZE
                         Image size. 64, 128, 256 or 512, default 128. With
                         --unconditional, 256 or 512, default 256. With
-                        --backbone, any multiple of 8, defaulting to what the
-                        model was trained for.
+                        --finetuned, 256. With --backbone, any multiple of 8,
+                        defaulting to what the model was trained for.
   -wd, --width-offset WIDTH_OFFSET
                         Make the image this much wider. Default 0.
   -ht, --height-offset HEIGHT_OFFSET
@@ -678,8 +697,8 @@ options:
                         gopt-16-SigLIP2-384, PE-Core-bigG-14-448, or a
                         checkpoint file. Join several with + to guide with all
                         of them. Default ViT-B/32, or ViT-B/32+PE-Core-B-16
-                        with --unconditional or --backbone. The README has
-                        what each costs.
+                        with --unconditional, --finetuned or --backbone. The
+                        README has what each costs.
   -fp16, --clip-fp16    Run a PE-Core or SigLIP2 model at half precision: up
                         to 3x faster for half the CLIP VRAM. Less exact, but
                         it scored about the same. OpenAI's models always do.
@@ -715,6 +734,14 @@ ImageNet model:
                         overrides its setting. Less reliable than the default,
                         because without an ImageNet class only guidance brings
                         the subject.
+  -ft, --finetuned PATH
+                        Draw at 256 with this fine-tune of the class-
+                        conditional checkpoint, which is told the prompts'
+                        CLIP embeddings as well as their ImageNet class, made
+                        by finetune.export. CLIP's guidance on top of it, by
+                        -clip ViT-B/32+PE-Core-B-16 by default, follows the
+                        prompts better than the default pipeline does, for 1.5
+                        times the time. finetune/README.md has how it scored.
   -thumb, --thumbnail {clip,glide,laionide,karlo,none}
                         With --unconditional, a model that reads the noisy
                         image as a 64x64 thumbnail and sets the composition
