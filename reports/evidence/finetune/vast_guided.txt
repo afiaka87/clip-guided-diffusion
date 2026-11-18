@@ -1,0 +1,32 @@
+== average
+class guided: 6.8 s an image
+text: 7.3 s an image
+text guided: 10.2 s an image
+text+prior: 7.3 s an image
+text+prior guided: 10.2 s an image
+text: class guided 0.1402
+text: text 0.0845  difference -0.0556 +- 0.0087  wins 3 of 32
+text: text guided 0.1712  difference +0.0310 +- 0.0087  wins 23 of 32
+text: text+prior 0.0924  difference -0.0478 +- 0.0080  wins 3 of 32
+text: text+prior guided 0.1745  difference +0.0343 +- 0.0096  wins 23 of 32
+image: class guided 0.6618
+image: text 0.6410  difference -0.0208 +- 0.0150  wins 14 of 32
+image: text guided 0.6927  difference +0.0309 +- 0.0121  wins 22 of 32
+image: text+prior 0.6359  difference -0.0259 +- 0.0160  wins 12 of 32
+image: text+prior guided 0.7002  difference +0.0384 +- 0.0128  wins 24 of 32
+== weights
+class guided: 6.7 s an image
+text: 7.3 s an image
+text guided: 10.2 s an image
+text+prior: 7.3 s an image
+text+prior guided: 10.2 s an image
+text: class guided 0.1402
+text: text 0.0817  difference -0.0585 +- 0.0104  wins 4 of 32
+text: text guided 0.1789  difference +0.0387 +- 0.0082  wins 24 of 32
+text: text+prior 0.0981  difference -0.0421 +- 0.0080  wins 7 of 32
+text: text+prior guided 0.1822  difference +0.0420 +- 0.0090  wins 25 of 32
+image: class guided 0.6618
+image: text 0.6282  difference -0.0336 +- 0.0171  wins 11 of 32
+image: text guided 0.7070  difference +0.0452 +- 0.0146  wins 23 of 32
+image: text+prior 0.6382  difference -0.0236 +- 0.0163  wins 15 of 32
+image: text+prior guided 0.7250  difference +0.0632 +- 0.0143  wins 28 of 32
