@@ -1,0 +1,21 @@
+0: A glass filled with a cranberry juice and garnished with a slice of lemon and a few leaves.
+1: A wedding swing decorated with flowers and greenery in a backyard setting.
+2: A luxurious yacht with a white couch and a table in it.
+3: A group of people sitting at tables near a river, surrounded by lush green grass, trees, and plants.
+4: A person wearing a helmet and gloves riding a motorcycle down a road, with a railing and trees in the background.
+5: A person decorating a chocolate cake with chocolate frosting on a white cake stand.
+6: A silver Porsche 356 Speedster parked on the side of a road, surrounded by lush green grass and tall trees.
+7: A painting of a vase filled with flowers and grapes on a table, with a wall art print of the same vase and grapes in the background.
+8: A water snake swimming in the water, its scales glistening in the light.
+9: A table with a white cloth draped over it, topped with bowls of soup and spoons.
+10: A group of husky dogs running down a snow-covered road, with a few people standing in the background.
+11: A group of trains parked on the tracks next to each other, with electric poles and wires in the foreground and trees and sky in the background.
+12: A rooster perched atop a wooden fence in a grassy area surrounded by trees and a clear blue sky.
+13: A woman wearing a pink and purple knitted scarf, standing in front of a brick wall.
+14: A row of yellow school buses lined up next to each other, with a fence in the foreground and a road on the right side.
+15: A person wearing a pair of black shoes and socks standing on a sidewalk.
+cgd: 8.6 s an image (the first loads the models)
+cgd -ft: 13.0 s an image (the first loads the models)
+text: cgd 0.1195  cgd -ft 0.1630  difference +0.0435 +- 0.0142  wins 12 of 16
+image: cgd 0.6194  cgd -ft 0.6784  difference +0.0590 +- 0.0179  wins 12 of 16
+
