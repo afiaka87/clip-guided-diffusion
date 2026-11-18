@@ -1,0 +1,36 @@
+[project]
+name = "laion-filter-bench"
+version = "0.0.0"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "torch>=2.8",
+    "torchvision",
+    "open-clip-torch>=3.3.0",
+    "clip-anytorch",
+    "transformers>=4.57",
+    "accelerate",
+    "timm",
+    "einops",
+    "pillow",
+    "numpy",
+    "pyarrow",
+    "pandas",
+    "scikit-learn",
+    "ultralytics",
+    "huggingface-hub",
+    "sentencepiece",
+    "protobuf",
+    "aesthetic-predictor-v2-5>=2024.12.18.1",
+]
+
+[tool.uv]
+package = false
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu128" }
+torchvision = { index = "pytorch-cu128" }
