@@ -1,0 +1,13 @@
+class guided: 7.0 s an image
+text: 7.5 s an image
+text guided: 10.6 s an image
+text+prior guided: 10.6 s an image
+text: class guided 0.1284
+text: text -0.0009  difference -0.1292 +- 0.0289  wins 0 of 8
+text: text guided 0.1422  difference +0.0138 +- 0.0129  wins 5 of 8
+text: text+prior guided 0.1440  difference +0.0156 +- 0.0151  wins 5 of 8
+image: class guided 0.5937
+image: text 0.4921  difference -0.1015 +- 0.0274  wins 0 of 8
+image: text guided 0.6346  difference +0.0409 +- 0.0178  wins 7 of 8
+image: text+prior guided 0.6122  difference +0.0185 +- 0.0132  wins 5 of 8
+exit 0
