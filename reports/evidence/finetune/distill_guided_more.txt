@@ -1,0 +1,5 @@
+15 steps, text: guided 0.0840  student guided 0.1092  difference +0.0253 +- 0.0123  student wins 9 of 16
+15 steps, image: guided 0.5413  student guided 0.5759  difference +0.0346 +- 0.0217  student wins 9 of 16
+30 steps, text: guided 0.0997  student guided 0.1323  difference +0.0326 +- 0.0076  student wins 13 of 16
+30 steps, image: guided 0.5674  student guided 0.6118  difference +0.0444 +- 0.0195  student wins 12 of 16
+exit 0
