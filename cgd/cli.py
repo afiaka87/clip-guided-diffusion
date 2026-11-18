@@ -29,6 +29,7 @@ ADM_OPTIONS = {
     "guidance_limit": "--guidance-limit",
     "thumbnail": "--thumbnail",
     "perturbed_attention": "--perturbed-attention",
+    "finetuned": "--finetuned",
     "init_image": "--init-image",
     "skip_timesteps": "--skip-timesteps",
     "init_scale": "--init-scale",
@@ -55,6 +56,7 @@ Run = Callable[[int, Path], Iterator[tuple[int, Path]]]
 """(seed, output folder) -> (batch index, path) of each image the run saves."""
 
 UNCONDITIONAL = adm.UNCONDITIONAL_DEFAULTS
+FINETUNED = adm.FINETUNED_DEFAULTS
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -80,8 +82,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--image-size",
         type=int,
         help=f"Image size. 64, 128, 256 or 512, default {adm.DEFAULTS.image_size}. With --unconditional, 256 or 512, "
-        f"default {UNCONDITIONAL.image_size}. With --backbone, any multiple of {backbone.LATENT_FACTOR}, "
-        "defaulting to what the model was trained for.",
+        f"default {UNCONDITIONAL.image_size}. With --finetuned, {FINETUNED.image_size}. With --backbone, any "
+        f"multiple of {backbone.LATENT_FACTOR}, defaulting to what the model was trained for.",
     )
     parser.add_argument(
         "-wd", "--width-offset", type=int, default=0, help="Make the image this much wider. Default %(default)s."
@@ -96,7 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--clip-model",
         help=f"CLIP model to guide with, one of {', '.join(MODEL_NAMES)}, or a checkpoint file. Join several with + "
         f"to guide with all of them. Default {adm.DEFAULTS.clip_model}, or {UNCONDITIONAL.clip_model} with "
-        "--unconditional or --backbone. The README has what each costs.",
+        "--unconditional, --finetuned or --backbone. The README has what each costs.",
     )
     parser.add_argument(
         "-fp16",
@@ -149,6 +151,15 @@ def build_parser() -> argparse.ArgumentParser:
         f"-n {UNCONDITIONAL.steps} -recur {UNCONDITIONAL.recurrence} -thumb {UNCONDITIONAL.thumbnail}. "
         "Each of those options overrides its setting. Less reliable than the default, because without an "
         "ImageNet class only guidance brings the subject.",
+    )
+    imagenet.add_argument(
+        "-ft",
+        "--finetuned",
+        metavar="PATH",
+        help=f"Draw at {FINETUNED.image_size} with this fine-tune of the class-conditional checkpoint, which is "
+        "told the prompts' CLIP embeddings as well as their ImageNet class, made by finetune.export. CLIP's "
+        f"guidance on top of it, by -clip {FINETUNED.clip_model} by default, follows the prompts better than "
+        "the default pipeline does, for 1.5 times the time. finetune/README.md has how it scored.",
     )
     imagenet.add_argument(
         "-thumb",
@@ -376,7 +387,7 @@ def is_out_of_memory(error: RuntimeError) -> bool:
 
 def out_of_memory_advice(args: argparse.Namespace) -> str:
     """What to change after running out of GPU memory."""
-    default = adm.defaults(bool(args.unconditional))
+    default = adm.defaults(bool(args.unconditional), bool(args.finetuned))
     clip_model = args.clip_model or (backbone.DEFAULT_CLIP_MODEL if args.backbone else default.clip_model)
     num_cutouts = args.num_cutouts or (NUM_CUTOUTS if args.backbone else default.num_cutouts)
     advice = (
