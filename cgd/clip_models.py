@@ -187,6 +187,20 @@ def encode_image(
     return model.encode_image(preprocess(model, make_cutouts(image, clip_size, num_cutouts))).float()
 
 
+def encode_whole_image(path: str, model_name: str, device: str, fp16: bool = False) -> th.Tensor:
+    """CLIP features [1, features] of an image prompt seen whole: its middle square, resized to the model's input.
+
+    It is how `finetune` embedded the images it trained on.
+    """
+    model, clip_size = load_clip(model_name, device, fp16)
+    image = tvf.to_tensor(Image.open(fetch(path)).convert("RGB")).unsqueeze(0).to(device)
+    image = tvf.center_crop(image, [min(image.shape[2:])] * 2)
+    size = [clip_size, clip_size]
+    image = tvf.resize(image, size, interpolation=InterpolationMode.BICUBIC, antialias=True).clamp(0, 1)
+    with th.no_grad():
+        return model.encode_image(preprocess(model, image)).float()
+
+
 def imagenet_text_features(model_name: str = "ViT-B/32", device: str = "cpu", fp16: bool = False) -> th.Tensor:
     """Normalized CLIP text features of every ImageNet class, cached on disk."""
     safe_name = re.sub(r"[^\w.-]", "-", model_name)
