@@ -8,7 +8,7 @@ from typing import Any
 import torchvision.transforms.functional as tvf
 from PIL import Image
 
-from cgd import adm, backbone, sampler, thumbnails, upscale
+from cgd import adm, backbone, finetuned, sampler, thumbnails, upscale
 from cgd.checks import ConfigError
 from cgd.clip_models import MODEL_NAMES, OPEN_CLIP_MODELS, ensemble_members
 from cgd.device import default_device
@@ -30,6 +30,7 @@ ADM_OPTIONS = {
     "thumbnail": "--thumbnail",
     "perturbed_attention": "--perturbed-attention",
     "finetuned": "--finetuned",
+    "finetuned_path": "--finetuned-path",
     "init_image": "--init-image",
     "skip_timesteps": "--skip-timesteps",
     "init_scale": "--init-scale",
@@ -155,11 +156,19 @@ def build_parser() -> argparse.ArgumentParser:
     imagenet.add_argument(
         "-ft",
         "--finetuned",
+        action="store_true",
+        default=None,
+        help=f"Draw at {FINETUNED.image_size} with a fine-tune of the class-conditional checkpoint, which is told "
+        "the prompts' CLIP embeddings as well as their ImageNet class. CLIP's guidance on top of it, by -clip "
+        f"{FINETUNED.clip_model} by default, follows the prompts better than the default pipeline does, for 1.5 "
+        "times the time. finetune/README.md has how it scored.",
+    )
+    imagenet.add_argument(
+        "-ftpath",
+        "--finetuned-path",
         metavar="PATH",
-        help=f"Draw at {FINETUNED.image_size} with this fine-tune of the class-conditional checkpoint, which is "
-        "told the prompts' CLIP embeddings as well as their ImageNet class, made by finetune.export. CLIP's "
-        f"guidance on top of it, by -clip {FINETUNED.clip_model} by default, follows the prompts better than "
-        "the default pipeline does, for 1.5 times the time. finetune/README.md has how it scored.",
+        help=f"The fine-tune --finetuned draws with, as finetune.export writes it. Giving one also turns "
+        f"--finetuned on. Default {finetuned.DEFAULT_PATH.as_posix()}.",
     )
     imagenet.add_argument(
         "-thumb",
@@ -287,6 +296,9 @@ def pipeline(args: argparse.Namespace) -> tuple[Callable[..., Iterator[tuple[int
     animate = args.gif or args.mp4
     settings["save_frequency"] = args.save_frequency or (1 if animate else DEFAULT_SAVE_FREQUENCY)
     settings["progress"] = not args.quiet
+    settings.pop("finetuned_path", None)
+    if args.finetuned or args.finetuned_path:
+        settings["finetuned"] = args.finetuned_path or str(finetuned.DEFAULT_PATH)
     if args.backbone:
         return backbone.generate, settings | {"backbone": args.backbone}
     return adm.generate, settings
@@ -387,7 +399,7 @@ def is_out_of_memory(error: RuntimeError) -> bool:
 
 def out_of_memory_advice(args: argparse.Namespace) -> str:
     """What to change after running out of GPU memory."""
-    default = adm.defaults(bool(args.unconditional), bool(args.finetuned))
+    default = adm.defaults(bool(args.unconditional), bool(args.finetuned or args.finetuned_path))
     clip_model = args.clip_model or (backbone.DEFAULT_CLIP_MODEL if args.backbone else default.clip_model)
     num_cutouts = args.num_cutouts or (NUM_CUTOUTS if args.backbone else default.num_cutouts)
     advice = (
