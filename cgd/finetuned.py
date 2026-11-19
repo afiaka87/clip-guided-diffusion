@@ -26,6 +26,8 @@ from cgd.conditioned import AdapterConfig, ConditionedUNet, load_adapter
 from cgd.prompts import Scene, parse_prompt
 
 SIZE = 256  # The checkpoint it is a fine-tune of.
+# Where finetune.export wrote the rented run's fine-tune, on the machine that trained it. It is not published.
+DEFAULT_PATH = Path("D:/cgd-finetune/cond256-vast/cgd.pt")
 CFG_SCALE = 3.0  # What it was trained for and scored at.
 SLOT_KINDS = ("image", "text")
 
