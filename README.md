@@ -306,13 +306,13 @@ That took 49 s on an RTX 4070, from start to GIF. It also moves each prediction 
 
 ### Fine-tuned model
 
-`--finetuned` / `-ft` PATH
+`--finetuned` / `-ft`, and `--finetuned-path` / `-ftpath` PATH (default: `D:/cgd-finetune/cond256-vast/cgd.pt`)
 
-`uv run cgd -ft D:/cgd-finetune/cond256-vast/cgd.pt "Men standing near a cannon"`
+`uv run cgd -ft "Men standing near a cannon"`
 
 A fine-tune of the class-conditional 256 checkpoint that is told the prompts' CLIP embeddings as well as their ImageNet class, so the U-Net itself draws more of what the text says than its class, and CLIP guides it on top as it guides the default. It keeps the class `cgd` would pick, the closest to the text by ViT-B/32, and is told two embeddings by each of ViT-B/32 and PE-Core-B-16: the text prompts', and the image prompts' seen whole or, without any, the image embedding a linear map predicts from the text's. A prompt of negative weight steers only through CLIP's guidance, since the embeddings have no way to say "not". The model runs with classifier-free guidance at 3 against the class alone, which is the second forward pass a step.
 
-The checkpoint is not published. [`finetune/`](finetune/README.md) trains it, on filtered LAION and ImageNet, and `uv run python -m finetune.export <run folder>` writes the 1.7 GB file this option takes. It draws at 256, with the class-conditional checkpoint's other options, and guides with `-clip ViT-B/32+PE-Core-B-16` at 16 cutouts by default, what it was scored with. Not with `-uncond`, its thumbnail models or `-pag`, which are for the unconditional checkpoint.
+The checkpoint is not published. [`finetune/`](finetune/README.md) trains it, on filtered LAION and ImageNet, and `uv run python -m finetune.export <run folder>` writes the 1.7 GB file it draws with. `-ft` looks for it where that wrote it on the machine that trained it, and `-ftpath` points it anywhere else. It draws at 256, with the class-conditional checkpoint's other options, and guides with `-clip ViT-B/32+PE-Core-B-16` at 16 cutouts by default, what it was scored with. Not with `-uncond`, its thumbnail models or `-pag`, which are for the unconditional checkpoint.
 
 16 texts held out from its training, each from its own seed, against `cgd -size 256` with the same guide, scored by SigLIP2, which neither was trained or guided with (`reports/evidence/finetune/check_cgd_finetuned.py`):
 
@@ -652,12 +652,13 @@ usage: cgd [-h] [-imgs IMAGE_PROMPTS] [-size IMAGE_SIZE] [-wd WIDTH_OFFSET]
            [-ht HEIGHT_OFFSET] [-bs BATCH_SIZE] [-seed SEED]
            [-clip CLIP_MODEL] [-fp16] [-cutn NUM_CUTOUTS]
            [-aes AESTHETIC_SCALE] [-best CANDIDATES]
-           [-frames TRANSITION_FRAMES] [-dev DEVICE] [-uncond] [-ft PATH]
-           [-thumb {clip,glide,laionide,karlo,none}] [-pag] [-n STEPS]
-           [-recur RECURRENCE] [-rate GUIDANCE_RATE] [-gl GUIDANCE_LIMIT]
-           [-init INIT_IMAGE] [-skip SKIP_TIMESTEPS] [-is INIT_SCALE]
-           [-bb {sd-turbo,vega,sdxl-lightning}] [-iters ITERATIONS]
-           [-dir OUTPUT_DIR] [-freq SAVE_FREQUENCY] [-gif] [-mp4] [-up] [-q]
+           [-frames TRANSITION_FRAMES] [-dev DEVICE] [-uncond] [-ft]
+           [-ftpath PATH] [-thumb {clip,glide,laionide,karlo,none}] [-pag]
+           [-n STEPS] [-recur RECURRENCE] [-rate GUIDANCE_RATE]
+           [-gl GUIDANCE_LIMIT] [-init INIT_IMAGE] [-skip SKIP_TIMESTEPS]
+           [-is INIT_SCALE] [-bb {sd-turbo,vega,sdxl-lightning}]
+           [-iters ITERATIONS] [-dir OUTPUT_DIR] [-freq SAVE_FREQUENCY] [-gif]
+           [-mp4] [-up] [-q]
            [prompts]
 
 cgd: make images from text and image prompts with CLIP guided diffusion.
@@ -734,14 +735,18 @@ ImageNet model:
                         overrides its setting. Less reliable than the default,
                         because without an ImageNet class only guidance brings
                         the subject.
-  -ft, --finetuned PATH
-                        Draw at 256 with this fine-tune of the class-
-                        conditional checkpoint, which is told the prompts'
-                        CLIP embeddings as well as their ImageNet class, made
-                        by finetune.export. CLIP's guidance on top of it, by
-                        -clip ViT-B/32+PE-Core-B-16 by default, follows the
-                        prompts better than the default pipeline does, for 1.5
-                        times the time. finetune/README.md has how it scored.
+  -ft, --finetuned      Draw at 256 with a fine-tune of the class-conditional
+                        checkpoint, which is told the prompts' CLIP embeddings
+                        as well as their ImageNet class. CLIP's guidance on
+                        top of it, by -clip ViT-B/32+PE-Core-B-16 by default,
+                        follows the prompts better than the default pipeline
+                        does, for 1.5 times the time. finetune/README.md has
+                        how it scored.
+  -ftpath, --finetuned-path PATH
+                        The fine-tune --finetuned draws with, as
+                        finetune.export writes it. Giving one also turns
+                        --finetuned on. Default D:/cgd-
+                        finetune/cond256-vast/cgd.pt.
   -thumb, --thumbnail {clip,glide,laionide,karlo,none}
                         With --unconditional, a model that reads the noisy
                         image as a 64x64 thumbnail and sets the composition
