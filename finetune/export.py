@@ -1,7 +1,7 @@
 r"""Write what `cgd -ft` draws with from a `finetune.cond` run: its weights and `finetune.prior`'s maps.
 
     uv run python -m finetune.export D:/cgd-finetune/cond256-vast
-    uv run cgd -ft D:/cgd-finetune/cond256-vast/cgd.pt "a red fox in the snow"
+    uv run cgd -ft "a red fox in the snow"        # cgd looks for it there, cgd.finetuned.DEFAULT_PATH
 
 It leaves out the optimizer's state and the running average, which are most of a run's checkpoint: what is
 left is the 420M trained weights, 1.7 GB. `--average` exports the running average in place of the weights.
