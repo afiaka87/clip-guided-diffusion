@@ -146,7 +146,7 @@ class TestAdmParameters:
         [
             (["a fox"], {"unconditional": True}, "--finetuned is a fine-tune of the class-conditional checkpoint"),
             (["a fox"], {"image_size": 128, "height": 128, "width": 128}, "--finetuned draws at 256"),
-            (["a fox"], {"finetuned": "missing.pt"}, "No such fine-tune: missing.pt"),
+            (["a fox"], {"finetuned": "missing.pt"}, "No fine-tune at missing.pt. finetune.export writes one"),
             (["blurry:-1"], {}, "--finetuned is told the prompts of positive weight, and an image has none"),
             (["a castle", ">blurry:-1"], {}, "an image has none"),
         ],
