@@ -218,7 +218,10 @@ def check_finetuned(path: str, images: Sequence[Scene], *, unconditional: bool, 
     """Reject a fine-tune that cannot draw this run."""
     require(not unconditional, "--finetuned is a fine-tune of the class-conditional checkpoint, not --unconditional.")
     require(image_size == ft.SIZE, f"--finetuned draws at {ft.SIZE}, the size of the checkpoint it is a fine-tune of.")
-    require(Path(path).is_file(), f"No such fine-tune: {path}")
+    require(
+        Path(path).is_file(),
+        f"No fine-tune at {path}. finetune.export writes one, and --finetuned-path says where it is.",
+    )
     require(
         all(any(parse_prompt(prompt)[1] > 0 for prompt in (*image.prompts, *image.image_prompts)) for image in images),
         "--finetuned is told the prompts of positive weight, and an image has none.",
